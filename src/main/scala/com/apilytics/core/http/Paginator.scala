@@ -137,7 +137,9 @@ object Paginator {
   }
 
   /** Limit total number of records across pages if limit is specified.
-    * This is a simplified version — actual record counting requires knowing data_path. */
+    * This limits by page count, not record count. Accurate record-level limiting
+    * requires knowing data_path to count extracted records per page — handled in
+    * RESTPartitionReader (Phase 2). */
   private def limitPages[A](limit: Option[Int], config: PaginationConfig): fs2.Pipe[IO, A, A] = {
     limit match {
       case None => identity

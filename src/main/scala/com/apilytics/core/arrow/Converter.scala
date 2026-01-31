@@ -1,5 +1,6 @@
 package com.apilytics.core.arrow
 
+import com.apilytics.core.schema.SchemaMapper
 import io.circe.{Json, JsonNumber}
 import io.circe.pointer.Pointer
 import org.apache.arrow.memory.BufferAllocator
@@ -27,8 +28,11 @@ object Converter {
       val vector = root.getVector(field.getName)
       vector.allocateNew()
 
-      // Field name may be flattened (e.g., "address_city") — split back to navigate JSON
-      val pathParts = field.getName.split("_").toList
+      // Read the original JSON path from field metadata (set by SchemaMapper)
+      val pathParts = Option(field.getMetadata)
+        .flatMap(m => Option(m.get(SchemaMapper.JsonPathKey)))
+        .map(_.split(",").toList)
+        .getOrElse(List(field.getName))
 
       records.zipWithIndex.foreach { case (record, idx) =>
         val value = navigateJson(record, pathParts)

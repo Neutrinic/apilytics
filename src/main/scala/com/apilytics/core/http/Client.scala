@@ -60,9 +60,10 @@ object Client {
             val retryAfter = resp.headers.get(CIString("Retry-After")).map { nel =>
               val v = nel.head.value
               v.toLongOption.map(_.seconds).getOrElse {
-                // Try parsing as HTTP date
-                val epoch = java.time.ZonedDateTime.parse(v, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toEpochSecond
-                (epoch - Instant.now.getEpochSecond).seconds
+                scala.util.Try {
+                  val epoch = java.time.ZonedDateTime.parse(v, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toEpochSecond
+                  (epoch - Instant.now.getEpochSecond).seconds
+                }.getOrElse(exponentialBackoff(attempt))
               }
             }
             val delay = retryAfter.getOrElse(exponentialBackoff(attempt))

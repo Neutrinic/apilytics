@@ -92,7 +92,9 @@ object Parser {
       parsed match {
         case obj: OpenAPISchema.ObjectType => Some(obj)
         case OpenAPISchema.ArrayType(obj: OpenAPISchema.ObjectType) =>
-          // Array of objects at top level — wrap it
+          // Top-level array response — wrap in a synthetic "data" key so the endpoint
+          // has a consistent ObjectType schema. Callers should set data-path = "/data"
+          // in table config to extract records from this wrapper.
           Some(OpenAPISchema.ObjectType(Map("data" -> OpenAPISchema.ArrayType(obj))))
         case _ => None
       }
