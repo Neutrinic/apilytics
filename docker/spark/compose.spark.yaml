@@ -1,11 +1,12 @@
 name: apilytics-spark
 
 services:
+# http://localhost:8080
   spark-master:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: spark-master
+    container_name: master
     hostname: spark-master
     environment:
       - SPARK_ROLE=master
@@ -23,7 +24,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: spark-worker-1
+    container_name: worker-1
     environment:
       - SPARK_ROLE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -41,7 +42,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: spark-worker-2
+    container_name: worker-2
     environment:
       - SPARK_ROLE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -55,11 +56,12 @@ services:
     networks:
       - apilytics-net
 
+#  http://localhost:18080/
   spark-history:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: spark-history
+    container_name: history
     environment:
       - SPARK_ROLE=history
     volumes:
