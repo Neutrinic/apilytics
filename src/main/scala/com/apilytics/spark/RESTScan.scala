@@ -3,7 +3,11 @@ package com.apilytics.spark
 import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan}
 import org.apache.spark.sql.types.StructType
 
-class RESTScan(table: RESTTable) extends Scan with Batch {
+class RESTScan(
+    table: RESTTable,
+    pushedParams: Map[String, String],
+    pushedLimit: Option[Int]
+) extends Scan with Batch {
 
   override def readSchema(): StructType = table.schema()
 
@@ -15,9 +19,9 @@ class RESTScan(table: RESTTable) extends Scan with Batch {
       tableConfig = table.tableConfig,
       sourceConfig = table.sourceConfig,
       baseUrl = table.baseUrl,
-      arrowSchema = table.arrowSchema,
-      pushedParams = Map.empty,
-      pushedLimit = None
+      arrowSchemaJson = table.arrowSchema.toJson,
+      pushedParams = pushedParams,
+      pushedLimit = pushedLimit
     ))
 
   override def createReaderFactory(): PartitionReaderFactory =

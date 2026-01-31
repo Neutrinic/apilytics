@@ -7,6 +7,7 @@ import com.apilytics.core.http.{Client, Paginator}
 import io.circe.Json
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
+import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.connector.read.PartitionReader
@@ -18,6 +19,7 @@ import scala.jdk.CollectionConverters._
 class RESTPartitionReader(partition: RESTInputPartition) extends PartitionReader[InternalRow] {
 
   private val allocator = new RootAllocator()
+  private val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
 
   // Collect all pages into rows eagerly.
   // REST APIs are not high-throughput; materializing is fine.
@@ -56,7 +58,7 @@ class RESTPartitionReader(partition: RESTInputPartition) extends PartitionReader
               val records = Converter.extractRecords(pageJson, dataPath)
               if (records.isEmpty) Nil
               else {
-                val root = Converter.toArrow(records, partition.arrowSchema, allocator)
+                val root = Converter.toArrow(records, arrowSchema, allocator)
                 try {
                   arrowToInternalRows(root)
                 } finally {

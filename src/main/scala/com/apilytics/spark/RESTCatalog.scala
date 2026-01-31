@@ -47,7 +47,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
     }.orElse {
       spec.endpoints.find { ep =>
         ep.operationId.contains(tableName) ||
-          ep.path.split("/").last.equalsIgnoreCase(tableName)
+          ep.path.split("/").filterNot(s => s.startsWith("{") || s.isEmpty).lastOption.exists(_.equalsIgnoreCase(tableName))
       }
     }.getOrElse(throw new NoSuchTableException(ident))
 
@@ -110,7 +110,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
   private def tableNames: Seq[String] = {
     val configured = config.tables.keys.toSeq
     val discovered = spec.endpoints.flatMap { ep =>
-      ep.operationId.orElse(Some(ep.path.split("/").last)).filter(_.nonEmpty)
+      ep.operationId.orElse(ep.path.split("/").filterNot(s => s.startsWith("{") || s.isEmpty).lastOption)
     }
     (configured ++ discovered).distinct
   }
