@@ -1,59 +1,57 @@
-name := "apilytics"
-organization := "com.apilytics"
-version := "0.1.0-SNAPSHOT"
+lazy val root = (project in file("."))
+  .settings(
+    name := "apilytics",
+    organization := "com.apilytics",
+    version := "0.1.0-SNAPSHOT",
+    scalaVersion := "2.13.16",
+    libraryDependencies ++= Seq(
+      // Spark
+      "org.apache.spark" %% "spark-sql"          % "4.0.0" % "provided",
+      "org.apache.spark" %% "spark-catalyst"      % "4.0.0" % "provided",
 
-scalaVersion := "2.13.17"
+      // HTTP + JSON
+      "org.http4s"       %% "http4s-ember-client" % "0.23.30",
+      "org.http4s"       %% "http4s-circe"        % "0.23.30",
+      "io.circe"         %% "circe-core"          % "0.14.10",
+      "io.circe"         %% "circe-generic"       % "0.14.10",
+      "io.circe"         %% "circe-parser"        % "0.14.10",
+      "io.circe"         %% "circe-pointer"       % "0.14.10",
 
-val sparkVersion = "4.0.0"
-val http4sVersion = "0.23.27"
-val catsEffectVersion = "3.5.4"
-val jsoniterVersion = "2.30.1"
+      // OpenAPI
+      "io.swagger.parser.v3" % "swagger-parser"   % "2.1.22",
 
-libraryDependencies ++= Seq(
-  // Spark (provided - users bring their own)
-  "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
-  "org.apache.spark" %% "spark-catalyst" % sparkVersion % "provided",
+      // Arrow
+      "org.apache.arrow"  % "arrow-vector"        % "18.1.0",
+      "org.apache.arrow"  % "arrow-memory-netty"  % "18.1.0",
 
-  // HTTP Client
-  "org.http4s" %% "http4s-ember-client" % http4sVersion,
-  "org.http4s" %% "http4s-dsl" % http4sVersion,
+      // Config
+      "com.github.pureconfig" %% "pureconfig-core" % "0.17.8",
 
-  // Cats Effect
-  "org.typelevel" %% "cats-effect" % catsEffectVersion,
+      // Streaming
+      "co.fs2"           %% "fs2-core"            % "3.11.0",
 
-  // JSON (we'll start with jsoniter-scala)
-  "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core" % jsoniterVersion,
-  "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-macros" % jsoniterVersion % "provided",
+      // Test
+      "org.scalameta"    %% "munit"               % "1.0.3"  % Test,
+      "org.typelevel"    %% "munit-cats-effect"    % "2.0.0"  % Test,
+    ),
 
-  // OpenAPI parsing
-  "io.swagger.parser.v3" % "swagger-parser" % "2.1.22",
+    scalacOptions ++= Seq(
+      "-encoding", "UTF-8",
+      "-deprecation",
+      "-feature",
+      "-unchecked",
+    ),
 
-  // Arrow (we'll add this after basics work)
-  // "org.apache.arrow" % "arrow-vector" % "15.0.0",
-  // "org.apache.arrow" % "arrow-memory-netty" % "15.0.0",
+    // Spark 4 requires Java 17+
+    javacOptions ++= Seq("-source", "17", "-target", "17"),
 
-  // Delta Lake (we'll add this for caching later)
-  // "io.delta" %% "delta-spark" % "3.2.0",
+    // Assembly settings to avoid conflicts
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", _*) => MergeStrategy.discard
+      case _                        => MergeStrategy.first
+    },
 
-  // Testing
-  "org.scalatest" %% "scalatest" % "3.2.18" % Test,
-  "org.typelevel" %% "cats-effect-testing-scalatest" % "1.5.0" % Test
-)
-
-// Compiler options
-scalacOptions ++= Seq(
-  "-encoding", "UTF-8",
-  "-deprecation",
-  "-feature",
-  "-unchecked",
-  "-Xlint",
-  "-Ywarn-dead-code",
-  "-Ywarn-numeric-widen",
-  "-Ywarn-value-discard"
-)
-
-// Assembly settings (for building fat JAR later)
-assembly / assemblyMergeStrategy := {
-  case PathList("META-INF", xs @ _*) => MergeStrategy.discard
-  case x => MergeStrategy.first
-}
+    // Provided Spark deps shouldn't be in assembly
+    assembly / fullClasspath := (assembly / fullClasspath).value
+      .filterNot(_.data.getName.contains("spark")),
+  )
