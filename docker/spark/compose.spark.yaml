@@ -1,0 +1,81 @@
+name: apilytics-spark
+
+services:
+# http://localhost:8080
+  spark-master:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: master
+    hostname: spark-master
+    environment:
+      - SPARK_ROLE=master
+    volumes:
+      - spark-events:/opt/spark/spark-events
+      - ../../target/scala-2.13/apilytics-assembly-0.1.0-SNAPSHOT.jar:/opt/spark/jars/apilytics.jar:ro
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+      - "4040:4040"
+    networks:
+      - apilytics-net
+
+  spark-worker-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: worker-1
+    environment:
+      - SPARK_ROLE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=4g
+    volumes:
+      - spark-events:/opt/spark/spark-events
+      - ../../target/scala-2.13/apilytics-assembly-0.1.0-SNAPSHOT.jar:/opt/spark/jars/apilytics.jar:ro
+    depends_on:
+      - spark-master
+    networks:
+      - apilytics-net
+
+  spark-worker-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: worker-2
+    environment:
+      - SPARK_ROLE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=4g
+    volumes:
+      - spark-events:/opt/spark/spark-events
+      - ../../target/scala-2.13/apilytics-assembly-0.1.0-SNAPSHOT.jar:/opt/spark/jars/apilytics.jar:ro
+    depends_on:
+      - spark-master
+    networks:
+      - apilytics-net
+
+#  http://localhost:18080/
+  spark-history:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: history
+    environment:
+      - SPARK_ROLE=history
+    volumes:
+      - spark-events:/opt/spark/spark-events
+    ports:
+      - "18080:18080"
+    depends_on:
+      - spark-master
+    networks:
+      - apilytics-net
+
+volumes:
+  spark-events: {}
+
+networks:
+  apilytics-net:
+    driver: bridge
