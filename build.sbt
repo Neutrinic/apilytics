@@ -45,6 +45,12 @@ lazy val root = (project in file("."))
     // Spark 4 requires Java 17+
     javacOptions ++= Seq("-source", "17", "-target", "17"),
 
+    // Arrow requires --add-opens on Java 17+
+    Test / javaOptions ++= Seq(
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+    ),
+    Test / fork := true,
+
     // Assembly settings to avoid conflicts
     assembly / assemblyMergeStrategy := {
       case PathList("META-INF", _*) => MergeStrategy.discard

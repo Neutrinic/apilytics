@@ -30,7 +30,7 @@ object Client {
       .map(new RestClient(_, httpConfig, authConfig))
   }
 
-  final class RestClient(
+  class RestClient(
       underlying: Http4sClient[IO],
       httpConfig: HttpConfig,
       authConfig: AuthConfig
