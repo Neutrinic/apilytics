@@ -25,7 +25,7 @@ lazy val root = (project in file("."))
       "org.apache.arrow"  % "arrow-memory-netty"  % "18.1.0",
 
       // Config
-      "com.github.pureconfig" %% "pureconfig-core" % "0.17.8",
+      "com.typesafe"      % "config"              % "1.4.3",
 
       // Streaming
       "co.fs2"           %% "fs2-core"            % "3.11.0",
