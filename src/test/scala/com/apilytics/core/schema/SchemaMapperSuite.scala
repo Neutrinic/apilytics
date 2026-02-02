@@ -123,6 +123,21 @@ class SchemaMapperSuite extends FunSuite {
     assert(createdAt.getType.isInstanceOf[ArrowType.Timestamp])
   }
 
+  test("flattening collision throws IllegalArgumentException") {
+    val schema = OpenAPISchema.ObjectType(
+      Map(
+        "user_name" -> OpenAPISchema.StringType(),
+        "user" -> OpenAPISchema.ObjectType(
+          Map("name" -> OpenAPISchema.StringType())
+        )
+      )
+    )
+
+    intercept[IllegalArgumentException] {
+      SchemaMapper.toArrowSchema(schema)
+    }
+  }
+
   test("int64 format maps to 64-bit int") {
     val schema = OpenAPISchema.ObjectType(
       Map("big_id" -> OpenAPISchema.IntegerType(Some("int64")))
