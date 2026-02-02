@@ -15,6 +15,13 @@ object SchemaMapper {
   /** Convert an OpenAPI object schema to an Arrow Schema, flattening nested objects up to `maxDepth`. */
   def toArrowSchema(obj: OpenAPISchema.ObjectType, maxDepth: Int = 2): Schema = {
     val fields = flattenFields(obj.properties, obj.required, prefix = "", pathSegments = Nil, depth = 0, maxDepth = maxDepth)
+    val duplicates = fields.groupBy(_.getName).collect { case (name, fs) if fs.size > 1 => name }
+    if (duplicates.nonEmpty) {
+      throw new IllegalArgumentException(
+        s"Schema flattening produced duplicate field names: ${duplicates.mkString(", ")}. " +
+          "This happens when a top-level field name collides with a flattened nested path (e.g. 'user_name' vs 'user.name')."
+      )
+    }
     new Schema(fields.asJava)
   }
 
