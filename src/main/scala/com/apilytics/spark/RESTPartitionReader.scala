@@ -4,6 +4,7 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.http.{Client, Paginator}
+import fs2.Stream
 import io.circe.Json
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
@@ -21,8 +22,8 @@ class RESTPartitionReader(partition: RESTInputPartition) extends PartitionReader
   private val allocator = new RootAllocator()
   private val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
 
-  // Collect all pages into rows eagerly.
-  // REST APIs are not high-throughput; materializing is fine.
+  // Pages are processed one at a time inside the stream to avoid holding all
+  // raw JSON in memory simultaneously. Only compact InternalRows are collected.
   private val rows: Iterator[InternalRow] = fetchAllRows()
 
   private var currentRow: InternalRow = _
@@ -51,22 +52,21 @@ class RESTPartitionReader(partition: RESTInputPartition) extends PartitionReader
       .use { client =>
         Paginator
           .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
-          .compile
-          .toList
-          .map { pages =>
-            pages.flatMap { pageJson =>
-              val records = Converter.extractRecords(pageJson, dataPath)
-              if (records.isEmpty) Nil
-              else {
-                val root = Converter.toArrow(records, arrowSchema, allocator)
-                try {
-                  arrowToInternalRows(root)
-                } finally {
-                  root.close()
-                }
+          .flatMap { pageJson =>
+            val records = Converter.extractRecords(pageJson, dataPath)
+            if (records.isEmpty) Stream.empty
+            else {
+              val root = Converter.toArrow(records, arrowSchema, allocator)
+              val rows = try {
+                arrowToInternalRows(root)
+              } finally {
+                root.close()
               }
+              Stream.emits(rows)
             }
           }
+          .compile
+          .toList
       }
 
     program.unsafeRunSync().iterator
