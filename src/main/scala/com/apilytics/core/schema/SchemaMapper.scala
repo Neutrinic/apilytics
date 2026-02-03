@@ -12,6 +12,21 @@ object SchemaMapper {
     * The Converter uses this to navigate the original JSON without ambiguity from underscores. */
   val JsonPathKey = "json.path"
 
+  /** Information about an array field for generating exploded views. */
+  final case class ArrayFieldInfo(
+      fieldName: String,
+      jsonPath: List[String],
+      itemSchema: OpenAPISchema
+  )
+
+  /** Find all top-level array fields in an object schema. */
+  def findArrayFields(obj: OpenAPISchema.ObjectType): List[ArrayFieldInfo] = {
+    obj.properties.toList.collect {
+      case (name, OpenAPISchema.ArrayType(itemSchema)) =>
+        ArrayFieldInfo(name, List(name), itemSchema)
+    }
+  }
+
   /** Convert an OpenAPI object schema to an Arrow Schema, flattening nested objects up to `maxDepth`. */
   def toArrowSchema(obj: OpenAPISchema.ObjectType, maxDepth: Int = 2): Schema = {
     val fields = flattenFields(obj.properties, obj.required, prefix = "", pathSegments = Nil, depth = 0, maxDepth = maxDepth)
