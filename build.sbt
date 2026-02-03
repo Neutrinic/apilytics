@@ -32,7 +32,8 @@ lazy val root = (project in file("."))
 
       // Test
       "org.scalameta"    %% "munit"               % "1.0.3"  % Test,
-      "org.typelevel"    %% "munit-cats-effect"    % "2.0.0"  % Test,
+      "org.typelevel"    %% "munit-cats-effect"   % "2.0.0"  % Test,
+      "org.wiremock"      % "wiremock"            % "3.10.0" % Test,
     ),
 
     scalacOptions ++= Seq(
