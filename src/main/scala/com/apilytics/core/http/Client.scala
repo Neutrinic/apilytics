@@ -27,15 +27,40 @@ object Client {
       .default[IO]
       .withTimeout(httpConfig.timeout)
       .build
-      .map(new RestClient(_, httpConfig, authConfig))
+      .map(new RestClient(_, httpConfig, authConfig, None))
+  }
+
+  /** Create a client with OAuth2 token manager for dynamic token refresh. */
+  def resourceWithOAuth2(
+      httpConfig: HttpConfig,
+      authConfig: AuthConfig
+  ): Resource[IO, RestClient] = {
+    val clientId = authConfig.clientId.getOrElse(
+      throw new IllegalArgumentException("OAuth2 client credentials requires client-id")
+    )
+    val clientSecret = authConfig.clientSecret.getOrElse(
+      throw new IllegalArgumentException("OAuth2 client credentials requires client-secret")
+    )
+    val tokenUrl = authConfig.tokenUrl.getOrElse(
+      throw new IllegalArgumentException("OAuth2 client credentials requires token-url")
+    )
+
+    for {
+      httpClient <- EmberClientBuilder.default[IO].withTimeout(httpConfig.timeout).build
+      tokenManager <- Resource.eval(OAuth2TokenManager(clientId, clientSecret, tokenUrl, httpClient))
+    } yield new RestClient(httpClient, httpConfig, authConfig, Some(tokenManager))
   }
 
   class RestClient(
       underlying: Http4sClient[IO],
       httpConfig: HttpConfig,
-      authConfig: AuthConfig
+      authConfig: AuthConfig,
+      tokenManager: Option[OAuth2TokenManager]
   ) {
-    private val applyAuth = Auth(authConfig)
+    private val applyAuth: Request[IO] => IO[Request[IO]] = tokenManager match {
+      case Some(tm) => Auth.withTokenManager(tm)
+      case None     => Auth(authConfig)
+    }
 
     def get(uri: Uri, params: Map[String, String] = Map.empty): IO[ApiResponse] = {
       val fullUri = params.foldLeft(uri) { case (u, (k, v)) =>
@@ -44,11 +69,16 @@ object Client {
       val baseReq = Request[IO](uri = fullUri)
 
       applyAuth(baseReq).flatMap { req =>
-        executeWithRetry(req, attempt = 0)
+        executeWithRetry(req, baseReq, attempt = 0, authRetried = false)
       }
     }
 
-    private def executeWithRetry(req: Request[IO], attempt: Int): IO[ApiResponse] = {
+    private def executeWithRetry(
+        req: Request[IO],
+        baseReq: Request[IO],
+        attempt: Int,
+        authRetried: Boolean
+    ): IO[ApiResponse] = {
       underlying.run(req).use { resp =>
         val hdrs = resp.headers.headers.map(h => h.name.toString -> h.value).toMap
 
@@ -68,15 +98,24 @@ object Client {
             }
             val delay = retryAfter.getOrElse(exponentialBackoff(attempt))
             // Drain response body before retry
-            resp.body.compile.drain *> IO.sleep(delay) *> executeWithRetry(req, attempt + 1)
+            resp.body.compile.drain *> IO.sleep(delay) *> executeWithRetry(req, baseReq, attempt + 1, authRetried)
 
           case code if code >= 500 && attempt < httpConfig.maxRetries =>
             val delay = exponentialBackoff(attempt)
-            resp.body.compile.drain *> IO.sleep(delay) *> executeWithRetry(req, attempt + 1)
+            resp.body.compile.drain *> IO.sleep(delay) *> executeWithRetry(req, baseReq, attempt + 1, authRetried)
+
+          case 401 if !authRetried && tokenManager.isDefined =>
+            // Token may have expired - refresh once and retry
+            resp.body.compile.drain *>
+              tokenManager.get.refreshToken.flatMap { _ =>
+                applyAuth(baseReq).flatMap { newReq =>
+                  executeWithRetry(newReq, baseReq, attempt, authRetried = true)
+                }
+              }
 
           case 401 | 403 =>
             resp.as[String].flatMap { body =>
-              IO.raiseError(new RuntimeException(s"Auth failed (${ resp.status.code}): $body"))
+              IO.raiseError(new RuntimeException(s"Auth failed (${resp.status.code}): $body"))
             }
 
           case code =>

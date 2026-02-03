@@ -16,7 +16,7 @@ class PaginatorSuite extends CatsEffectSuite {
 
   private def mockClient(responses: List[(Json, Map[String, String])]): Client.RestClient = {
     var callIndex = 0
-    new Client.RestClient(null, dummyHttp, dummyAuth) {
+    new Client.RestClient(null, dummyHttp, dummyAuth, None) {
       override def get(uri: Uri, params: Map[String, String]): IO[ApiResponse] = IO {
         val (json, headers) = responses(callIndex)
         callIndex += 1

@@ -377,4 +377,170 @@ class WireMockSuite extends FunSuite {
     assertEquals(resp.headers.get("X-Request-Id"), Some("abc123"))
     assertEquals(resp.headers.get("X-Rate-Limit-Remaining"), Some("99"))
   }
+
+  // ============== OAUTH2 CLIENT CREDENTIALS TESTS ==============
+
+  test("OAuth2 fetches token and uses it for API requests") {
+    // Token endpoint
+    server.stubFor(
+      post(urlPathEqualTo("/oauth/token"))
+        .withRequestBody(containing("grant_type=client_credentials"))
+        .withRequestBody(containing("client_id=test-client"))
+        .withRequestBody(containing("client_secret=test-secret"))
+        .willReturn(okJson("""{"access_token": "fresh-token", "expires_in": 3600}"""))
+    )
+    // API endpoint requiring auth
+    server.stubFor(
+      get(urlPathEqualTo("/api/data"))
+        .withHeader("Authorization", equalTo("Bearer fresh-token"))
+        .willReturn(okJson("""{"status": "ok"}"""))
+    )
+
+    val authConfig = AuthConfig(
+      authType = AuthType.OAuth2Client,
+      clientId = Some("test-client"),
+      clientSecret = Some("test-secret"),
+      tokenUrl = Some(s"http://localhost:${server.port()}/oauth/token")
+    )
+
+    val resp = Client.resourceWithOAuth2(defaultHttp, authConfig).use { client =>
+      client.get(baseUri.addPath("api/data"))
+    }.unsafeRunSync()
+
+    assertEquals(resp.status, 200)
+    // Verify token was fetched
+    server.verify(1, postRequestedFor(urlPathEqualTo("/oauth/token")))
+  }
+
+  test("OAuth2 refreshes token on 401 and retries") {
+    // Use scenarios to return different tokens on each POST
+    server.stubFor(
+      post(urlPathEqualTo("/oauth/token"))
+        .inScenario("oauth-refresh")
+        .whenScenarioStateIs("Started")
+        .willReturn(okJson("""{"access_token": "first-token", "expires_in": 3600}"""))
+        .willSetStateTo("first-token-issued")
+    )
+    server.stubFor(
+      post(urlPathEqualTo("/oauth/token"))
+        .inScenario("oauth-refresh")
+        .whenScenarioStateIs("first-token-issued")
+        .willReturn(okJson("""{"access_token": "refreshed-token", "expires_in": 3600}"""))
+    )
+    // First API call with first token returns 401
+    server.stubFor(
+      get(urlPathEqualTo("/api/data"))
+        .withHeader("Authorization", equalTo("Bearer first-token"))
+        .willReturn(unauthorized().withBody("Token expired"))
+    )
+    // Retry with refreshed token succeeds
+    server.stubFor(
+      get(urlPathEqualTo("/api/data"))
+        .withHeader("Authorization", equalTo("Bearer refreshed-token"))
+        .willReturn(okJson("""{"status": "ok"}"""))
+    )
+
+    val authConfig = AuthConfig(
+      authType = AuthType.OAuth2Client,
+      clientId = Some("test-client"),
+      clientSecret = Some("test-secret"),
+      tokenUrl = Some(s"http://localhost:${server.port()}/oauth/token")
+    )
+
+    val resp = Client.resourceWithOAuth2(defaultHttp, authConfig).use { client =>
+      client.get(baseUri.addPath("api/data"))
+    }.unsafeRunSync()
+
+    assertEquals(resp.status, 200)
+    // Verify: initial token fetch + refresh
+    server.verify(2, postRequestedFor(urlPathEqualTo("/oauth/token")))
+    // Verify: 2 API calls (first 401, second 200)
+    server.verify(2, getRequestedFor(urlPathEqualTo("/api/data")))
+  }
+
+  test("OAuth2 fails after refresh if still 401") {
+    // Token endpoint always returns same token
+    server.stubFor(
+      post(urlPathEqualTo("/oauth/token"))
+        .willReturn(okJson("""{"access_token": "bad-token", "expires_in": 3600}"""))
+    )
+    // API always returns 401
+    server.stubFor(
+      get(urlPathEqualTo("/api/data"))
+        .willReturn(unauthorized().withBody("Invalid token"))
+    )
+
+    val authConfig = AuthConfig(
+      authType = AuthType.OAuth2Client,
+      clientId = Some("test-client"),
+      clientSecret = Some("test-secret"),
+      tokenUrl = Some(s"http://localhost:${server.port()}/oauth/token")
+    )
+
+    val error = intercept[RuntimeException] {
+      Client.resourceWithOAuth2(defaultHttp, authConfig).use { client =>
+        client.get(baseUri.addPath("api/data"))
+      }.unsafeRunSync()
+    }
+
+    assert(error.getMessage.contains("401"))
+    // Initial fetch + refresh = 2 token fetches
+    server.verify(2, postRequestedFor(urlPathEqualTo("/oauth/token")))
+    // 2 API calls (both 401)
+    server.verify(2, getRequestedFor(urlPathEqualTo("/api/data")))
+  }
+
+  test("OAuth2 token fetch failure throws") {
+    server.stubFor(
+      post(urlPathEqualTo("/oauth/token"))
+        .willReturn(unauthorized().withBody("Invalid credentials"))
+    )
+
+    val authConfig = AuthConfig(
+      authType = AuthType.OAuth2Client,
+      clientId = Some("bad-client"),
+      clientSecret = Some("bad-secret"),
+      tokenUrl = Some(s"http://localhost:${server.port()}/oauth/token")
+    )
+
+    val error = intercept[RuntimeException] {
+      Client.resourceWithOAuth2(defaultHttp, authConfig).use { client =>
+        client.get(baseUri.addPath("api/data"))
+      }.unsafeRunSync()
+    }
+
+    assert(error.getMessage.contains("OAuth2 token fetch failed"))
+  }
+
+  test("OAuth2 caches token across requests") {
+    server.stubFor(
+      post(urlPathEqualTo("/oauth/token"))
+        .willReturn(okJson("""{"access_token": "cached-token", "expires_in": 3600}"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/api/data"))
+        .withHeader("Authorization", equalTo("Bearer cached-token"))
+        .willReturn(okJson("""{"id": 1}"""))
+    )
+
+    val authConfig = AuthConfig(
+      authType = AuthType.OAuth2Client,
+      clientId = Some("test-client"),
+      clientSecret = Some("test-secret"),
+      tokenUrl = Some(s"http://localhost:${server.port()}/oauth/token")
+    )
+
+    Client.resourceWithOAuth2(defaultHttp, authConfig).use { client =>
+      for {
+        _ <- client.get(baseUri.addPath("api/data"))
+        _ <- client.get(baseUri.addPath("api/data"))
+        _ <- client.get(baseUri.addPath("api/data"))
+      } yield ()
+    }.unsafeRunSync()
+
+    // Token should only be fetched once
+    server.verify(1, postRequestedFor(urlPathEqualTo("/oauth/token")))
+    // All 3 API requests should succeed
+    server.verify(3, getRequestedFor(urlPathEqualTo("/api/data")))
+  }
 }
