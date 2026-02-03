@@ -21,7 +21,11 @@ class GitHubE2ESuite extends FunSuite {
 
   private val specPath = java.nio.file.Paths.get(getClass.getClassLoader.getResource("github-issues.yaml").toURI).toString
   private val httpConfig = HttpConfig(maxRetries = 1, maxBackoff = 5.seconds, timeout = 10.seconds)
-  private val noAuth = AuthConfig(authType = AuthType.Header, headerName = Some("Accept"), headerValue = Some("application/vnd.github+json"))
+  private val githubAuth = sys.env.get("GITHUB_TOKEN").fold(
+    AuthConfig(authType = AuthType.Header, headerName = Some("Accept"), headerValue = Some("application/vnd.github+json"))
+  ) { token =>
+    AuthConfig(authType = AuthType.Bearer, token = Some(token))
+  }
   private val pagination = PaginationConfig(style = PaginationStyle.LinkHeader, pageSizeParam = Some("per_page"), maxPageSize = 5)
 
   /** The array response gets wrapped by Parser as ObjectType(Map("data" -> ArrayType(itemSchema))).
@@ -64,7 +68,7 @@ class GitHubE2ESuite extends FunSuite {
     try {
       val baseUri = Uri.unsafeFromString("https://api.github.com/repos/octocat/Hello-World/issues")
       val params = Map("state" -> "open")
-      val rows = Client.resource(httpConfig, noAuth).use { client =>
+      val rows = Client.resource(httpConfig, githubAuth).use { client =>
         Paginator.pages(client, baseUri, params, pagination, limit = Some(5))
           .compile.toList.map { pages =>
             assert(pages.nonEmpty, "Expected at least one page")
@@ -100,7 +104,7 @@ class GitHubE2ESuite extends FunSuite {
     val baseUri = Uri.unsafeFromString("https://api.github.com/repos/octocat/Hello-World/issues")
     val smallPage = pagination.copy(maxPageSize = 2)
 
-    val pages = Client.resource(httpConfig, noAuth).use { client =>
+    val pages = Client.resource(httpConfig, githubAuth).use { client =>
       Paginator.pages(client, baseUri, Map("state" -> "all"), smallPage, limit = Some(4))
         .compile.toList
     }.unsafeRunSync()
