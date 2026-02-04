@@ -48,7 +48,8 @@ final case class PaginationConfig(
 
 final case class SchemaConfig(
     flattenDepth: Int = 2,
-    arrayHandling: ArrayHandling = ArrayHandling.KeepArray
+    arrayHandling: ArrayHandling = ArrayHandling.KeepArray,
+    arrowBatchSize: Int = 4096
 )
 
 final case class HttpConfig(
