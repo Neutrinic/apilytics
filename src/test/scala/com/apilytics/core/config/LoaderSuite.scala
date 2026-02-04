@@ -116,4 +116,29 @@ class LoaderSuite extends FunSuite {
     assertEquals(Loader.load(withStyle("link_header")).pagination.style, PaginationStyle.LinkHeader)
     assertEquals(Loader.load(withStyle("none")).pagination.style, PaginationStyle.None)
   }
+
+  test("arrow-batch-size defaults to 4096") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.schema.arrowBatchSize, 4096)
+  }
+
+  test("arrow-batch-size can be configured") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |schema {
+        |  arrow-batch-size = 1024
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.schema.arrowBatchSize, 1024)
+  }
 }

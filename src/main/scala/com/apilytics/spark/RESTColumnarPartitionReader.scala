@@ -45,6 +45,7 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends Partiti
   private def fetchBatches(): Iterator[ColumnarBatch] = {
     val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
     val dataPath = partition.tableConfig.flatMap(_.dataPath)
+    val batchSize = partition.sourceConfig.schema.arrowBatchSize
 
     val program: IO[List[ColumnarBatch]] = Client
       .resource(partition.sourceConfig.http, partition.sourceConfig.auth)
@@ -55,9 +56,12 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends Partiti
             val records = Converter.extractRecords(pageJson, dataPath)
             if (records.isEmpty) Stream.empty
             else {
-              val root = Converter.toArrow(records, arrowSchema, allocator)
-              val batch = arrowToBatch(root)
-              Stream.emit(batch)
+              // Chunk records into batches of configured size
+              val chunks = records.grouped(batchSize).toList
+              Stream.emits(chunks.map { chunk =>
+                val root = Converter.toArrow(chunk, arrowSchema, allocator)
+                arrowToBatch(root)
+              })
             }
           }
           .compile
