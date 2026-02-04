@@ -6,10 +6,11 @@ import org.apache.spark.sql.types.StructType
 
 class ExplodedArrayScan(
     table: ExplodedArrayTable,
-    arrowSchema: ArrowSchema
+    arrowSchema: ArrowSchema,
+    prunedSchema: Option[StructType]
 ) extends Scan with Batch {
 
-  override def readSchema(): StructType = table.schema()
+  override def readSchema(): StructType = prunedSchema.getOrElse(table.schema())
 
   override def toBatch(): Batch = this
 

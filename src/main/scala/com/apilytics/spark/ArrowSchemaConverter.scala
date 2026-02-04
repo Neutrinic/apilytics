@@ -13,6 +13,17 @@ object ArrowSchemaConverter {
     StructType(fields)
   }
 
+  /** Prune Arrow schema to only include columns in the required Spark schema.
+    * Preserves field metadata (like json.path) from the original Arrow fields.
+    */
+  def pruneSchema(arrowSchema: ArrowSchema, required: StructType): ArrowSchema = {
+    val requiredNames = required.fieldNames.toSet
+    val prunedFields = arrowSchema.getFields.asScala
+      .filter(f => requiredNames.contains(f.getName))
+      .asJava
+    new ArrowSchema(prunedFields)
+  }
+
   private def toSparkField(field: Field): StructField = {
     val sparkType = toSparkType(field.getType)
     StructField(field.getName, sparkType, field.isNullable)
