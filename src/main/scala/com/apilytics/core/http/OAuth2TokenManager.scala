@@ -57,24 +57,47 @@ class OAuth2TokenManager private (
       .withEntity(formData)
       .withContentType(`Content-Type`(MediaType.application.`x-www-form-urlencoded`))
 
+    val endpoint = tokenUrl.path.renderString
+
     httpClient.run(req).use { resp =>
+      val hdrs = resp.headers.headers.map(h => h.name.toString -> h.value).toMap
+
       resp.status.code match {
         case code if code >= 200 && code < 300 =>
           resp.as[Json].flatMap { json =>
             val cursor = json.hcursor
-            val accessToken = cursor.get[String]("access_token")
-              .getOrElse(throw new RuntimeException("OAuth2 response missing access_token"))
-            val expiresIn = cursor.get[Long]("expires_in").getOrElse(3600L)
+            cursor.get[String]("access_token") match {
+              case Right(accessToken) =>
+                val expiresIn = cursor.get[Long]("expires_in").getOrElse(3600L)
+                // Expire 60s early to avoid edge cases
+                val expiresAt = Instant.now.plusSeconds(expiresIn - 60)
+                val cached = CachedToken(accessToken, expiresAt)
+                tokenRef.set(Some(cached)).as(accessToken)
 
-            // Expire 60s early to avoid edge cases
-            val expiresAt = Instant.now.plusSeconds(expiresIn - 60)
-            val cached = CachedToken(accessToken, expiresAt)
-
-            tokenRef.set(Some(cached)).as(accessToken)
+              case Left(_) =>
+                IO.raiseError(ApiError(
+                  message = "OAuth2 response missing access_token field",
+                  endpoint = endpoint,
+                  method = Method.POST,
+                  params = Map.empty,
+                  statusCode = code,
+                  responseBody = json.noSpaces,
+                  requestId = ApiError.extractRequestId(hdrs),
+                  retryAttempt = 0
+                ))
+            }
           }
         case code =>
           resp.as[String].flatMap { body =>
-            IO.raiseError(new RuntimeException(s"OAuth2 token fetch failed ($code): $body"))
+            IO.raiseError(ApiError.authFailed(
+              endpoint = endpoint,
+              method = Method.POST,
+              params = Map.empty,
+              statusCode = code,
+              responseBody = body,
+              headers = hdrs,
+              retryAttempt = 0
+            ))
           }
       }
     }

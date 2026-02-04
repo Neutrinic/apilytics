@@ -67,15 +67,18 @@ object Client {
         u.withQueryParam(k, v)
       }
       val baseReq = Request[IO](uri = fullUri)
+      val endpoint = uri.path.renderString
 
       applyAuth(baseReq).flatMap { req =>
-        executeWithRetry(req, baseReq, attempt = 0, authRetried = false)
+        executeWithRetry(req, baseReq, endpoint, params, attempt = 0, authRetried = false)
       }
     }
 
     private def executeWithRetry(
         req: Request[IO],
         baseReq: Request[IO],
+        endpoint: String,
+        params: Map[String, String],
         attempt: Int,
         authRetried: Boolean
     ): IO[ApiResponse] = {
@@ -98,29 +101,47 @@ object Client {
             }
             val delay = retryAfter.getOrElse(exponentialBackoff(attempt))
             // Drain response body before retry
-            resp.body.compile.drain *> IO.sleep(delay) *> executeWithRetry(req, baseReq, attempt + 1, authRetried)
+            resp.body.compile.drain *> IO.sleep(delay) *>
+              executeWithRetry(req, baseReq, endpoint, params, attempt + 1, authRetried)
 
           case code if code >= 500 && attempt < httpConfig.maxRetries =>
             val delay = exponentialBackoff(attempt)
-            resp.body.compile.drain *> IO.sleep(delay) *> executeWithRetry(req, baseReq, attempt + 1, authRetried)
+            resp.body.compile.drain *> IO.sleep(delay) *>
+              executeWithRetry(req, baseReq, endpoint, params, attempt + 1, authRetried)
 
           case 401 if !authRetried && tokenManager.isDefined =>
             // Token may have expired - refresh once and retry
             resp.body.compile.drain *>
               tokenManager.get.refreshToken.flatMap { _ =>
                 applyAuth(baseReq).flatMap { newReq =>
-                  executeWithRetry(newReq, baseReq, attempt, authRetried = true)
+                  executeWithRetry(newReq, baseReq, endpoint, params, attempt, authRetried = true)
                 }
               }
 
           case 401 | 403 =>
             resp.as[String].flatMap { body =>
-              IO.raiseError(new RuntimeException(s"Auth failed (${resp.status.code}): $body"))
+              IO.raiseError(ApiError.authFailed(
+                endpoint = endpoint,
+                method = req.method,
+                params = params,
+                statusCode = resp.status.code,
+                responseBody = body,
+                headers = hdrs,
+                retryAttempt = attempt
+              ))
             }
 
           case code =>
             resp.as[String].flatMap { body =>
-              IO.raiseError(new RuntimeException(s"HTTP $code: $body"))
+              IO.raiseError(ApiError.httpError(
+                endpoint = endpoint,
+                method = req.method,
+                params = params,
+                statusCode = code,
+                responseBody = body,
+                headers = hdrs,
+                retryAttempt = attempt
+              ))
             }
         }
       }

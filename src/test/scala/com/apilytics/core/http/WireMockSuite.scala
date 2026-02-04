@@ -503,13 +503,14 @@ class WireMockSuite extends FunSuite {
       tokenUrl = Some(s"http://localhost:${server.port()}/oauth/token")
     )
 
-    val error = intercept[RuntimeException] {
+    val error = intercept[ApiError] {
       Client.resourceWithOAuth2(defaultHttp, authConfig).use { client =>
         client.get(baseUri.addPath("api/data"))
       }.unsafeRunSync()
     }
 
-    assert(error.getMessage.contains("OAuth2 token fetch failed"))
+    assert(error.statusCode == 401)
+    assert(error.message == "Authentication failed")
   }
 
   test("OAuth2 caches token across requests") {
