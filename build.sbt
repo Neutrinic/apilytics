@@ -52,13 +52,31 @@ lazy val root = (project in file("."))
     ),
     Test / fork := true,
 
-    // Assembly settings to avoid conflicts
+    // Assembly settings
+    assembly / assemblyJarName := s"apilytics-${version.value}.jar",
     assembly / assemblyMergeStrategy := {
-      case PathList("META-INF", _*) => MergeStrategy.discard
-      case _                        => MergeStrategy.first
+      case PathList("META-INF", xs @ _*)           => MergeStrategy.discard
+      case "module-info.class"                     => MergeStrategy.discard
+      case "META-INF/versions/9/module-info.class" => MergeStrategy.discard
+      case x if x.endsWith(".proto")               => MergeStrategy.first
+      case "reference.conf"                        => MergeStrategy.concat
+      case _                                       => MergeStrategy.first
     },
-
-    // Provided Spark deps shouldn't be in assembly
-    assembly / fullClasspath := (assembly / fullClasspath).value
-      .filterNot(_.data.getName.contains("spark")),
+    assembly / assemblyOption := (assembly / assemblyOption)
+      .value
+      .withIncludeScala(false)
+      .withIncludeDependency(true),
+    assembly / assemblyExcludedJars := {
+      val cp = (assembly / fullClasspath).value
+      cp.filter { jar =>
+        val name = jar.data.getName
+        name.contains("spark-") ||
+          name.contains("scala-library") ||
+          name.contains("scala-reflect") ||
+          name.contains("hadoop-")
+      }
+    },
+    assembly / test := {},
   )
+
+addCommandAlias("build", "assembly")

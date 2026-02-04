@@ -1,0 +1,253 @@
+openapi: 3.0.3
+info:
+  title: PokeAPI
+  version: "2.0"
+  description: Pokemon data API
+
+servers:
+  - url: https://pokeapi.co
+
+paths:
+  /api/v2/pokemon:
+    get:
+      operationId: listPokemon
+      summary: List all Pokemon
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of Pokemon
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    description: Total number of Pokemon
+                  next:
+                    type: string
+                    nullable: true
+                    description: URL for next page
+                  previous:
+                    type: string
+                    nullable: true
+                    description: URL for previous page
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PokemonSummary"
+
+  /api/v2/pokemon/{id}:
+    get:
+      operationId: getPokemon
+      summary: Get Pokemon by ID or name
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pokemon details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pokemon"
+
+  /api/v2/type:
+    get:
+      operationId: listTypes
+      summary: List all Pokemon types
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Paginated list of types
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: string
+                    nullable: true
+                  previous:
+                    type: string
+                    nullable: true
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/NamedResource"
+
+  /api/v2/ability:
+    get:
+      operationId: listAbilities
+      summary: List all Pokemon abilities
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Paginated list of abilities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: string
+                    nullable: true
+                  previous:
+                    type: string
+                    nullable: true
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/NamedResource"
+
+components:
+  schemas:
+    NamedResource:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+
+    PokemonSummary:
+      type: object
+      required:
+        - name
+        - url
+      properties:
+        name:
+          type: string
+          description: Pokemon name
+        url:
+          type: string
+          description: URL to full Pokemon details
+
+    Pokemon:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          description: Pokemon ID
+        name:
+          type: string
+          description: Pokemon name
+        base_experience:
+          type: integer
+          nullable: true
+        height:
+          type: integer
+          description: Height in decimeters
+        weight:
+          type: integer
+          description: Weight in hectograms
+        is_default:
+          type: boolean
+        order:
+          type: integer
+        abilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/PokemonAbility"
+        types:
+          type: array
+          items:
+            $ref: "#/components/schemas/PokemonType"
+        stats:
+          type: array
+          items:
+            $ref: "#/components/schemas/PokemonStat"
+        moves:
+          type: array
+          items:
+            $ref: "#/components/schemas/PokemonMove"
+        sprites:
+          $ref: "#/components/schemas/PokemonSprites"
+        species:
+          $ref: "#/components/schemas/NamedResource"
+
+    PokemonAbility:
+      type: object
+      properties:
+        is_hidden:
+          type: boolean
+        slot:
+          type: integer
+        ability:
+          $ref: "#/components/schemas/NamedResource"
+
+    PokemonType:
+      type: object
+      properties:
+        slot:
+          type: integer
+        type:
+          $ref: "#/components/schemas/NamedResource"
+
+    PokemonStat:
+      type: object
+      properties:
+        base_stat:
+          type: integer
+        effort:
+          type: integer
+        stat:
+          $ref: "#/components/schemas/NamedResource"
+
+    PokemonMove:
+      type: object
+      properties:
+        move:
+          $ref: "#/components/schemas/NamedResource"
+
+    PokemonSprites:
+      type: object
+      properties:
+        front_default:
+          type: string
+          nullable: true
+        front_shiny:
+          type: string
+          nullable: true
+        back_default:
+          type: string
+          nullable: true
+        back_shiny:
+          type: string
+          nullable: true
