@@ -189,4 +189,29 @@ class ExplodedArraySuite extends FunSuite {
     // The catalog tries right-to-left, preferring longer base table names
     // This is tested in integration with actual endpoint matching
   }
+
+  test("ExplodedArrayPartitionReaderFactory supports columnar reads") {
+    val factory = new ExplodedArrayPartitionReaderFactory()
+    val partition = ExplodedArrayInputPartition(
+      endpoint = Endpoint(
+        path = "/items",
+        operationId = None,
+        responseSchema = OpenAPISchema.ObjectType(Map("id" -> OpenAPISchema.IntegerType())),
+        queryParams = Nil
+      ),
+      tableConfig = None,
+      sourceConfig = SourceConfig(
+        openapi = "test.yaml",
+        auth = defaultAuth,
+        http = defaultHttp,
+        schema = SchemaConfig(flattenDepth = 2, arrayHandling = ArrayHandling.ExplodeView)
+      ),
+      baseUrl = "http://localhost",
+      arrowSchemaJson = "{}",
+      arrayFieldName = "tags",
+      arrayJsonPath = List("tags")
+    )
+    assert(factory.supportColumnarReads(partition))
+  }
+
 }

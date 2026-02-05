@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.http.{Client, Paginator}
-import fs2.Stream
+import io.circe.Json
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
@@ -14,8 +14,11 @@ import org.http4s.Uri
 
 import scala.jdk.CollectionConverters._
 
-/** Zero-copy columnar reader that wraps Arrow VectorSchemaRoot as Spark ColumnarBatch. */
-class RESTColumnarPartitionReader(partition: RESTInputPartition) extends PartitionReader[ColumnarBatch] {
+/** Zero-copy columnar reader for exploded array views.
+  * Each API record is exploded by the array field, then batched into Arrow ColumnarBatch.
+  */
+class ExplodedArrayColumnarPartitionReader(partition: ExplodedArrayInputPartition)
+    extends PartitionReader[ColumnarBatch] {
 
   private val allocator = new RootAllocator()
   private val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
@@ -54,14 +57,14 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends Partiti
       .resource(partition.sourceConfig.http, partition.sourceConfig.auth)
       .use { client =>
         Paginator
-          .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
+          .pages(client, baseUri, Map.empty, partition.sourceConfig.pagination, None)
           .flatMap { pageJson =>
             val records = Converter.extractRecords(pageJson, dataPath)
-            if (records.isEmpty) Stream.empty
+            val exploded = records.flatMap(explodeRecord)
+            if (exploded.isEmpty) fs2.Stream.empty
             else {
-              // Chunk records into batches of configured size
-              val chunks = records.grouped(batchSize).toList
-              Stream.emits(chunks.map { chunk =>
+              val chunks = exploded.grouped(batchSize).toList
+              fs2.Stream.emits(chunks.map { chunk =>
                 val root = Converter.toArrow(chunk, arrowSchema, allocator)
                 (arrowToBatch(root), root)
               })
@@ -72,6 +75,40 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends Partiti
       }
 
     program.unsafeRunSync()
+  }
+
+  /** Explode a single record by its array field.
+    * For each element in the array, create a new JSON object with:
+    * - All parent scalar fields (excluding the array field)
+    * - The array element (as the array field name for primitives, or flattened for objects)
+    */
+  private def explodeRecord(record: Json): List[Json] = {
+    val obj = record.asObject.getOrElse(return Nil)
+
+    // Navigate to the array field using the JSON path
+    val arrayJson = partition.arrayJsonPath.foldLeft(record) { (current, key) =>
+      current.asObject.flatMap(_.apply(key)).getOrElse(Json.Null)
+    }
+
+    val arrayElements = arrayJson.asArray.getOrElse(return Nil)
+    if (arrayElements.isEmpty) return Nil
+
+    // Parent fields: all fields except the array field
+    val parentFields = obj.toMap - partition.arrayFieldName
+
+    arrayElements.toList.map { element =>
+      // Create exploded record: parent fields + array element
+      val elementFields = element.asObject match {
+        case Some(elemObj) =>
+          // For object elements, the fields will be prefixed by arrayFieldName during schema mapping
+          Map(partition.arrayFieldName -> element)
+        case None =>
+          // For primitive elements, just use the array field name
+          Map(partition.arrayFieldName -> element)
+      }
+
+      Json.fromFields(parentFields ++ elementFields)
+    }
   }
 
   /** Wrap Arrow VectorSchemaRoot as ColumnarBatch with zero-copy ArrowColumnVector wrappers. */

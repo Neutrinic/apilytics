@@ -96,6 +96,103 @@ class WireMockSuite extends FunSuite {
     assertEquals(pages.size, 2)
   }
 
+  test("offset pagination stops on empty top-level array") {
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("offset", equalTo("0"))
+        .withQueryParam("limit", equalTo("2"))
+        .willReturn(okJson("""[{"id": 1}, {"id": 2}]"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("offset", equalTo("2"))
+        .withQueryParam("limit", equalTo("2"))
+        .willReturn(okJson("""[{"id": 3}]"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("offset", equalTo("4"))
+        .withQueryParam("limit", equalTo("2"))
+        .willReturn(okJson("""[]"""))
+    )
+
+    val pagination = PaginationConfig(
+      style = PaginationStyle.Offset,
+      offsetParam = Some("offset"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 2
+    )
+
+    val pages = Client.resource(defaultHttp, noAuth).use { client =>
+      Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
+        .compile.toList
+    }.unsafeRunSync()
+
+    assertEquals(pages.size, 2)
+    // Verify 3 requests were made (page 1, page 2, empty page 3 that stopped pagination)
+    assertEquals(server.getAllServeEvents.size(), 3)
+  }
+
+  test("offset pagination stops on empty results-path array") {
+    server.stubFor(
+      get(urlPathEqualTo("/api"))
+        .withQueryParam("offset", equalTo("0"))
+        .withQueryParam("limit", equalTo("2"))
+        .willReturn(okJson("""{"count": 3, "results": [{"name": "a"}, {"name": "b"}]}"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/api"))
+        .withQueryParam("offset", equalTo("2"))
+        .withQueryParam("limit", equalTo("2"))
+        .willReturn(okJson("""{"count": 3, "results": [{"name": "c"}]}"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/api"))
+        .withQueryParam("offset", equalTo("4"))
+        .withQueryParam("limit", equalTo("2"))
+        .willReturn(okJson("""{"count": 3, "results": []}"""))
+    )
+
+    val pagination = PaginationConfig(
+      style = PaginationStyle.Offset,
+      offsetParam = Some("offset"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 2,
+      resultsPath = Some("/results")
+    )
+
+    val pages = Client.resource(defaultHttp, noAuth).use { client =>
+      Paginator.pages(client, baseUri.addPath("api"), Map.empty, pagination)
+        .compile.toList
+    }.unsafeRunSync()
+
+    assertEquals(pages.size, 2)
+    assertEquals(server.getAllServeEvents.size(), 3)
+  }
+
+  test("offset pagination respects max-pages safety limit") {
+    // Stub that always returns data (would loop forever without max-pages)
+    server.stubFor(
+      get(urlPathEqualTo("/infinite"))
+        .willReturn(okJson("""{"data": [{"id": 1}]}"""))
+    )
+
+    val pagination = PaginationConfig(
+      style = PaginationStyle.Offset,
+      offsetParam = Some("offset"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 10,
+      maxPages = 3
+    )
+
+    val pages = Client.resource(defaultHttp, noAuth).use { client =>
+      Paginator.pages(client, baseUri.addPath("infinite"), Map.empty, pagination)
+        .compile.toList
+    }.unsafeRunSync()
+
+    assertEquals(pages.size, 3)
+  }
+
   test("link header pagination follows next link") {
     val page2Url = s"http://localhost:${server.port()}/items?page=2"
     server.stubFor(

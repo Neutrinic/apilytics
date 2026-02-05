@@ -90,13 +90,25 @@ object Paginator {
     val offsetParam = config.offsetParam.getOrElse("offset")
     val pageSizeParam = config.pageSizeParam.getOrElse("limit")
     val pageSize = limit.map(l => math.min(l, config.maxPageSize)).getOrElse(config.maxPageSize)
+    val resultsPointer = config.resultsPath.flatMap(p => Pointer.parse(p).toOption)
 
     Stream.unfoldEval[IO, Int, Json](0) { offset =>
       val reqParams = params + (offsetParam -> offset.toString) + (pageSizeParam -> pageSize.toString)
       client.get(baseUri, reqParams).map { resp =>
-        // Stop if response is empty array or fewer items than page size
-        // For now, always emit and let the limit pipe handle stopping
-        Some((resp.json, offset + pageSize))
+        val json = resp.json
+        val isEmpty = resultsPointer match {
+          case Some(ptr) =>
+            // Check the configured results-path for an empty array
+            ptr.get(json).toOption match {
+              case Some(arr) => arr.asArray.exists(_.isEmpty)
+              case None      => true // Path not found — no more data
+            }
+          case None =>
+            // No results-path — check if top-level response is an empty array
+            json.asArray.exists(_.isEmpty)
+        }
+        if (isEmpty) None
+        else Some((json, offset + pageSize))
       }
     }.through(limitPages(limit, config))
   }
@@ -136,17 +148,17 @@ object Paginator {
     }
   }
 
-  /** Limit total number of records across pages if limit is specified.
-    * This limits by page count, not record count. Accurate record-level limiting
-    * requires knowing data_path to count extracted records per page — handled in
-    * RESTPartitionReader (Phase 2). */
+  /** Apply page limits. When a record limit is specified, compute the number of pages
+    * needed. Always enforce max-pages as a safety net to prevent infinite pagination. */
   private def limitPages[A](limit: Option[Int], config: PaginationConfig): fs2.Pipe[IO, A, A] = {
+    val safetyLimit = config.maxPages
     limit match {
-      case None => identity
+      case None =>
+        _.take(safetyLimit.toLong)
       case Some(l) =>
         // Take enough pages to cover the limit. With max page size, that's ceil(limit/pageSize) pages.
-        val maxPages = math.ceil(l.toDouble / config.maxPageSize).toInt.max(1)
-        _.take(maxPages)
+        val pagesForLimit = math.ceil(l.toDouble / config.maxPageSize).toInt.max(1)
+        _.take(math.min(pagesForLimit, safetyLimit).toLong)
     }
   }
 }

@@ -87,4 +87,96 @@ class PaginatorSuite extends CatsEffectSuite {
         assertEquals(pages.size, 1)
       }
   }
+
+  test("offset pagination stops on empty top-level array") {
+    val page1 = parse("""[{"id": 1}]""").toOption.get
+    val page2 = parse("""[{"id": 2}]""").toOption.get
+    val empty = parse("""[]""").toOption.get
+    val client = mockClient(List((page1, Map.empty), (page2, Map.empty), (empty, Map.empty)))
+
+    val config = PaginationConfig(
+      style = PaginationStyle.Offset,
+      offsetParam = Some("offset"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 10
+    )
+
+    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
+      .compile.toList.map { pages =>
+        assertEquals(pages.size, 2)
+      }
+  }
+
+  test("offset pagination stops on empty results-path array") {
+    val page1 = parse("""{"count": 2, "results": [{"id": 1}]}""").toOption.get
+    val page2 = parse("""{"count": 2, "results": []}""").toOption.get
+    val client = mockClient(List((page1, Map.empty), (page2, Map.empty)))
+
+    val config = PaginationConfig(
+      style = PaginationStyle.Offset,
+      offsetParam = Some("offset"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 10,
+      resultsPath = Some("/results")
+    )
+
+    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
+      .compile.toList.map { pages =>
+        assertEquals(pages.size, 1)
+      }
+  }
+
+  test("offset pagination respects max-pages safety limit") {
+    val page = parse("""[{"id": 1}]""").toOption.get
+    val client = mockClient(List.fill(20)((page, Map.empty)))
+
+    val config = PaginationConfig(
+      style = PaginationStyle.Offset,
+      offsetParam = Some("offset"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 10,
+      maxPages = 3
+    )
+
+    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
+      .compile.toList.map { pages =>
+        assertEquals(pages.size, 3)
+      }
+  }
+
+  test("cursor pagination respects max-pages safety limit") {
+    val page = parse("""{"items": [1], "cursor": "next"}""").toOption.get
+    val client = mockClient(List.fill(20)((page, Map.empty)))
+
+    val config = PaginationConfig(
+      style = PaginationStyle.Cursor,
+      cursorPath = Some("/cursor"),
+      cursorParam = Some("cursor"),
+      maxPageSize = 100,
+      maxPages = 2
+    )
+
+    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
+      .compile.toList.map { pages =>
+        assertEquals(pages.size, 2)
+      }
+  }
+
+  test("link header pagination respects max-pages safety limit") {
+    val page = parse("""{"data": [1]}""").toOption.get
+    val client = mockClient(List.fill(20)(
+      (page, Map("Link" -> """<http://test?page=next>; rel="next""""))
+    ))
+
+    val config = PaginationConfig(
+      style = PaginationStyle.LinkHeader,
+      maxPageSize = 100,
+      maxPages = 2
+    )
+
+    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
+      .compile.toList.map { pages =>
+        assertEquals(pages.size, 2)
+      }
+  }
 }
