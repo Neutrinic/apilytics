@@ -3,15 +3,18 @@ package com.apilytics.spark
 import com.apilytics.core.config.FilterConfig
 import org.apache.spark.sql.connector.expressions.{Literal, NamedReference}
 import org.apache.spark.sql.connector.expressions.filter.Predicate
-import org.apache.spark.sql.connector.read.{Scan, ScanBuilder, SupportsPushDownLimit, SupportsPushDownV2Filters}
+import org.apache.spark.sql.connector.read.{Scan, ScanBuilder, SupportsPushDownLimit, SupportsPushDownRequiredColumns, SupportsPushDownV2Filters}
+import org.apache.spark.sql.types.StructType
 
 class RESTScanBuilder(table: RESTTable) extends ScanBuilder
     with SupportsPushDownV2Filters
-    with SupportsPushDownLimit {
+    with SupportsPushDownLimit
+    with SupportsPushDownRequiredColumns {
 
   private var pushedParams: Map[String, String] = Map.empty
   private var pushedLimit: Option[Int] = None
   private var _pushedPredicates: Array[Predicate] = Array.empty
+  private var prunedSchema: Option[StructType] = None
 
   private val filterConfigs: List[FilterConfig] =
     table.tableConfig.map(_.filters).getOrElse(Nil)
@@ -32,7 +35,17 @@ class RESTScanBuilder(table: RESTTable) extends ScanBuilder
     false
   }
 
-  override def build(): Scan = new RESTScan(table, pushedParams, pushedLimit)
+  override def pruneColumns(requiredSchema: StructType): Unit = {
+    prunedSchema = Some(requiredSchema)
+  }
+
+  override def build(): Scan = {
+    val finalArrowSchema = prunedSchema match {
+      case Some(required) => ArrowSchemaConverter.pruneSchema(table.arrowSchema, required)
+      case None           => table.arrowSchema
+    }
+    new RESTScan(table, finalArrowSchema, prunedSchema, pushedParams, pushedLimit)
+  }
 
   private def matchPredicate(predicate: Predicate): Option[(String, String)] = {
     val operator = predicate.name() match {

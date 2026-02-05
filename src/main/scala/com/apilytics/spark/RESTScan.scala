@@ -1,15 +1,19 @@
 package com.apilytics.spark
 
+import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan}
 import org.apache.spark.sql.types.StructType
 
 class RESTScan(
     table: RESTTable,
+    arrowSchema: ArrowSchema,
+    prunedSchema: Option[StructType],
     pushedParams: Map[String, String],
     pushedLimit: Option[Int]
 ) extends Scan with Batch {
 
-  override def readSchema(): StructType = table.schema()
+  // If pruned, return the pruned schema; otherwise return full schema
+  override def readSchema(): StructType = prunedSchema.getOrElse(table.schema())
 
   override def toBatch(): Batch = this
 
@@ -19,7 +23,7 @@ class RESTScan(
       tableConfig = table.tableConfig,
       sourceConfig = table.sourceConfig,
       baseUrl = table.baseUrl,
-      arrowSchemaJson = table.arrowSchema.toJson,
+      arrowSchemaJson = arrowSchema.toJson,
       pushedParams = pushedParams,
       pushedLimit = pushedLimit
     ))

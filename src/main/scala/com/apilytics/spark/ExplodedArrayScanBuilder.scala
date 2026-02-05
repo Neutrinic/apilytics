@@ -1,12 +1,26 @@
 package com.apilytics.spark
 
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
-import org.apache.spark.sql.connector.read.{Scan, ScanBuilder}
+import org.apache.spark.sql.connector.read.{Scan, ScanBuilder, SupportsPushDownRequiredColumns}
+import org.apache.spark.sql.types.StructType
 
 class ExplodedArrayScanBuilder(
     table: ExplodedArrayTable,
     arrowSchema: ArrowSchema
-) extends ScanBuilder {
+) extends ScanBuilder
+    with SupportsPushDownRequiredColumns {
 
-  override def build(): Scan = new ExplodedArrayScan(table, arrowSchema)
+  private var prunedSchema: Option[StructType] = None
+
+  override def pruneColumns(requiredSchema: StructType): Unit = {
+    prunedSchema = Some(requiredSchema)
+  }
+
+  override def build(): Scan = {
+    val finalArrowSchema = prunedSchema match {
+      case Some(required) => ArrowSchemaConverter.pruneSchema(arrowSchema, required)
+      case None           => arrowSchema
+    }
+    new ExplodedArrayScan(table, finalArrowSchema, prunedSchema)
+  }
 }
