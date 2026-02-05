@@ -35,15 +35,20 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
   private val (client, releaseClient) =
     dispatcher.unsafeRunSync(clientResource.allocated)
 
-  private val queue: Queue[IO, Option[(ColumnarBatch, VectorSchemaRoot)]] =
-    dispatcher.unsafeRunSync(Queue.bounded[IO, Option[(ColumnarBatch, VectorSchemaRoot)]](prefetchSize))
+  // Queue transports Either so producer errors propagate to the Spark thread.
+  // None = end-of-stream sentinel, Some(Left(t)) = error, Some(Right(...)) = batch.
+  private type QueueItem = Option[Either[Throwable, (ColumnarBatch, VectorSchemaRoot)]]
+
+  private val queue: Queue[IO, QueueItem] =
+    dispatcher.unsafeRunSync(Queue.bounded[IO, QueueItem](prefetchSize))
 
   private val producer = dispatcher.unsafeRunSync {
     buildStream(client)
-      .evalMap(batch => queue.offer(Some(batch)))
+      .evalMap(batch => queue.offer(Some(Right(batch))))
       .compile
       .drain
-      .guarantee(queue.offer(None)) // sentinel: always sent on success or error
+      .handleErrorWith(t => queue.offer(Some(Left(t))))
+      .guarantee(queue.offer(None)) // sentinel: always sent after success or error
       .start
   }
 
@@ -52,13 +57,15 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
 
   override def next(): Boolean = {
     dispatcher.unsafeRunSync(queue.take) match {
-      case Some((batch, root)) =>
+      case Some(Right((batch, root))) =>
         // Release the previous batch before storing the new one
         if (currentBatch != null) currentBatch.close()
         if (currentRoot != null) currentRoot.close()
         currentBatch = batch
         currentRoot = root
         true
+      case Some(Left(t)) =>
+        throw t // Re-throw on the Spark thread so the query fails visibly
       case None =>
         false
     }
@@ -90,9 +97,11 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
   private def drainQueue(): Unit = {
     var item = dispatcher.unsafeRunSync(queue.tryTake)
     while (item.isDefined) {
-      item.flatten.foreach { case (batch, root) =>
-        batch.close()
-        root.close()
+      item.flatten.foreach {
+        case Right((batch, root)) =>
+          batch.close()
+          root.close()
+        case Left(_) => // discard errors during drain
       }
       item = dispatcher.unsafeRunSync(queue.tryTake)
     }
