@@ -1,86 +1,44 @@
 package com.apilytics.spark
 
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
+import cats.effect.{IO, Resource}
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.http.{Client, Paginator}
 import fs2.Stream
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
-import org.apache.spark.sql.connector.read.PartitionReader
-import org.apache.spark.sql.vectorized.{ArrowColumnVector, ColumnarBatch}
 import org.http4s.Uri
 
-import scala.jdk.CollectionConverters._
+/** Zero-copy columnar reader that lazily streams Arrow batches via a bounded queue.
+  * Memory scales with batch size, not total partition size.
+  */
+class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyColumnarReader {
 
-/** Zero-copy columnar reader that wraps Arrow VectorSchemaRoot as Spark ColumnarBatch. */
-class RESTColumnarPartitionReader(partition: RESTInputPartition) extends PartitionReader[ColumnarBatch] {
+  override protected val allocator: RootAllocator = new RootAllocator()
+  override protected val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
 
-  private val allocator = new RootAllocator()
-  private val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
+  override protected def clientResource: Resource[IO, Client.RestClient] =
+    Client.resource(partition.sourceConfig.http, partition.sourceConfig.auth)
 
-  // Eagerly materialized — we must track all roots so close() can release unconsumed ones.
-  private val allBatches: List[(ColumnarBatch, VectorSchemaRoot)] = fetchBatches()
-  private val batchIterator: Iterator[(ColumnarBatch, VectorSchemaRoot)] = allBatches.iterator
-  private var currentIndex: Int = -1
-
-  override def next(): Boolean = {
-    if (batchIterator.hasNext) {
-      val (_, _) = batchIterator.next()
-      currentIndex += 1
-      true
-    } else {
-      false
-    }
-  }
-
-  override def get(): ColumnarBatch = allBatches(currentIndex)._1
-
-  override def close(): Unit = {
-    allBatches.foreach { case (batch, root) =>
-      batch.close()
-      root.close()
-    }
-    allocator.close()
-  }
-
-  private def fetchBatches(): List[(ColumnarBatch, VectorSchemaRoot)] = {
+  override protected def buildStream(
+      client: Client.RestClient
+  ): Stream[IO, (org.apache.spark.sql.vectorized.ColumnarBatch, VectorSchemaRoot)] = {
     val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
     val dataPath = partition.tableConfig.flatMap(_.dataPath)
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
 
-    val program: IO[List[(ColumnarBatch, VectorSchemaRoot)]] = Client
-      .resource(partition.sourceConfig.http, partition.sourceConfig.auth)
-      .use { client =>
-        Paginator
-          .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
-          .flatMap { pageJson =>
-            val records = Converter.extractRecords(pageJson, dataPath)
-            if (records.isEmpty) Stream.empty
-            else {
-              // Chunk records into batches of configured size
-              val chunks = records.grouped(batchSize).toList
-              Stream.emits(chunks.map { chunk =>
-                val root = Converter.toArrow(chunk, arrowSchema, allocator)
-                (arrowToBatch(root), root)
-              })
-            }
-          }
-          .compile
-          .toList
+    Paginator
+      .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
+      .flatMap { pageJson =>
+        val records = Converter.extractRecords(pageJson, dataPath)
+        if (records.isEmpty) Stream.empty
+        else {
+          val chunks = records.grouped(batchSize).toList
+          Stream.emits(chunks.map { chunk =>
+            val root = Converter.toArrow(chunk, arrowSchema, allocator)
+            (arrowToBatch(root), root)
+          })
+        }
       }
-
-    program.unsafeRunSync()
-  }
-
-  /** Wrap Arrow VectorSchemaRoot as ColumnarBatch with zero-copy ArrowColumnVector wrappers. */
-  private def arrowToBatch(root: VectorSchemaRoot): ColumnarBatch = {
-    val vectors = root.getFieldVectors.asScala.map { v =>
-      new ArrowColumnVector(v)
-    }.toArray
-    val batch = new ColumnarBatch(vectors.asInstanceOf[Array[org.apache.spark.sql.vectorized.ColumnVector]])
-    batch.setNumRows(root.getRowCount)
-    batch
   }
 }
