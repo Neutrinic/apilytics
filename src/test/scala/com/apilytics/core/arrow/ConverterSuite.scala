@@ -149,4 +149,40 @@ class ConverterSuite extends FunSuite {
       assertEquals(value, """["a","b"]""")
     } finally root.close()
   }
+
+  test("toArrow serializes VARIANT fields as JSON strings") {
+    val schema = SchemaMapper.toArrowSchema(
+      OpenAPISchema.ObjectType(Map(
+        "id" -> OpenAPISchema.IntegerType(),
+        "metadata" -> OpenAPISchema.VariantType
+      ))
+    )
+    val records = List(
+      parse("""{"id": 1, "metadata": {"key": "value", "nested": [1, 2]}}""").toOption.get,
+      parse("""{"id": 2, "metadata": "just a string"}""").toOption.get,
+      parse("""{"id": 3, "metadata": 42}""").toOption.get,
+      parse("""{"id": 4, "metadata": null}""").toOption.get
+    )
+
+    val root = Converter.toArrow(records, schema, allocator)
+    try {
+      assertEquals(root.getRowCount, 4)
+      val vec = root.getVector("metadata").asInstanceOf[org.apache.arrow.vector.VarCharVector]
+
+      // Object serialized as compact JSON
+      val obj = new String(vec.get(0), StandardCharsets.UTF_8)
+      assertEquals(obj, """{"key":"value","nested":[1,2]}""")
+
+      // String value preserved as-is
+      val str = new String(vec.get(1), StandardCharsets.UTF_8)
+      assertEquals(str, "just a string")
+
+      // Number serialized as JSON
+      val num = new String(vec.get(2), StandardCharsets.UTF_8)
+      assertEquals(num, "42")
+
+      // Null handled
+      assert(vec.isNull(3))
+    } finally root.close()
+  }
 }

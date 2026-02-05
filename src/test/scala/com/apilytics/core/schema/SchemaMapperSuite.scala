@@ -147,4 +147,31 @@ class SchemaMapperSuite extends FunSuite {
     val field = arrow.getFields.asScala.head
     assertEquals(field.getType.asInstanceOf[ArrowType.Int].getBitWidth, 64)
   }
+
+  test("VariantType maps to VARCHAR") {
+    val schema = OpenAPISchema.ObjectType(
+      Map(
+        "id" -> OpenAPISchema.IntegerType(),
+        "metadata" -> OpenAPISchema.VariantType
+      )
+    )
+
+    val arrow = SchemaMapper.toArrowSchema(schema)
+    val field = arrow.getFields.asScala.find(_.getName == "metadata").get
+    assert(field.getType.isInstanceOf[ArrowType.Utf8])
+  }
+
+  test("empty object maps to VARCHAR") {
+    val schema = OpenAPISchema.ObjectType(
+      Map(
+        "id" -> OpenAPISchema.IntegerType(),
+        "extra" -> OpenAPISchema.ObjectType(Map.empty)
+      )
+    )
+
+    val arrow = SchemaMapper.toArrowSchema(schema)
+    val field = arrow.getFields.asScala.find(_.getName == "extra").get
+    assert(field.getType.isInstanceOf[ArrowType.Utf8])
+  }
+
 }

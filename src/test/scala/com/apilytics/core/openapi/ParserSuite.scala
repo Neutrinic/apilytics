@@ -149,4 +149,179 @@ class ParserSuite extends FunSuite {
       Parser.parseContent("not valid json at all {{{")
     }
   }
+
+  test("additionalProperties: true produces VariantType") {
+    val spec =
+      """{
+        |  "openapi": "3.0.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "id": { "type": "integer" },
+        |                    "metadata": { "type": "object", "additionalProperties": true }
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val props = result.endpoints.head.responseSchema.properties
+    assertEquals(props("metadata"), OpenAPISchema.VariantType)
+  }
+
+  test("empty object (no properties) produces VariantType") {
+    val spec =
+      """{
+        |  "openapi": "3.0.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "id": { "type": "integer" },
+        |                    "extra": { "type": "object" }
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val props = result.endpoints.head.responseSchema.properties
+    assertEquals(props("extra"), OpenAPISchema.VariantType)
+  }
+
+  test("missing type produces VariantType") {
+    val spec =
+      """{
+        |  "openapi": "3.0.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "id": { "type": "integer" },
+        |                    "blob": {}
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val props = result.endpoints.head.responseSchema.properties
+    assertEquals(props("blob"), OpenAPISchema.VariantType)
+  }
+
+  test("oneOf produces VariantType") {
+    val spec =
+      """{
+        |  "openapi": "3.0.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "id": { "type": "integer" },
+        |                    "value": {
+        |                      "oneOf": [
+        |                        { "type": "string" },
+        |                        { "type": "integer" }
+        |                      ]
+        |                    }
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val props = result.endpoints.head.responseSchema.properties
+    assertEquals(props("value"), OpenAPISchema.VariantType)
+  }
+
+  test("anyOf produces VariantType") {
+    val spec =
+      """{
+        |  "openapi": "3.0.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "id": { "type": "integer" },
+        |                    "payload": {
+        |                      "anyOf": [
+        |                        { "type": "string" },
+        |                        { "type": "object", "properties": { "key": { "type": "string" } } }
+        |                      ]
+        |                    }
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val props = result.endpoints.head.responseSchema.properties
+    assertEquals(props("payload"), OpenAPISchema.VariantType)
+  }
 }

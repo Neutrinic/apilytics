@@ -16,6 +16,8 @@ object OpenAPISchema {
   case object BooleanType extends OpenAPISchema
   final case class ArrayType(items: OpenAPISchema) extends OpenAPISchema
   final case class ObjectType(properties: Map[String, OpenAPISchema], required: Set[String] = Set.empty) extends OpenAPISchema
+  /** VARIANT for ambiguous schemas: additionalProperties, empty object, missing type, anyOf, oneOf */
+  case object VariantType extends OpenAPISchema
   case object UnknownType extends OpenAPISchema
 }
 
@@ -121,7 +123,20 @@ object Parser {
   private def convertSchema(schema: SwaggerSchema[_]): OpenAPISchema = {
     if (schema == null) return OpenAPISchema.UnknownType
 
+    // Union types (anyOf/oneOf) are ambiguous — map to VARIANT
+    if (Option(schema.getAnyOf).exists(!_.isEmpty) || Option(schema.getOneOf).exists(!_.isEmpty)) {
+      return OpenAPISchema.VariantType
+    }
+
+    // Check for additionalProperties: true (free-form object)
+    val hasAdditionalProps = Option(schema.getAdditionalProperties).exists {
+      case b: java.lang.Boolean => b
+      case _: SwaggerSchema[_]  => true
+      case _                    => false
+    }
+
     val tpe = Option(schema.getType).map(_.toString).orElse(Option(schema.get$ref).map(_ => "object"))
+    val hasProps = schema.getProperties != null && !schema.getProperties.isEmpty
 
     tpe match {
       case Some("string")  => OpenAPISchema.StringType(Option(schema.getFormat))
@@ -131,12 +146,26 @@ object Parser {
       case Some("array") =>
         val items = Option(schema.getItems).map(convertSchema).getOrElse(OpenAPISchema.UnknownType)
         OpenAPISchema.ArrayType(items)
-      case Some("object") | None if schema.getProperties != null =>
+      case Some("object") if hasProps && !hasAdditionalProps =>
+        // Object with defined properties - flatten to typed columns
         val props = schema.getProperties.asScala.map {
           case (name, propSchema) => name -> convertSchema(propSchema)
         }.toMap
         val required = Option(schema.getRequired).map(_.asScala.toSet).getOrElse(Set.empty)
         OpenAPISchema.ObjectType(props, required)
+      case Some("object") =>
+        // Object with additionalProperties or no properties - VARIANT
+        OpenAPISchema.VariantType
+      case None if hasProps =>
+        // Missing type but has properties - treat as object
+        val props = schema.getProperties.asScala.map {
+          case (name, propSchema) => name -> convertSchema(propSchema)
+        }.toMap
+        val required = Option(schema.getRequired).map(_.asScala.toSet).getOrElse(Set.empty)
+        OpenAPISchema.ObjectType(props, required)
+      case None =>
+        // Empty schema {} or missing type entirely - VARIANT
+        OpenAPISchema.VariantType
       case _ => OpenAPISchema.UnknownType
     }
   }

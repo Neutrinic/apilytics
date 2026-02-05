@@ -54,10 +54,15 @@ object SchemaMapper {
       val nullable = !required.contains(name)
 
       schema match {
-        case OpenAPISchema.ObjectType(props, req) if depth < maxDepth =>
+        case OpenAPISchema.ObjectType(props, req) if props.nonEmpty && depth < maxDepth =>
           flattenFields(props, req, fullName, segments, depth + 1, maxDepth)
 
-        case OpenAPISchema.ObjectType(_, _) =>
+        case OpenAPISchema.ObjectType(props, _) if props.nonEmpty =>
+          // Beyond maxDepth - serialize as JSON string
+          List(field(fullName, new ArrowType.Utf8(), nullable, segments))
+
+        case OpenAPISchema.ObjectType(_, _) | OpenAPISchema.VariantType =>
+          // Empty object or VARIANT (additionalProperties, anyOf, oneOf, missing type)
           List(field(fullName, new ArrowType.Utf8(), nullable, segments))
 
         case OpenAPISchema.ArrayType(_) =>
