@@ -67,7 +67,9 @@ object Loader {
       cursorParam = optional(config, "cursor-param"),
       offsetParam = optional(config, "offset-param"),
       pageSizeParam = optional(config, "page-size-param"),
-      maxPageSize = if (config.hasPath("max-page-size")) config.getInt("max-page-size") else 100
+      maxPageSize = if (config.hasPath("max-page-size")) config.getInt("max-page-size") else 100,
+      resultsPath = optional(config, "results-path"),
+      maxPages = if (config.hasPath("max-pages")) config.getInt("max-pages") else 1000
     )
   }
 

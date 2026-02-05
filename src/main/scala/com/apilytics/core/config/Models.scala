@@ -43,7 +43,14 @@ final case class PaginationConfig(
     cursorParam: Option[String] = None,
     offsetParam: Option[String] = None,
     pageSizeParam: Option[String] = None,
-    maxPageSize: Int = 100
+    maxPageSize: Int = 100,
+    /** JSON pointer to the results array in the response (e.g. "/results").
+      * Used by offset pagination to detect empty pages and stop.
+      * Without this, offset pagination falls back to the max-pages safety limit. */
+    resultsPath: Option[String] = None,
+    /** Maximum number of pages to fetch before stopping. Prevents infinite loops
+      * when the API doesn't signal end-of-data. Default: 1000. */
+    maxPages: Int = 1000
 )
 
 final case class SchemaConfig(

@@ -141,4 +141,34 @@ class LoaderSuite extends FunSuite {
     val result = Loader.load(config)
     assertEquals(result.schema.arrowBatchSize, 1024)
   }
+
+  test("results-path and max-pages default values") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |pagination { style = offset }
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.pagination.resultsPath, None)
+    assertEquals(result.pagination.maxPages, 1000)
+  }
+
+  test("results-path and max-pages can be configured") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |pagination {
+        |  style = offset
+        |  results-path = "/results"
+        |  max-pages = 50
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.pagination.resultsPath, Some("/results"))
+    assertEquals(result.pagination.maxPages, 50)
+  }
 }
