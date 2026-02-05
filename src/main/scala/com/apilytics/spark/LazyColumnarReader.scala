@@ -1,7 +1,7 @@
 package com.apilytics.spark
 
 import cats.effect.{IO, Resource}
-import cats.effect.std.{Dispatcher, Queue}
+import cats.effect.std.Queue
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.http.Client
 import org.apache.arrow.memory.RootAllocator
@@ -29,34 +29,31 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
 
   // --- Lifecycle managed by this base class ---
 
-  private val (dispatcher, releaseDispatcher) =
-    Dispatcher.sequential[IO].allocated.unsafeRunSync()
-
-  private val (client, releaseClient) =
-    dispatcher.unsafeRunSync(clientResource.allocated)
+  // Acquire HTTP client manually so it stays open across next() calls.
+  private val (client, releaseClient) = clientResource.allocated.unsafeRunSync()
 
   // Queue transports Either so producer errors propagate to the Spark thread.
   // None = end-of-stream sentinel, Some(Left(t)) = error, Some(Right(...)) = batch.
   private type QueueItem = Option[Either[Throwable, (ColumnarBatch, VectorSchemaRoot)]]
 
   private val queue: Queue[IO, QueueItem] =
-    dispatcher.unsafeRunSync(Queue.bounded[IO, QueueItem](prefetchSize))
+    Queue.bounded[IO, QueueItem](prefetchSize).unsafeRunSync()
 
-  private val producer = dispatcher.unsafeRunSync {
-    buildStream(client)
-      .evalMap(batch => queue.offer(Some(Right(batch))))
-      .compile
-      .drain
-      .handleErrorWith(t => queue.offer(Some(Left(t))))
-      .guarantee(queue.offer(None)) // sentinel: always sent after success or error
-      .start
-  }
+  // Producer fiber: runs the stream in background, feeding batches into the queue.
+  private val producer = buildStream(client)
+    .evalMap(batch => queue.offer(Some(Right(batch))))
+    .compile
+    .drain
+    .handleErrorWith(t => queue.offer(Some(Left(t))))
+    .guarantee(queue.offer(None)) // sentinel: always sent after success or error
+    .start
+    .unsafeRunSync()
 
   private var currentBatch: ColumnarBatch = _
   private var currentRoot: VectorSchemaRoot = _
 
   override def next(): Boolean = {
-    dispatcher.unsafeRunSync(queue.take) match {
+    queue.take.unsafeRunSync() match {
       case Some(Right((batch, root))) =>
         // Release the previous batch before storing the new one
         if (currentBatch != null) currentBatch.close()
@@ -75,7 +72,7 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
 
   override def close(): Unit = {
     // 1. Cancel producer fiber (stops pagination mid-stream if needed)
-    dispatcher.unsafeRunSync(producer.cancel)
+    producer.cancel.unsafeRunSync()
 
     // 2. Drain any remaining queued items
     drainQueue()
@@ -85,17 +82,14 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
     if (currentRoot != null) currentRoot.close()
 
     // 4. Release HTTP client
-    dispatcher.unsafeRunSync(releaseClient)
+    releaseClient.unsafeRunSync()
 
-    // 5. Shut down dispatcher
-    dispatcher.unsafeRunSync(releaseDispatcher)
-
-    // 6. Close Arrow allocator (verifies all memory released)
+    // 5. Close Arrow allocator (verifies all memory released)
     allocator.close()
   }
 
   private def drainQueue(): Unit = {
-    var item = dispatcher.unsafeRunSync(queue.tryTake)
+    var item = queue.tryTake.unsafeRunSync()
     while (item.isDefined) {
       item.flatten.foreach {
         case Right((batch, root)) =>
@@ -103,7 +97,7 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
           root.close()
         case Left(_) => // discard errors during drain
       }
-      item = dispatcher.unsafeRunSync(queue.tryTake)
+      item = queue.tryTake.unsafeRunSync()
     }
   }
 
