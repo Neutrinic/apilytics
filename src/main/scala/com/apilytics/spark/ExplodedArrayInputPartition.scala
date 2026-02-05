@@ -11,5 +11,7 @@ case class ExplodedArrayInputPartition(
     baseUrl: String,
     arrowSchemaJson: String,
     arrayFieldName: String,
-    arrayJsonPath: List[String]
+    arrayJsonPath: List[String],
+    pushedParams: Map[String, String] = Map.empty,
+    pushedLimit: Option[Int] = None
 ) extends InputPartition
