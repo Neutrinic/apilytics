@@ -26,6 +26,7 @@ object ExplodedArrayOps {
       arrayJsonPath: List[String],
       outer: Boolean = false
   ): List[Json] = {
+    // Non-object records are malformed data, not empty arrays — drop regardless of outer mode
     val obj = record.asObject.getOrElse(return Nil)
 
     // Navigate to the array field using the JSON path
