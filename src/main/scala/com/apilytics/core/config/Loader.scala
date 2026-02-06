@@ -82,7 +82,8 @@ object Loader {
         case "both"          => ArrayHandling.Both
         case other           => throw new IllegalArgumentException(s"Unknown array handling: $other")
       } else ArrayHandling.KeepArray,
-      arrowBatchSize = if (config.hasPath("arrow-batch-size")) config.getInt("arrow-batch-size") else 4096
+      arrowBatchSize = if (config.hasPath("arrow-batch-size")) config.getInt("arrow-batch-size") else 4096,
+      explodeOuter = if (config.hasPath("explode-outer")) config.getBoolean("explode-outer") else false
     )
   }
 
