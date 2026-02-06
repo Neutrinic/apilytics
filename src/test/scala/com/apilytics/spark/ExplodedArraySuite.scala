@@ -3,6 +3,8 @@ package com.apilytics.spark
 import com.apilytics.core.config._
 import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, ParsedSpec, QueryParam}
 import com.apilytics.core.schema.SchemaMapper
+import io.circe.Json
+import io.circe.parser._
 import munit.FunSuite
 import org.apache.spark.sql.connector.expressions.{Expression, Expressions, Literal, NamedReference}
 import org.apache.spark.sql.connector.expressions.filter.Predicate
@@ -349,6 +351,67 @@ class ExplodedArraySuite extends FunSuite {
     val remaining2 = builder.pushPredicates(Array(mkIntPredicate(">=", "id", 5)))
     assertEquals(remaining2.length, 0)
     assertEquals(builder.pushedPredicates().length, 1)
+  }
+
+  // --- ExplodedArrayOps.explodeRecord tests ---
+
+  test("explodeRecord explodes primitive array into multiple records") {
+    val record = parse("""{"id": 1, "name": "test", "tags": ["a", "b", "c"]}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"))
+
+    assertEquals(exploded.length, 3)
+    assertEquals(exploded(0).hcursor.get[Int]("id").toOption, Some(1))
+    assertEquals(exploded(0).hcursor.get[String]("name").toOption, Some("test"))
+    assertEquals(exploded(0).hcursor.get[String]("tags").toOption, Some("a"))
+    assertEquals(exploded(1).hcursor.get[String]("tags").toOption, Some("b"))
+    assertEquals(exploded(2).hcursor.get[String]("tags").toOption, Some("c"))
+  }
+
+  test("explodeRecord explodes object array into multiple records") {
+    val record = parse("""{"id": 1, "addresses": [{"city": "NYC"}, {"city": "LA"}]}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "addresses", List("addresses"))
+
+    assertEquals(exploded.length, 2)
+    assertEquals(exploded(0).hcursor.get[Int]("id").toOption, Some(1))
+    assertEquals(exploded(0).hcursor.downField("addresses").get[String]("city").toOption, Some("NYC"))
+    assertEquals(exploded(1).hcursor.downField("addresses").get[String]("city").toOption, Some("LA"))
+  }
+
+  test("explodeRecord returns Nil for empty array (INNER semantics)") {
+    val record = parse("""{"id": 1, "tags": []}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"))
+
+    assertEquals(exploded, Nil)
+  }
+
+  test("explodeRecord returns Nil for null/missing array") {
+    val record = parse("""{"id": 1, "name": "test"}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"))
+
+    assertEquals(exploded, Nil)
+  }
+
+  test("explodeRecord removes array field from parent fields") {
+    val record = parse("""{"id": 1, "tags": ["x"]}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"))
+
+    assertEquals(exploded.length, 1)
+    // Parent should have id but not the original tags array
+    val keys = exploded(0).asObject.get.keys.toSet
+    assertEquals(keys, Set("id", "tags"))
+    // The tags field should be the exploded element, not the array
+    assertEquals(exploded(0).hcursor.get[String]("tags").toOption, Some("x"))
+  }
+
+  test("explodeRecord handles nested array path") {
+    val record = parse("""{"id": 1, "profile": {"tags": ["a", "b"]}}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("profile", "tags"))
+
+    assertEquals(exploded.length, 2)
+    // Parent fields preserved (profile is NOT removed since arrayFieldName is "tags")
+    assert(exploded(0).hcursor.downField("profile").succeeded)
+    assertEquals(exploded(0).hcursor.get[String]("tags").toOption, Some("a"))
+    assertEquals(exploded(1).hcursor.get[String]("tags").toOption, Some("b"))
   }
 
 }
