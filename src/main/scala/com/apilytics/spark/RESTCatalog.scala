@@ -85,14 +85,17 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
       throw new NoSuchTableException(Identifier.of(Array("default"), parentTableName))
     )
 
-    // For parent-child tables, we need to infer the child response schema.
-    // Since the child endpoint has path parameters, it won't be auto-discovered.
-    // We'll use the parent endpoint's response schema as a baseline for now,
-    // or require explicit schema definition in future.
-    // For v1, we assume child returns same structure as parent (common pattern).
-    val childResponseSchema = parentEndpoint.responseSchema
+    // Find child endpoint by matching the path template against OpenAPI spec endpoints.
+    // The config endpoint has concrete path params (e.g., "/customers/{customer_id}/orders")
+    // which should match the spec's parameterized path.
+    val childEndpoint = findEndpointByPathTemplate(tableConfig.endpoint).getOrElse(
+      throw new IllegalArgumentException(
+        s"Child endpoint '${tableConfig.endpoint}' not found in OpenAPI spec for table '$tableName'"
+      )
+    )
 
-    log.debug("Loading parent-child table '{}': parent='{}', key='{}'", tableName, parentTableName, parentKey)
+    log.debug("Loading parent-child table '{}': parent='{}', key='{}', child endpoint='{}'",
+      tableName, parentTableName, parentKey, childEndpoint.path)
 
     new ParentChildTable(
       tableName = tableName,
@@ -100,7 +103,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
       parentTableName = parentTableName,
       parentKey = parentKey,
       parentEndpoint = parentEndpoint,
-      childResponseSchema = childResponseSchema,
+      childResponseSchema = childEndpoint.responseSchema,
       tableConfig = tableConfig,
       sourceConfig = config,
       baseUrl = spec.baseUrl
@@ -208,6 +211,29 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
       spec.endpoints.find { ep =>
         ep.operationId.contains(tableName) ||
           ep.path.split("/").filterNot(s => s.startsWith("{") || s.isEmpty).lastOption.exists(_.equalsIgnoreCase(tableName))
+      }
+    }
+  }
+
+  /** Find an endpoint by matching a path template against OpenAPI spec endpoints.
+    *
+    * Both the config path and spec paths use `{param}` syntax for path parameters.
+    * This method matches them by comparing path segments, treating any `{...}` segment
+    * as a wildcard that matches any other `{...}` segment.
+    *
+    * Example: "/customers/{customer_id}/orders" matches spec path "/customers/{id}/orders"
+    */
+  private def findEndpointByPathTemplate(configPath: String): Option[Endpoint] = {
+    val configSegments = configPath.split("/").toList
+
+    spec.endpoints.find { ep =>
+      val specSegments = ep.path.split("/").toList
+      if (configSegments.length != specSegments.length) false
+      else {
+        configSegments.zip(specSegments).forall { case (configSeg, specSeg) =>
+          // Both are path params (match any param name) or exact string match
+          (configSeg.startsWith("{") && specSeg.startsWith("{")) || configSeg == specSeg
+        }
       }
     }
   }

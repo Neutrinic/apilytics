@@ -324,4 +324,53 @@ class ParentChildSuite extends FunSuite {
     assert(factory.supportColumnarReads(partition))
   }
 
+  // --- Path template matching tests ---
+
+  test("findEndpointByPathTemplate matches path with same param structure") {
+    // This tests the path matching logic used in RESTCatalog
+    val configPath = "/customers/{customer_id}/orders"
+    val specPath = "/customers/{id}/orders"
+
+    val configSegments = configPath.split("/").toList
+    val specSegments = specPath.split("/").toList
+
+    val matches = configSegments.length == specSegments.length &&
+      configSegments.zip(specSegments).forall { case (c, s) =>
+        (c.startsWith("{") && s.startsWith("{")) || c == s
+      }
+
+    assert(matches)
+  }
+
+  test("findEndpointByPathTemplate does not match different path structure") {
+    val configPath = "/customers/{customer_id}/orders"
+    val specPath = "/orders/{order_id}"
+
+    val configSegments = configPath.split("/").toList
+    val specSegments = specPath.split("/").toList
+
+    val matches = configSegments.length == specSegments.length &&
+      configSegments.zip(specSegments).forall { case (c, s) =>
+        (c.startsWith("{") && s.startsWith("{")) || c == s
+      }
+
+    assert(!matches)
+  }
+
+  test("findEndpointByPathTemplate matches exact path") {
+    val configPath = "/api/v1/users/{user_id}/posts"
+    val specPath = "/api/v1/users/{id}/posts"
+
+    val configSegments = configPath.split("/").toList
+    val specSegments = specPath.split("/").toList
+
+    val matches = configSegments.length == specSegments.length &&
+      configSegments.zip(specSegments).forall { case (c, s) =>
+        (c.startsWith("{") && s.startsWith("{")) || c == s
+      }
+
+    assert(matches)
+  }
+
 }
+

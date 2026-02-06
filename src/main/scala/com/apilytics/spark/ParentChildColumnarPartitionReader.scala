@@ -53,14 +53,19 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
 
     // Phase 2: For each parent record, fetch child endpoint
     parentRecords.flatMap { parentRecord =>
-      // Extract parent key value
-      val parentKeyValue = parentRecord.asObject
-        .flatMap(_.apply(partition.parentKey))
-        .flatMap(v => v.asString.orElse(v.asNumber.map(_.toString)))
+      // Extract parent key JSON value (preserve original type for output column)
+      val parentKeyJson = parentRecord.asObject.flatMap(_.apply(partition.parentKey))
 
-      parentKeyValue match {
+      // Convert to string for path substitution (works for strings, numbers, booleans)
+      val parentKeyString = parentKeyJson.flatMap { json =>
+        json.asString
+          .orElse(json.asNumber.map(_.toString))
+          .orElse(json.asBoolean.map(_.toString))
+      }
+
+      parentKeyString match {
         case None =>
-          // Skip records without the parent key
+          // Skip records without the parent key or with null/object/array keys
           fs2.Stream.empty
 
         case Some(keyValue) =>
@@ -81,22 +86,22 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
             partition.pushedLimit
           )
 
-          // Extract and enrich child records with parent key
+          // Extract and enrich child records with parent key (preserving original JSON type)
           childPages.flatMap { pageJson =>
             val childRecords = Converter.extractRecords(pageJson, dataPath)
             if (childRecords.isEmpty) fs2.Stream.empty
             else {
-              // Add parent key column to each child record
+              // Add parent key column to each child record, preserving original type
               val enrichedRecords = childRecords.map { childRecord =>
                 childRecord.asObject match {
                   case Some(obj) =>
                     Json.fromFields(
-                      (partition.parentKeyColumn -> Json.fromString(keyValue)) +: obj.toList
+                      (partition.parentKeyColumn -> parentKeyJson.get) +: obj.toList
                     )
                   case None =>
                     // Non-object child record - wrap it
                     Json.obj(
-                      partition.parentKeyColumn -> Json.fromString(keyValue),
+                      partition.parentKeyColumn -> parentKeyJson.get,
                       "value" -> childRecord
                     )
                 }
