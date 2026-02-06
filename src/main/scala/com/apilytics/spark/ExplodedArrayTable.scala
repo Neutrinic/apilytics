@@ -31,29 +31,15 @@ class ExplodedArrayTable(
   private lazy val (arrowSchema, sparkSchema) = buildExplodedSchema()
 
   private def buildExplodedSchema(): (ArrowSchema, StructType) = {
-    // Get schema for the array item
-    val itemSchema = arrayFieldInfo.itemSchema match {
-      case obj: OpenAPISchema.ObjectType =>
-        // For object arrays, flatten the object fields with array field name prefix
-        SchemaMapper.toArrowSchema(
-          OpenAPISchema.ObjectType(
-            Map(arrayFieldName -> obj),
-            Set.empty
-          ),
-          sourceConfig.schema.flattenDepth
-        )
-      case _ =>
-        // For primitive arrays, the field is just the array field name with the primitive type
-        SchemaMapper.toArrowSchema(
-          OpenAPISchema.ObjectType(
-            Map(arrayFieldName -> arrayFieldInfo.itemSchema),
-            Set.empty
-          ),
-          sourceConfig.schema.flattenDepth
-        )
-    }
+    // Array item schema: wrap in object keyed by arrayFieldName
+    // For object arrays, this produces prefixed fields (e.g., addresses_city)
+    // For primitive arrays, this produces a single field (e.g., tags)
+    val itemSchema = SchemaMapper.toArrowSchema(
+      OpenAPISchema.ObjectType(Map(arrayFieldName -> arrayFieldInfo.itemSchema), Set.empty),
+      sourceConfig.schema.flattenDepth
+    )
 
-    // Get parent scalar fields (exclude the array field itself)
+    // Parent scalar fields (exclude the array field itself)
     val parentSchema = SchemaMapper.toArrowSchema(
       OpenAPISchema.ObjectType(
         endpoint.responseSchema.properties.filterNot(_._1 == arrayFieldName),

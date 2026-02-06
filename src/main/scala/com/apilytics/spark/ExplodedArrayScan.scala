@@ -7,7 +7,9 @@ import org.apache.spark.sql.types.StructType
 class ExplodedArrayScan(
     table: ExplodedArrayTable,
     arrowSchema: ArrowSchema,
-    prunedSchema: Option[StructType]
+    prunedSchema: Option[StructType],
+    pushedParams: Map[String, String],
+    pushedLimit: Option[Int]
 ) extends Scan with Batch {
 
   override def readSchema(): StructType = prunedSchema.getOrElse(table.schema())
@@ -22,7 +24,9 @@ class ExplodedArrayScan(
       baseUrl = table.baseUrl,
       arrowSchemaJson = arrowSchema.toJson,
       arrayFieldName = table.arrayFieldName,
-      arrayJsonPath = table.arrayFieldInfo.jsonPath
+      arrayJsonPath = table.arrayFieldInfo.jsonPath,
+      pushedParams = pushedParams,
+      pushedLimit = pushedLimit
     ))
 
   override def createReaderFactory(): PartitionReaderFactory =

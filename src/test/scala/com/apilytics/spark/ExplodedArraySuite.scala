@@ -3,8 +3,14 @@ package com.apilytics.spark
 import com.apilytics.core.config._
 import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, ParsedSpec, QueryParam}
 import com.apilytics.core.schema.SchemaMapper
+import io.circe.Json
+import io.circe.parser._
 import munit.FunSuite
+import org.apache.spark.sql.connector.expressions.{Expression, Expressions, Literal, NamedReference}
+import org.apache.spark.sql.connector.expressions.filter.Predicate
+import org.apache.spark.sql.types.DataTypes
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
+import org.apache.spark.unsafe.types.UTF8String
 
 import scala.concurrent.duration._
 import scala.jdk.CollectionConverters._
@@ -212,6 +218,208 @@ class ExplodedArraySuite extends FunSuite {
       arrayJsonPath = List("tags")
     )
     assert(factory.supportColumnarReads(partition))
+  }
+
+  // --- FilterPushdown tests ---
+
+  /** Create an ExplodedArrayTable and its ScanBuilder with optional filter configs. */
+  private def mkBuilder(filters: List[FilterConfig] = Nil): ExplodedArrayScanBuilder = {
+    val responseSchema = OpenAPISchema.ObjectType(
+      Map(
+        "id" -> OpenAPISchema.IntegerType(),
+        "name" -> OpenAPISchema.StringType(),
+        "tags" -> OpenAPISchema.ArrayType(OpenAPISchema.StringType())
+      )
+    )
+    val endpoint = Endpoint(
+      path = "/items",
+      operationId = Some("listItems"),
+      responseSchema = responseSchema,
+      queryParams = Nil
+    )
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = defaultAuth,
+      http = defaultHttp,
+      schema = SchemaConfig(flattenDepth = 2, arrayHandling = ArrayHandling.ExplodeView)
+    )
+    val tableConfig = if (filters.nonEmpty) Some(TableConfig(endpoint = "/items", filters = filters)) else None
+    val arrayFields = SchemaMapper.findArrayFields(responseSchema)
+    val tagsField = arrayFields.find(_.fieldName == "tags").get
+
+    val table = new ExplodedArrayTable(
+      tableName = "items_tags",
+      baseTableName = "items",
+      arrayFieldName = "tags",
+      arrayFieldInfo = tagsField,
+      endpoint = endpoint,
+      tableConfig = tableConfig,
+      sourceConfig = sourceConfig,
+      baseUrl = "http://localhost"
+    )
+
+    // Use the table's newScanBuilder to get a properly constructed builder
+    table.newScanBuilder(new CaseInsensitiveStringMap(java.util.Collections.emptyMap()))
+      .asInstanceOf[ExplodedArrayScanBuilder]
+  }
+
+  private def mkPredicate(op: String, column: String, value: String): Predicate = {
+    val ref = Expressions.column(column)
+    val lit = Expressions.literal(UTF8String.fromString(value))
+    new Predicate(op, Array[Expression](ref, lit))
+  }
+
+  private def mkIntPredicate(op: String, column: String, value: Int): Predicate = {
+    val ref = Expressions.column(column)
+    val lit = Expressions.literal(value)
+    new Predicate(op, Array[Expression](ref, lit))
+  }
+
+  test("ExplodedArrayScanBuilder pushes matching filters to API params") {
+    val builder = mkBuilder(List(
+      FilterConfig(param = "name", column = "name", operators = List("eq"))
+    ))
+
+    val predicate = mkPredicate("=", "name", "pikachu")
+    val remaining = builder.pushPredicates(Array(predicate))
+
+    // Filter matched -> no remaining predicates
+    assertEquals(remaining.length, 0)
+    assertEquals(builder.pushedPredicates().length, 1)
+  }
+
+  test("ExplodedArrayScanBuilder returns unmatched predicates as remaining") {
+    val builder = mkBuilder(List(
+      FilterConfig(param = "name", column = "name", operators = List("eq"))
+    ))
+
+    val matchable = mkPredicate("=", "name", "pikachu")
+    val unmatchable = mkIntPredicate(">", "id", 5)
+    val remaining = builder.pushPredicates(Array(matchable, unmatchable))
+
+    assertEquals(remaining.length, 1)
+    assertEquals(builder.pushedPredicates().length, 1)
+  }
+
+  test("ExplodedArrayScanBuilder passes no filters when tableConfig has none") {
+    val builder = mkBuilder() // no filters configured
+
+    val predicate = mkPredicate("=", "name", "pikachu")
+    val remaining = builder.pushPredicates(Array(predicate))
+
+    // No filter configs -> all predicates remain
+    assertEquals(remaining.length, 1)
+    assertEquals(builder.pushedPredicates().length, 0)
+  }
+
+  test("ExplodedArrayScanBuilder pushLimit stores limit") {
+    val builder = mkBuilder()
+
+    val consumed = builder.pushLimit(10)
+    // Should return false: Spark should still enforce limit post-scan
+    assertEquals(consumed, false)
+  }
+
+  test("ExplodedArrayScanBuilder wires pushed params and limit through to InputPartition") {
+    val builder = mkBuilder(List(
+      FilterConfig(param = "name", column = "name", operators = List("eq"))
+    ))
+
+    builder.pushPredicates(Array(mkPredicate("=", "name", "pikachu")))
+    builder.pushLimit(20)
+
+    val scan = builder.build().asInstanceOf[ExplodedArrayScan]
+    val partitions = scan.planInputPartitions()
+    assertEquals(partitions.length, 1)
+
+    val partition = partitions(0).asInstanceOf[ExplodedArrayInputPartition]
+    assertEquals(partition.pushedParams, Map("name" -> "pikachu"))
+    assertEquals(partition.pushedLimit, Some(20))
+  }
+
+  test("FilterPushdown only matches configured operators") {
+    val builder = mkBuilder(List(
+      FilterConfig(param = "offset", column = "id", operators = List("gte"))
+    ))
+
+    // = is NOT in the configured operators (gte), so it won't match
+    val remaining = builder.pushPredicates(Array(mkIntPredicate("=", "id", 5)))
+    assertEquals(remaining.length, 1)
+    assertEquals(builder.pushedPredicates().length, 0)
+
+    // >= IS in the configured operators, so it matches
+    val remaining2 = builder.pushPredicates(Array(mkIntPredicate(">=", "id", 5)))
+    assertEquals(remaining2.length, 0)
+    assertEquals(builder.pushedPredicates().length, 1)
+  }
+
+  // --- ExplodedArrayOps.explodeRecord tests ---
+
+  test("explodeRecord explodes primitive array into multiple records") {
+    val record = parse("""{"id": 1, "name": "test", "tags": ["a", "b", "c"]}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"))
+
+    assertEquals(exploded.length, 3)
+    assertEquals(exploded(0).hcursor.get[Int]("id").toOption, Some(1))
+    assertEquals(exploded(0).hcursor.get[String]("name").toOption, Some("test"))
+    assertEquals(exploded(0).hcursor.get[String]("tags").toOption, Some("a"))
+    assertEquals(exploded(1).hcursor.get[String]("tags").toOption, Some("b"))
+    assertEquals(exploded(2).hcursor.get[String]("tags").toOption, Some("c"))
+  }
+
+  test("explodeRecord explodes object array into multiple records") {
+    val record = parse("""{"id": 1, "addresses": [{"city": "NYC"}, {"city": "LA"}]}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "addresses", List("addresses"))
+
+    assertEquals(exploded.length, 2)
+    assertEquals(exploded(0).hcursor.get[Int]("id").toOption, Some(1))
+    assertEquals(exploded(0).hcursor.downField("addresses").get[String]("city").toOption, Some("NYC"))
+    assertEquals(exploded(1).hcursor.downField("addresses").get[String]("city").toOption, Some("LA"))
+  }
+
+  test("explodeRecord returns Nil for empty array (INNER semantics)") {
+    val record = parse("""{"id": 1, "tags": []}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"))
+
+    assertEquals(exploded, Nil)
+  }
+
+  test("explodeRecord returns Nil for null/missing array") {
+    val record = parse("""{"id": 1, "name": "test"}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"))
+
+    assertEquals(exploded, Nil)
+  }
+
+  test("explodeRecord removes array field from parent fields") {
+    val record = parse("""{"id": 1, "tags": ["x"]}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"))
+
+    assertEquals(exploded.length, 1)
+    // Parent should have id but not the original tags array
+    val keys = exploded(0).asObject.get.keys.toSet
+    assertEquals(keys, Set("id", "tags"))
+    // The tags field should be the exploded element, not the array
+    assertEquals(exploded(0).hcursor.get[String]("tags").toOption, Some("x"))
+  }
+
+  test("explodeRecord handles nested array path") {
+    val record = parse("""{"id": 1, "profile": {"tags": ["a", "b"]}}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("profile", "tags"))
+
+    assertEquals(exploded.length, 2)
+    // Parent fields preserved (profile is NOT removed since arrayFieldName is "tags")
+    assert(exploded(0).hcursor.downField("profile").succeeded)
+    assertEquals(exploded(0).hcursor.get[String]("tags").toOption, Some("a"))
+    assertEquals(exploded(1).hcursor.get[String]("tags").toOption, Some("b"))
+  }
+
+  test("explodeRecord returns Nil for non-object record") {
+    val arrayRecord = parse("""[1, 2, 3]""").toOption.get
+    val primitiveRecord = parse(""""just a string"""").toOption.get
+
+    assertEquals(ExplodedArrayOps.explodeRecord(arrayRecord, "tags", List("tags")), Nil)
+    assertEquals(ExplodedArrayOps.explodeRecord(primitiveRecord, "tags", List("tags")), Nil)
   }
 
 }
