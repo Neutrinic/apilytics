@@ -4,6 +4,7 @@ import scala.concurrent.duration.FiniteDuration
 
 sealed trait AuthType
 object AuthType {
+  case object None extends AuthType
   case object Bearer extends AuthType
   case object Basic extends AuthType
   case object Header extends AuthType

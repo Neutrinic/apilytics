@@ -33,6 +33,7 @@ object Loader {
 
   private def readAuth(config: Config): AuthConfig = {
     val authType = config.getString("type") match {
+      case "none"          => AuthType.None
       case "bearer"        => AuthType.Bearer
       case "basic"         => AuthType.Basic
       case "header"        => AuthType.Header

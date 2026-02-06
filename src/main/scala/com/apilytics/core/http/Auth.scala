@@ -11,6 +11,9 @@ object Auth {
 
   /** Apply auth to a request based on config. For OAuth2, use withTokenManager instead. */
   def apply(config: AuthConfig): Request[IO] => IO[Request[IO]] = config.authType match {
+    case AuthType.None =>
+      req => IO.pure(req)
+
     case AuthType.Bearer =>
       val token = config.token.getOrElse(throw new IllegalArgumentException("Bearer auth requires token"))
       req => IO.pure(req.putHeaders(Authorization(Credentials.Token(CIString("Bearer"), token))))
