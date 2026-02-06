@@ -414,4 +414,12 @@ class ExplodedArraySuite extends FunSuite {
     assertEquals(exploded(1).hcursor.get[String]("tags").toOption, Some("b"))
   }
 
+  test("explodeRecord returns Nil for non-object record") {
+    val arrayRecord = parse("""[1, 2, 3]""").toOption.get
+    val primitiveRecord = parse(""""just a string"""").toOption.get
+
+    assertEquals(ExplodedArrayOps.explodeRecord(arrayRecord, "tags", List("tags")), Nil)
+    assertEquals(ExplodedArrayOps.explodeRecord(primitiveRecord, "tags", List("tags")), Nil)
+  }
+
 }
