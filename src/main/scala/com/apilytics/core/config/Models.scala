@@ -74,10 +74,22 @@ final case class FilterConfig(
     operators: List[String]
 )
 
+sealed trait JoinStrategy
+object JoinStrategy {
+  /** For each parent row, fetch child endpoint with substituted path parameter. */
+  case object NestedLoop extends JoinStrategy
+}
+
 final case class TableConfig(
     endpoint: String,
     dataPath: Option[String] = None,
-    filters: List[FilterConfig] = Nil
+    filters: List[FilterConfig] = Nil,
+    /** Parent table name for parent-child joins (e.g., "customers"). */
+    parentTable: Option[String] = None,
+    /** Field from parent table to substitute into endpoint path (e.g., "id"). */
+    parentKey: Option[String] = None,
+    /** Strategy for joining parent and child data. */
+    joinStrategy: Option[JoinStrategy] = None
 )
 
 final case class SourceConfig(

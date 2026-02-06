@@ -111,7 +111,13 @@ object Loader {
               operators = fc.getStringList("operators").asScala.toList
             )
           }
-        } else Nil
+        } else Nil,
+        parentTable = optional(tc, "parent-table"),
+        parentKey = optional(tc, "parent-key"),
+        joinStrategy = if (tc.hasPath("join-strategy")) tc.getString("join-strategy") match {
+          case "nested_loop" => Some(JoinStrategy.NestedLoop)
+          case other         => throw new IllegalArgumentException(s"Unknown join strategy: $other")
+        } else None
       )
     }.toMap
   }

@@ -1,7 +1,7 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{ArrayHandling, Loader, SourceConfig}
-import com.apilytics.core.openapi.{Endpoint, ParsedSpec, Parser}
+import com.apilytics.core.config.{ArrayHandling, Loader, SourceConfig, TableConfig}
+import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, ParsedSpec, Parser}
 import com.apilytics.core.schema.SchemaMapper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.connector.catalog._
@@ -42,12 +42,18 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
   override def loadTable(ident: Identifier): Table = {
     val tableName = ident.name()
 
-    // Check if this is an exploded array view (e.g., "customers_tags")
-    explodedTableInfo(tableName) match {
-      case Some((baseTableName, arrayField)) =>
-        loadExplodedTable(ident, baseTableName, arrayField)
+    // Check if this is a parent-child table (explicitly configured with parent-table)
+    config.tables.get(tableName).filter(_.parentTable.isDefined) match {
+      case Some(tc) =>
+        loadParentChildTable(ident, tableName, tc)
       case None =>
-        loadBaseTable(ident, tableName)
+        // Check if this is an exploded array view (e.g., "customers_tags")
+        explodedTableInfo(tableName) match {
+          case Some((baseTableName, arrayField)) =>
+            loadExplodedTable(ident, baseTableName, arrayField)
+          case None =>
+            loadBaseTable(ident, tableName)
+        }
     }
   }
 
@@ -60,6 +66,41 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
       tableName = tableName,
       arrowSchema = arrowSchema,
       endpoint = endpoint,
+      tableConfig = tableConfig,
+      sourceConfig = config,
+      baseUrl = spec.baseUrl
+    )
+  }
+
+  private def loadParentChildTable(ident: Identifier, tableName: String, tableConfig: TableConfig): Table = {
+    val parentTableName = tableConfig.parentTable.getOrElse(
+      throw new IllegalArgumentException(s"Table '$tableName' missing parent-table config")
+    )
+    val parentKey = tableConfig.parentKey.getOrElse(
+      throw new IllegalArgumentException(s"Table '$tableName' missing parent-key config")
+    )
+
+    // Find parent endpoint
+    val parentEndpoint = findEndpointForTable(parentTableName).getOrElse(
+      throw new NoSuchTableException(Identifier.of(Array("default"), parentTableName))
+    )
+
+    // For parent-child tables, we need to infer the child response schema.
+    // Since the child endpoint has path parameters, it won't be auto-discovered.
+    // We'll use the parent endpoint's response schema as a baseline for now,
+    // or require explicit schema definition in future.
+    // For v1, we assume child returns same structure as parent (common pattern).
+    val childResponseSchema = parentEndpoint.responseSchema
+
+    log.debug("Loading parent-child table '{}': parent='{}', key='{}'", tableName, parentTableName, parentKey)
+
+    new ParentChildTable(
+      tableName = tableName,
+      childEndpointTemplate = tableConfig.endpoint,
+      parentTableName = parentTableName,
+      parentKey = parentKey,
+      parentEndpoint = parentEndpoint,
+      childResponseSchema = childResponseSchema,
       tableConfig = tableConfig,
       sourceConfig = config,
       baseUrl = spec.baseUrl
