@@ -1,7 +1,7 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{ArrayHandling, Loader, SourceConfig}
-import com.apilytics.core.openapi.{Endpoint, ParsedSpec, Parser}
+import com.apilytics.core.config.{ArrayHandling, Loader, SourceConfig, TableConfig}
+import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, ParsedSpec, Parser}
 import com.apilytics.core.schema.SchemaMapper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.connector.catalog._
@@ -42,24 +42,129 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
   override def loadTable(ident: Identifier): Table = {
     val tableName = ident.name()
 
-    // Check if this is an exploded array view (e.g., "customers_tags")
-    explodedTableInfo(tableName) match {
-      case Some((baseTableName, arrayField)) =>
-        loadExplodedTable(ident, baseTableName, arrayField)
+    // Check if this is a parent-child table (explicitly configured with parent-table)
+    config.tables.get(tableName).filter(_.parentTable.isDefined) match {
+      case Some(tc) =>
+        loadParentChildTable(ident, tableName, tc)
       case None =>
-        loadBaseTable(ident, tableName)
+        // Check if this is an exploded array view (e.g., "customers_tags")
+        explodedTableInfo(tableName) match {
+          case Some((baseTableName, arrayField)) =>
+            loadExplodedTable(ident, baseTableName, arrayField)
+          case None =>
+            loadBaseTable(ident, tableName)
+        }
     }
   }
 
   private def loadBaseTable(ident: Identifier, tableName: String): Table = {
     val tableConfig = config.tables.get(tableName)
-    val endpoint = findEndpointForTable(tableName).getOrElse(throw new NoSuchTableException(ident))
-    val arrowSchema = SchemaMapper.toArrowSchema(endpoint.responseSchema, config.schema.flattenDepth)
+    val specEndpoint = findEndpointForTable(tableName).getOrElse(throw new NoSuchTableException(ident))
+
+    // If table has explicit config endpoint (potentially with concrete path params),
+    // use that path instead of the spec's parameterized path.
+    // e.g., config has "/repos/octocat/Hello-World/issues", spec has "/repos/{owner}/{repo}/issues"
+    val endpoint = tableConfig.map(tc => specEndpoint.copy(path = tc.endpoint)).getOrElse(specEndpoint)
+
+    // If data-path is configured, extract the schema at that path
+    // e.g., data-path = "/results" means get the item schema from the results array
+    // Also automatically unwrap synthetic array wrappers (single "data" array property)
+    val effectiveSchema = tableConfig.flatMap(_.dataPath) match {
+      case Some(dataPath) =>
+        extractSchemaAtPath(endpoint.responseSchema, dataPath).getOrElse {
+          log.warn("Could not extract schema at data-path '{}' for table '{}', using full response schema",
+            dataPath, tableName)
+          endpoint.responseSchema
+        }
+      case None =>
+        // Check if this is a synthetic array wrapper from Parser (single "data" array prop)
+        // If so, automatically extract the item schema
+        endpoint.responseSchema.properties.get("data") match {
+          case Some(OpenAPISchema.ArrayType(obj: OpenAPISchema.ObjectType))
+              if endpoint.responseSchema.properties.size == 1 =>
+            obj
+          case _ =>
+            endpoint.responseSchema
+        }
+    }
+
+    val arrowSchema = SchemaMapper.toArrowSchema(effectiveSchema, config.schema.flattenDepth)
 
     new RESTTable(
       tableName = tableName,
       arrowSchema = arrowSchema,
       endpoint = endpoint,
+      tableConfig = tableConfig,
+      sourceConfig = config,
+      baseUrl = spec.baseUrl
+    )
+  }
+
+  /** Extract the schema at a JSON pointer path.
+    * For array paths, returns the item schema.
+    * E.g., "/results" on {results: array[Item]} returns Item schema.
+    */
+  private def extractSchemaAtPath(schema: OpenAPISchema.ObjectType, path: String): Option[OpenAPISchema.ObjectType] = {
+    val segments = path.stripPrefix("/").split("/").filter(_.nonEmpty).toList
+
+    def navigate(current: OpenAPISchema, remaining: List[String]): Option[OpenAPISchema.ObjectType] = {
+      remaining match {
+        case Nil =>
+          current match {
+            case obj: OpenAPISchema.ObjectType => Some(obj)
+            case arr: OpenAPISchema.ArrayType =>
+              arr.items match {
+                case obj: OpenAPISchema.ObjectType => Some(obj)
+                case _ => None
+              }
+            case _ => None
+          }
+        case segment :: rest =>
+          current match {
+            case obj: OpenAPISchema.ObjectType =>
+              obj.properties.get(segment).flatMap(navigate(_, rest))
+            case arr: OpenAPISchema.ArrayType =>
+              navigate(arr.items, segment :: rest)
+            case _ => None
+          }
+      }
+    }
+
+    navigate(schema, segments)
+  }
+
+  private def loadParentChildTable(ident: Identifier, tableName: String, tableConfig: TableConfig): Table = {
+    val parentTableName = tableConfig.parentTable.getOrElse(
+      throw new IllegalArgumentException(s"Table '$tableName' missing parent-table config")
+    )
+    val parentKey = tableConfig.parentKey.getOrElse(
+      throw new IllegalArgumentException(s"Table '$tableName' missing parent-key config")
+    )
+
+    // Find parent endpoint
+    val parentEndpoint = findEndpointForTable(parentTableName).getOrElse(
+      throw new NoSuchTableException(Identifier.of(Array("default"), parentTableName))
+    )
+
+    // Find child endpoint by matching the path template against OpenAPI spec endpoints.
+    // The config endpoint has concrete path params (e.g., "/customers/{customer_id}/orders")
+    // which should match the spec's parameterized path.
+    val childEndpoint = findEndpointByPathTemplate(tableConfig.endpoint).getOrElse(
+      throw new IllegalArgumentException(
+        s"Child endpoint '${tableConfig.endpoint}' not found in OpenAPI spec for table '$tableName'"
+      )
+    )
+
+    log.debug("Loading parent-child table '{}': parent='{}', key='{}', child endpoint='{}'",
+      tableName, parentTableName, parentKey, childEndpoint.path)
+
+    new ParentChildTable(
+      tableName = tableName,
+      childEndpointTemplate = tableConfig.endpoint,
+      parentTableName = parentTableName,
+      parentKey = parentKey,
+      parentEndpoint = parentEndpoint,
+      childResponseSchema = childEndpoint.responseSchema,
       tableConfig = tableConfig,
       sourceConfig = config,
       baseUrl = spec.baseUrl
@@ -162,11 +267,42 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
 
   private def findEndpointForTable(tableName: String): Option[Endpoint] = {
     config.tables.get(tableName).flatMap { tc =>
+      // First try exact match, then try template matching for parameterized paths
+      // e.g., config "/repos/octocat/Hello-World/issues" matches spec "/repos/{owner}/{repo}/issues"
       spec.endpoints.find(_.path == tc.endpoint)
+        .orElse(findEndpointByPathTemplate(tc.endpoint))
     }.orElse {
       spec.endpoints.find { ep =>
         ep.operationId.contains(tableName) ||
           ep.path.split("/").filterNot(s => s.startsWith("{") || s.isEmpty).lastOption.exists(_.equalsIgnoreCase(tableName))
+      }
+    }
+  }
+
+  /** Find an endpoint by matching a path template against OpenAPI spec endpoints.
+    *
+    * Matches config paths (which may have concrete values or `{param}` placeholders) against
+    * OpenAPI spec paths (which use `{param}` syntax for path parameters).
+    *
+    * A spec `{param}` segment matches:
+    * - Any concrete value (e.g., "octocat" matches "{owner}")
+    * - Any other `{...}` placeholder (e.g., "{customer_id}" matches "{id}")
+    *
+    * Example: "/repos/octocat/Hello-World/issues" matches spec "/repos/{owner}/{repo}/issues"
+    * Example: "/customers/{customer_id}/orders" matches spec "/customers/{id}/orders"
+    */
+  private def findEndpointByPathTemplate(configPath: String): Option[Endpoint] = {
+    val configSegments = configPath.split("/").toList
+
+    spec.endpoints.find { ep =>
+      val specSegments = ep.path.split("/").toList
+      if (configSegments.length != specSegments.length) false
+      else {
+        configSegments.zip(specSegments).forall { case (configSeg, specSeg) =>
+          // Spec param matches any config segment (concrete or placeholder)
+          // Otherwise require exact match
+          specSeg.startsWith("{") || configSeg == specSeg
+        }
       }
     }
   }
