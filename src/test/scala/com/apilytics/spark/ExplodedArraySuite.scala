@@ -422,4 +422,45 @@ class ExplodedArraySuite extends FunSuite {
     assertEquals(ExplodedArrayOps.explodeRecord(primitiveRecord, "tags", List("tags")), Nil)
   }
 
+  // --- OUTER explode tests ---
+
+  test("explodeRecord with outer=true emits null row for empty array") {
+    val record = parse("""{"id": 1, "tags": []}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"), outer = true)
+
+    assertEquals(exploded.length, 1)
+    assertEquals(exploded(0).hcursor.get[Int]("id").toOption, Some(1))
+    assert(exploded(0).hcursor.get[String]("tags").isLeft) // null, not a string
+    assertEquals(exploded(0).hcursor.downField("tags").focus, Some(Json.Null))
+  }
+
+  test("explodeRecord with outer=true emits null row for missing array") {
+    val record = parse("""{"id": 1, "name": "test"}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"), outer = true)
+
+    assertEquals(exploded.length, 1)
+    assertEquals(exploded(0).hcursor.get[Int]("id").toOption, Some(1))
+    assertEquals(exploded(0).hcursor.get[String]("name").toOption, Some("test"))
+    assertEquals(exploded(0).hcursor.downField("tags").focus, Some(Json.Null))
+  }
+
+  test("explodeRecord with outer=true still explodes non-empty arrays normally") {
+    val record = parse("""{"id": 1, "tags": ["a", "b"]}""").toOption.get
+    val exploded = ExplodedArrayOps.explodeRecord(record, "tags", List("tags"), outer = true)
+
+    assertEquals(exploded.length, 2)
+    assertEquals(exploded(0).hcursor.get[String]("tags").toOption, Some("a"))
+    assertEquals(exploded(1).hcursor.get[String]("tags").toOption, Some("b"))
+  }
+
+  test("explodeRecord with outer=false (default) drops empty arrays") {
+    val record = parse("""{"id": 1, "tags": []}""").toOption.get
+
+    // Explicit outer=false
+    assertEquals(ExplodedArrayOps.explodeRecord(record, "tags", List("tags"), outer = false), Nil)
+
+    // Default (should be INNER)
+    assertEquals(ExplodedArrayOps.explodeRecord(record, "tags", List("tags")), Nil)
+  }
+
 }

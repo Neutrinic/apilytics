@@ -48,6 +48,7 @@ class ExplodedArrayPartitionReader(partition: ExplodedArrayInputPartition) exten
   private def fetchExplodedRows(): Iterator[InternalRow] = {
     val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
     val dataPath = partition.tableConfig.flatMap(_.dataPath)
+    val outer = partition.sourceConfig.schema.explodeOuter
 
     val program: IO[List[InternalRow]] = Client
       .resource(partition.sourceConfig.http, partition.sourceConfig.auth)
@@ -57,7 +58,7 @@ class ExplodedArrayPartitionReader(partition: ExplodedArrayInputPartition) exten
           .flatMap { pageJson =>
             val records = Converter.extractRecords(pageJson, dataPath)
             val exploded = records.flatMap(r =>
-              ExplodedArrayOps.explodeRecord(r, partition.arrayFieldName, partition.arrayJsonPath)
+              ExplodedArrayOps.explodeRecord(r, partition.arrayFieldName, partition.arrayJsonPath, outer)
             )
             if (exploded.isEmpty) fs2.Stream.empty
             else {

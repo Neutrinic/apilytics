@@ -56,7 +56,10 @@ final case class PaginationConfig(
 final case class SchemaConfig(
     flattenDepth: Int = 2,
     arrayHandling: ArrayHandling = ArrayHandling.KeepArray,
-    arrowBatchSize: Int = 4096
+    arrowBatchSize: Int = 4096,
+    /** When true, empty/null arrays emit one row with null element (OUTER semantics).
+      * When false (default), empty arrays produce no rows (INNER semantics). */
+    explodeOuter: Boolean = false
 )
 
 final case class HttpConfig(
