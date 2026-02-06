@@ -28,13 +28,14 @@ class ExplodedArrayColumnarPartitionReader(partition: ExplodedArrayInputPartitio
     val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
     val dataPath = partition.tableConfig.flatMap(_.dataPath)
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
+    val outer = partition.sourceConfig.schema.explodeOuter
 
     Paginator
       .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
       .flatMap { pageJson =>
         val records = Converter.extractRecords(pageJson, dataPath)
         val exploded = records.flatMap(r =>
-          ExplodedArrayOps.explodeRecord(r, partition.arrayFieldName, partition.arrayJsonPath)
+          ExplodedArrayOps.explodeRecord(r, partition.arrayFieldName, partition.arrayJsonPath, outer)
         )
         if (exploded.isEmpty) fs2.Stream.empty
         else {
