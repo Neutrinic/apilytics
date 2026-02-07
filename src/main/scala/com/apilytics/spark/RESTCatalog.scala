@@ -22,6 +22,9 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
   private var config: SourceConfig = _
   private var spec: ParsedSpec = _
 
+  /** Returns the effective base URL, preferring config override over OpenAPI spec. */
+  private def effectiveBaseUrl: String = config.baseUrl.getOrElse(spec.baseUrl)
+
   override def name(): String = catalogName
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
@@ -96,7 +99,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
       endpoint = endpoint,
       tableConfig = tableConfig,
       sourceConfig = config,
-      baseUrl = spec.baseUrl
+      baseUrl = effectiveBaseUrl
     )
   }
 
@@ -167,7 +170,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
       childResponseSchema = childEndpoint.responseSchema,
       tableConfig = tableConfig,
       sourceConfig = config,
-      baseUrl = spec.baseUrl
+      baseUrl = effectiveBaseUrl
     )
   }
 
@@ -189,7 +192,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
       endpoint = endpoint,
       tableConfig = tableConfig,
       sourceConfig = config,
-      baseUrl = spec.baseUrl
+      baseUrl = effectiveBaseUrl
     )
   }
 

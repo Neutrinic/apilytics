@@ -12,9 +12,17 @@ param(
     [switch]$Restart
 )
 
-$ValidExamples = @("pokeapi", "github")
+$ValidExamples = @("pokeapi", "github", "slack")
 if ($Example -notin $ValidExamples) {
     Write-Error "Unknown example: $Example. Available: $($ValidExamples -join ', ')"
+    exit 1
+}
+
+# Check required env vars early (before build)
+if ($Example -eq "slack" -and -not $env:SLACK_BOT_TOKEN) {
+    Write-Error "SLACK_BOT_TOKEN environment variable is required for Slack example"
+    Write-Host "Create a Slack app at https://api.slack.com/apps" -ForegroundColor Yellow
+    Write-Host 'Set it with: $env:SLACK_BOT_TOKEN = "xoxb-..."' -ForegroundColor Yellow
     exit 1
 }
 
@@ -91,10 +99,18 @@ if ($Example -eq "pokeapi") {
 } elseif ($Example -eq "github") {
     Write-Host '  spark.sql("SELECT number, title, state FROM api.default.issues LIMIT 10").show()' -ForegroundColor DarkGray
     Write-Host '  spark.sql("SELECT number, title FROM api.default.issues WHERE state = ''open''").show()' -ForegroundColor DarkGray
+} elseif ($Example -eq "slack") {
+    Write-Host '  spark.sql("SELECT id, name FROM api.default.channels LIMIT 10").show()' -ForegroundColor DarkGray
+    Write-Host '  spark.sql("SELECT id, name, real_name FROM api.default.users LIMIT 10").show()' -ForegroundColor DarkGray
 }
 Write-Host ""
 
-docker exec -it $Container spark-shell `
+# Build env var args to pass to container
+$EnvArgs = @()
+if ($env:GITHUB_TOKEN) { $EnvArgs += @("-e", "GITHUB_TOKEN=$env:GITHUB_TOKEN") }
+if ($env:SLACK_BOT_TOKEN) { $EnvArgs += @("-e", "SLACK_BOT_TOKEN=$env:SLACK_BOT_TOKEN") }
+
+docker exec -it @EnvArgs $Container spark-shell `
     --jars $JarPath `
     --conf "spark.sql.catalog.api=com.apilytics.spark.RESTCatalog" `
     --conf "spark.sql.catalog.api.config=$ConfigPath"

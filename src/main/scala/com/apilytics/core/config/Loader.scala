@@ -27,7 +27,8 @@ object Loader {
       http = if (config.hasPath("http")) readHttp(config.getConfig("http"))
              else HttpConfig(maxBackoff = 30.seconds, timeout = 30.seconds),
       tables = if (config.hasPath("tables")) readTables(config.getConfig("tables"))
-               else Map.empty
+               else Map.empty,
+      baseUrl = optional(config, "base-url")
     )
   }
 
