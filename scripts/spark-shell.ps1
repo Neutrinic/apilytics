@@ -12,7 +12,7 @@ param(
     [switch]$Restart
 )
 
-$ValidExamples = @("pokeapi", "github")
+$ValidExamples = @("pokeapi", "github", "stripe")
 if ($Example -notin $ValidExamples) {
     Write-Error "Unknown example: $Example. Available: $($ValidExamples -join ', ')"
     exit 1
@@ -91,6 +91,9 @@ if ($Example -eq "pokeapi") {
 } elseif ($Example -eq "github") {
     Write-Host '  spark.sql("SELECT number, title, state FROM api.default.issues LIMIT 10").show()' -ForegroundColor DarkGray
     Write-Host '  spark.sql("SELECT number, title FROM api.default.issues WHERE state = ''open''").show()' -ForegroundColor DarkGray
+} elseif ($Example -eq "stripe") {
+    Write-Host '  spark.sql("SELECT id, email, name FROM api.default.customers LIMIT 10").show()' -ForegroundColor DarkGray
+    Write-Host '  spark.sql("SELECT id, amount, status FROM api.default.charges LIMIT 10").show()' -ForegroundColor DarkGray
 }
 Write-Host ""
 
