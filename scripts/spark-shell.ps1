@@ -12,7 +12,7 @@ param(
     [switch]$Restart
 )
 
-$ValidExamples = @("pokeapi", "github")
+$ValidExamples = @("pokeapi", "github", "stripe")
 if ($Example -notin $ValidExamples) {
     Write-Error "Unknown example: $Example. Available: $($ValidExamples -join ', ')"
     exit 1
@@ -42,8 +42,9 @@ if ($SkipBuild) {
 }
 
 # Set env var for docker compose (used in volume mount)
+# Must be relative path from repo root (compose prepends ../../)
 if ($JarFile) {
-    $env:APILYTICS_JAR = $JarFile.FullName -replace '\\', '/'
+    $env:APILYTICS_JAR = "target/scala-2.13/$($JarFile.Name)"
     Write-Host "Using JAR: $($JarFile.Name)" -ForegroundColor Gray
 } else {
     Write-Error "No JAR found matching $JarPattern"
@@ -91,10 +92,18 @@ if ($Example -eq "pokeapi") {
 } elseif ($Example -eq "github") {
     Write-Host '  spark.sql("SELECT number, title, state FROM api.default.issues LIMIT 10").show()' -ForegroundColor DarkGray
     Write-Host '  spark.sql("SELECT number, title FROM api.default.issues WHERE state = ''open''").show()' -ForegroundColor DarkGray
+} elseif ($Example -eq "stripe") {
+    Write-Host '  spark.sql("SELECT id, email, name FROM api.default.customers LIMIT 10").show()' -ForegroundColor DarkGray
+    Write-Host '  spark.sql("SELECT id, amount, status FROM api.default.charges LIMIT 10").show()' -ForegroundColor DarkGray
 }
 Write-Host ""
 
-docker exec -it $Container spark-shell `
+# Build env var args to pass to container
+$EnvArgs = @()
+if ($env:GITHUB_TOKEN) { $EnvArgs += @("-e", "GITHUB_TOKEN=$env:GITHUB_TOKEN") }
+if ($env:STRIPE_API_KEY) { $EnvArgs += @("-e", "STRIPE_API_KEY=$env:STRIPE_API_KEY") }
+
+docker exec -it @EnvArgs $Container spark-shell `
     --jars $JarPath `
     --conf "spark.sql.catalog.api=com.apilytics.spark.RESTCatalog" `
     --conf "spark.sql.catalog.api.config=$ConfigPath"

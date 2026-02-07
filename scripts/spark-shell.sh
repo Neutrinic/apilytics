@@ -21,7 +21,7 @@ for arg in "$@"; do
     esac
 done
 
-VALID_EXAMPLES=("pokeapi" "github")
+VALID_EXAMPLES=("pokeapi" "github" "stripe")
 if [[ ! " ${VALID_EXAMPLES[*]} " =~ " ${EXAMPLE} " ]]; then
     echo "Unknown example: $EXAMPLE. Available: ${VALID_EXAMPLES[*]}"
     exit 1
@@ -92,10 +92,18 @@ if [[ "$EXAMPLE" == "pokeapi" ]]; then
 elif [[ "$EXAMPLE" == "github" ]]; then
     echo '  spark.sql("SELECT number, title, state FROM api.default.issues LIMIT 10").show()'
     echo '  spark.sql("SELECT number, title FROM api.default.issues WHERE state = '\''open'\''").show()'
+elif [[ "$EXAMPLE" == "stripe" ]]; then
+    echo '  spark.sql("SELECT id, email, name FROM api.default.customers LIMIT 10").show()'
+    echo '  spark.sql("SELECT id, amount, status FROM api.default.charges LIMIT 10").show()'
 fi
 echo ""
 
-docker exec -it "$CONTAINER" spark-shell \
+# Build env var args to pass to container
+ENV_ARGS=""
+[[ -n "$GITHUB_TOKEN" ]] && ENV_ARGS="$ENV_ARGS -e GITHUB_TOKEN=$GITHUB_TOKEN"
+[[ -n "$STRIPE_API_KEY" ]] && ENV_ARGS="$ENV_ARGS -e STRIPE_API_KEY=$STRIPE_API_KEY"
+
+docker exec -it $ENV_ARGS "$CONTAINER" spark-shell \
     --jars "$JAR_PATH" \
     --conf "spark.sql.catalog.api=com.apilytics.spark.RESTCatalog" \
     --conf "spark.sql.catalog.api.config=$CONFIG_PATH"
