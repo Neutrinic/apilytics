@@ -21,7 +21,7 @@ for arg in "$@"; do
     esac
 done
 
-VALID_EXAMPLES=("pokeapi" "github" "stripe")
+VALID_EXAMPLES=("pokeapi" "github")
 if [[ ! " ${VALID_EXAMPLES[*]} " =~ " ${EXAMPLE} " ]]; then
     echo "Unknown example: $EXAMPLE. Available: ${VALID_EXAMPLES[*]}"
     exit 1
@@ -92,9 +92,6 @@ if [[ "$EXAMPLE" == "pokeapi" ]]; then
 elif [[ "$EXAMPLE" == "github" ]]; then
     echo '  spark.sql("SELECT number, title, state FROM api.default.issues LIMIT 10").show()'
     echo '  spark.sql("SELECT number, title FROM api.default.issues WHERE state = '\''open'\''").show()'
-elif [[ "$EXAMPLE" == "stripe" ]]; then
-    echo '  spark.sql("SELECT id, email, name FROM api.default.customers LIMIT 10").show()'
-    echo '  spark.sql("SELECT id, amount, status FROM api.default.charges LIMIT 10").show()'
 fi
 echo ""
 
