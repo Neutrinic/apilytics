@@ -8,7 +8,7 @@ import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.sql.connector.read.PartitionReader
-import org.apache.spark.sql.vectorized.{ArrowColumnVector, ColumnarBatch}
+import org.apache.spark.sql.vectorized.ColumnarBatch
 
 import scala.jdk.CollectionConverters._
 
@@ -101,10 +101,15 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
     }
   }
 
-  /** Wrap Arrow VectorSchemaRoot as ColumnarBatch with zero-copy ArrowColumnVector wrappers. */
+  /** Wrap Arrow VectorSchemaRoot as ColumnarBatch with null-safe column vector wrappers.
+    *
+    * We use NullSafeArrowColumnVector instead of Spark's ArrowColumnVector because
+    * Arrow's underlying vector.get() throws IllegalStateException on null values.
+    * Our wrapper checks isNull() before accessing values.
+    */
   protected def arrowToBatch(root: VectorSchemaRoot): ColumnarBatch = {
     val vectors = root.getFieldVectors.asScala.map { v =>
-      new ArrowColumnVector(v)
+      NullSafeArrowColumnVector(v)
     }.toArray
     val batch = new ColumnarBatch(vectors.asInstanceOf[Array[org.apache.spark.sql.vectorized.ColumnVector]])
     batch.setNumRows(root.getRowCount)
