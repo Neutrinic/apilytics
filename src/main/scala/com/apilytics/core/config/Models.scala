@@ -99,5 +99,8 @@ final case class SourceConfig(
     pagination: PaginationConfig = PaginationConfig(),
     schema: SchemaConfig = SchemaConfig(),
     http: HttpConfig,
-    tables: Map[String, TableConfig] = Map.empty
+    tables: Map[String, TableConfig] = Map.empty,
+    /** Override the base URL from the OpenAPI spec. Useful when the spec doesn't
+      * include servers or when you want to point to a different environment. */
+    baseUrl: Option[String] = None
 )
