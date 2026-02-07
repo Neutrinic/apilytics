@@ -12,7 +12,7 @@ services:
       - SPARK_ROLE=master
     volumes:
       - spark-events:/opt/spark/spark-events
-      - ../../target/scala-2.13/apilytics-0.1.0-SNAPSHOT.jar:/opt/spark/jars/apilytics.jar:ro
+      - ../../${APILYTICS_JAR:-target/scala-2.13/apilytics.jar}:/opt/spark/jars/apilytics.jar:ro
       - ../../examples:/opt/spark/examples:ro
     ports:
       - "7077:7077"
@@ -33,7 +33,7 @@ services:
       - SPARK_WORKER_MEMORY=4g
     volumes:
       - spark-events:/opt/spark/spark-events
-      - ../../target/scala-2.13/apilytics-0.1.0-SNAPSHOT.jar:/opt/spark/jars/apilytics.jar:ro
+      - ../../${APILYTICS_JAR:-target/scala-2.13/apilytics.jar}:/opt/spark/jars/apilytics.jar:ro
       - ../../examples:/opt/spark/examples:ro
     depends_on:
       - spark-master
@@ -52,7 +52,7 @@ services:
       - SPARK_WORKER_MEMORY=4g
     volumes:
       - spark-events:/opt/spark/spark-events
-      - ../../target/scala-2.13/apilytics-0.1.0-SNAPSHOT.jar:/opt/spark/jars/apilytics.jar:ro
+      - ../../${APILYTICS_JAR:-target/scala-2.13/apilytics.jar}:/opt/spark/jars/apilytics.jar:ro
       - ../../examples:/opt/spark/examples:ro
     depends_on:
       - spark-master

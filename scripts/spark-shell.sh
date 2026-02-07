@@ -1,19 +1,22 @@
 #!/bin/bash
 # Spark shell launcher for Apilytics
-# Usage: ./scripts/spark-shell.sh [example-name] [--skip-build] [--force]
+# Usage: ./scripts/spark-shell.sh [example-name] [--skip-build] [--force] [--clean] [--restart]
 # Example: ./scripts/spark-shell.sh pokeapi
 # Example: ./scripts/spark-shell.sh github --skip-build
+# Example: ./scripts/spark-shell.sh github --force --clean
 
 EXAMPLE="${1:-pokeapi}"
 SKIP_BUILD=false
 RESTART_DOCKER=false
 FORCE=false
+CLEAN=false
 
 # Parse flags
 for arg in "$@"; do
     case $arg in
         --skip-build) SKIP_BUILD=true ;;
         --force) FORCE=true ;;
+        --clean) CLEAN=true ;;
         --restart) RESTART_DOCKER=true ;;
     esac
 done
@@ -24,24 +27,55 @@ if [[ ! " ${VALID_EXAMPLES[*]} " =~ " ${EXAMPLE} " ]]; then
     exit 1
 fi
 
-JAR_FILE="target/scala-2.13/apilytics-0.1.0-SNAPSHOT.jar"
+# Find the JAR file (handles version changes)
+JAR_FILE=$(ls target/scala-2.13/apilytics-*.jar 2>/dev/null | head -1)
 
 if [[ "$SKIP_BUILD" == "true" ]]; then
     echo "Skipping build..."
-elif [[ "$FORCE" != "true" ]] && [[ -f "$JAR_FILE" ]]; then
-    echo "JAR exists, skipping build. Use --force to rebuild."
+elif [[ "$FORCE" != "true" ]] && [[ -n "$JAR_FILE" ]]; then
+    echo "JAR exists ($(basename "$JAR_FILE")), skipping build. Use --force to rebuild."
 else
     echo "Building JAR..."
-    sbt clean assembly || exit 1
+    if [[ "$CLEAN" == "true" ]]; then
+        sbt clean assembly || exit 1
+    else
+        sbt assembly || exit 1
+    fi
+    # Re-find JAR after build
+    JAR_FILE=$(ls target/scala-2.13/apilytics-*.jar 2>/dev/null | head -1)
 fi
+
+# Set env var for docker compose (used in volume mount)
+if [[ -n "$JAR_FILE" ]]; then
+    export APILYTICS_JAR="$JAR_FILE"
+    echo "Using JAR: $(basename "$JAR_FILE")"
+else
+    echo "Error: No JAR found matching target/scala-2.13/apilytics-*.jar"
+    exit 1
+fi
+
+CONTAINER="${SPARK_MASTER_CONTAINER:-spark-master}"
 
 if [[ "$RESTART_DOCKER" == "true" ]]; then
     echo "Restarting cluster..."
     docker compose -f docker/spark/compose.spark.yaml restart || exit 1
-    sleep 3
+
+    # Wait for container to be running
+    echo "Waiting for $CONTAINER to be ready..."
+    for i in {1..30}; do
+        if [[ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" == "true" ]]; then
+            echo "$CONTAINER is running"
+            break
+        fi
+        sleep 1
+    done
+
+    if [[ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" != "true" ]]; then
+        echo "Error: $CONTAINER failed to start within 30s"
+        exit 1
+    fi
 fi
 
-CONTAINER="${SPARK_MASTER_CONTAINER:-spark-master}"
 JAR_PATH="/opt/spark/jars/apilytics.jar"
 CONFIG_PATH="/opt/spark/examples/$EXAMPLE/$EXAMPLE-config.conf"
 
