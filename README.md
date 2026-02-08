@@ -18,18 +18,21 @@ sbt assembly
 ```
 
 ```scala
-// List available tables
-spark.sql("SHOW TABLES IN api.default").show()
-
 // Query GitHub issues
 spark.sql("SELECT number, title, state FROM api.default.issues LIMIT 10").show()
+```
 
-// Filter and aggregate
-spark.sql("""
-  SELECT state, COUNT(*) as count
-  FROM api.default.issues
-  GROUP BY state
-""").show()
+Every query hits the API — pagination, rate limits, network latency. For repeated analysis, cache locally:
+
+```scala
+// Cache once, query at Spark speed
+val issues = spark.table("api.default.issues").cache()
+
+issues.groupBy("state").count().show()
+issues.filter("state = 'open'").orderBy(desc("created_at")).show()
+
+// Or persist to Delta for permanent storage
+issues.write.format("delta").saveAsTable("warehouse.github_issues")
 ```
 
 ### Clean Error Messages
