@@ -96,6 +96,20 @@ final case class FilterConfig(
     operators: List[String]
 )
 
+/** Configuration for date-range partitioning to enable parallel reads. */
+final case class PartitionConfig(
+    /** Column to partition by (must be a date/datetime column). */
+    column: String,
+    /** Size of each partition (e.g., "1 day", "1 hour", "7 days"). */
+    range: FiniteDuration,
+    /** API parameter for start of range (inclusive). */
+    startParam: String,
+    /** API parameter for end of range (exclusive). */
+    endParam: String,
+    /** Format for date parameters (default: ISO 8601). */
+    format: String = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+)
+
 sealed trait JoinStrategy
 object JoinStrategy {
   /** For each parent row, fetch child endpoint with substituted path parameter. */
@@ -111,7 +125,9 @@ final case class TableConfig(
     /** Field from parent table to substitute into endpoint path (e.g., "id"). */
     parentKey: Option[String] = None,
     /** Strategy for joining parent and child data. */
-    joinStrategy: Option[JoinStrategy] = None
+    joinStrategy: Option[JoinStrategy] = None,
+    /** Date-range partitioning configuration for parallel reads. */
+    partition: Option[PartitionConfig] = None
 )
 
 final case class CacheConfig(
