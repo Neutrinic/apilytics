@@ -5,13 +5,19 @@ import cats.effect.std.Semaphore
 
 import scala.concurrent.duration._
 
-/** Token bucket rate limiter for controlling request rate.
+/** Fixed-interval rate limiter for controlling request rate.
   *
-  * Uses a simple token bucket algorithm:
-  * - Bucket has capacity equal to requestsPerSecond (allows small bursts)
-  * - Tokens are added at a rate of requestsPerSecond per second
-  * - Each request consumes one token
-  * - If no tokens available, waits until one becomes available
+  * Enforces a minimum interval between requests. Unlike a token bucket, this does
+  * NOT allow bursts — if the API was idle for 30 seconds, the next request still
+  * waits for the interval from the previous one. This is intentional for API rate
+  * limiting where bursts can trigger 429s.
+  *
+  * Note: The semaphore serializes all requests through acquire, even if callers
+  * attempt concurrent access. This is intentional for single-partition scans.
+  * If parallel partition reads are added later, this becomes a bottleneck.
+  *
+  * Note: Rate limiting is applied to initial requests only, not retries. If a
+  * request fails and retries 3 times, those retries don't count against the limit.
   */
 trait RateLimiter {
   /** Acquire a permit to make a request. Blocks until rate limit allows. */
@@ -20,19 +26,20 @@ trait RateLimiter {
 
 object RateLimiter {
 
-  /** Create a rate limiter that allows up to `requestsPerSecond` requests per second.
+  /** Create a rate limiter that enforces `requestsPerSecond` requests per second.
     *
-    * The limiter uses a token bucket with capacity equal to requestsPerSecond,
-    * allowing small bursts while maintaining the average rate over time.
+    * Each request is spaced at least `1/requestsPerSecond` seconds apart.
+    * The interval calculation truncates, so the actual rate may be slightly
+    * higher than requested (e.g., 3 rps gives 333ms intervals = ~3.003 rps).
     */
   def apply(requestsPerSecond: Int): IO[RateLimiter] = {
     require(requestsPerSecond > 0, "requestsPerSecond must be positive")
 
-    val intervalNanos = (1_000_000_000L / requestsPerSecond)
+    val intervalNanos = 1_000_000_000L / requestsPerSecond
 
     for {
       lastRequest <- Ref.of[IO, Long](0L)
-      semaphore <- Semaphore[IO](1) // Ensure only one request calculates wait time at a time
+      semaphore <- Semaphore[IO](1)
     } yield new RateLimiter {
       override def acquire: IO[Unit] = {
         semaphore.permit.use { _ =>
