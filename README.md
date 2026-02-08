@@ -32,6 +32,70 @@ spark.sql("""
 """).show()
 ```
 
+### Clean Error Messages
+
+Use `sqlClean()` for user-friendly error messages instead of Spark's verbose stack traces:
+
+```scala
+import com.apilytics.spark.implicits._
+
+// SQL with clean errors
+spark.sqlClean("SELECT * FROM api.default.issues").show()
+
+// Or wrap any operation in a block
+withCleanErrors {
+  spark.sql("SELECT * FROM api.default.issues").show()
+}
+```
+
+### Exploring Catalogs
+
+Catalogs are registered at startup, but won't appear in `SHOW CATALOGS` until you query them. Use these commands to explore:
+
+```scala
+// List namespaces in a catalog
+spark.sql("SHOW NAMESPACES IN api").show()
+
+// List tables in a namespace
+spark.sql("SHOW TABLES IN api.default").show()
+
+// Describe a table's schema
+spark.sql("DESCRIBE api.default.issues").show()
+
+// Extended table info
+spark.sql("DESCRIBE EXTENDED api.default.issues").show()
+```
+
+### Multiple Catalogs
+
+You can load multiple APIs as separate catalogs:
+
+```bash
+# Start with both GitHub and PokeAPI
+./scripts/spark-shell.sh multi
+```
+
+```scala
+// Query across catalogs
+spark.sql("SHOW TABLES IN github.default").show()
+spark.sql("SHOW TABLES IN pokemon.default").show()
+
+spark.sql("SELECT number, title FROM github.default.issues LIMIT 5").show()
+spark.sql("SELECT name, url FROM pokemon.default.pokemon LIMIT 5").show()
+```
+
+To configure multiple catalogs manually:
+
+```bash
+spark-shell \
+  --conf "spark.sql.catalog.github=com.apilytics.spark.RESTCatalog" \
+  --conf "spark.sql.catalog.github.config=/path/to/github-config.conf" \
+  --conf "spark.sql.catalog.slack=com.apilytics.spark.RESTCatalog" \
+  --conf "spark.sql.catalog.slack.config=/path/to/slack-config.conf"
+```
+
+Then query with `github.default.*` and `slack.default.*`.
+
 ## Overview
 
 APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI 3.x specifications and exposes API endpoints as Spark tables. Filters and limits are pushed down to query parameters, pagination is handled automatically, and responses are converted to Arrow columnar format for efficient processing.

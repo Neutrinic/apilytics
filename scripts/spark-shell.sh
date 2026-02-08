@@ -21,7 +21,7 @@ for arg in "$@"; do
     esac
 done
 
-VALID_EXAMPLES=("pokeapi" "github" "slack")
+VALID_EXAMPLES=("pokeapi" "github" "slack" "multi")
 if [[ ! " ${VALID_EXAMPLES[*]} " =~ " ${EXAMPLE} " ]]; then
     echo "Unknown example: $EXAMPLE. Available: ${VALID_EXAMPLES[*]}"
     exit 1
@@ -103,6 +103,12 @@ elif [[ "$EXAMPLE" == "github" ]]; then
 elif [[ "$EXAMPLE" == "slack" ]]; then
     echo '  spark.sql("SELECT id, name FROM api.default.channels LIMIT 10").show()'
     echo '  spark.sql("SELECT id, name, real_name FROM api.default.users LIMIT 10").show()'
+elif [[ "$EXAMPLE" == "multi" ]]; then
+    echo '  -- Two catalogs: github.default.* and pokemon.default.*'
+    echo '  spark.sql("SHOW TABLES IN github.default").show()'
+    echo '  spark.sql("SHOW TABLES IN pokemon.default").show()'
+    echo '  spark.sql("SELECT number, title FROM github.default.issues LIMIT 5").show()'
+    echo '  spark.sql("SELECT name, url FROM pokemon.default.pokemon LIMIT 5").show()'
 fi
 echo ""
 
@@ -111,7 +117,17 @@ ENV_ARGS=()
 [[ -n "$GITHUB_TOKEN" ]] && ENV_ARGS+=(-e "GITHUB_TOKEN=$GITHUB_TOKEN")
 [[ -n "$SLACK_BOT_TOKEN" ]] && ENV_ARGS+=(-e "SLACK_BOT_TOKEN=$SLACK_BOT_TOKEN")
 
-docker exec -it "${ENV_ARGS[@]}" "$CONTAINER" spark-shell \
-    --jars "$JAR_PATH" \
-    --conf "spark.sql.catalog.api=com.apilytics.spark.RESTCatalog" \
-    --conf "spark.sql.catalog.api.config=$CONFIG_PATH"
+# Multi-catalog mode: load both github and pokemon catalogs
+if [[ "$EXAMPLE" == "multi" ]]; then
+    docker exec -it "${ENV_ARGS[@]}" "$CONTAINER" spark-shell \
+        --jars "$JAR_PATH" \
+        --conf "spark.sql.catalog.github=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.github.config=/opt/spark/examples/github/github-config.conf" \
+        --conf "spark.sql.catalog.pokemon=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.pokemon.config=/opt/spark/examples/pokeapi/pokeapi-config.conf"
+else
+    docker exec -it "${ENV_ARGS[@]}" "$CONTAINER" spark-shell \
+        --jars "$JAR_PATH" \
+        --conf "spark.sql.catalog.api=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.api.config=$CONFIG_PATH"
+fi
