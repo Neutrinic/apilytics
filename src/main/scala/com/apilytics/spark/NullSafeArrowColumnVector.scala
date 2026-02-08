@@ -1,6 +1,7 @@
 package com.apilytics.spark
 
 import org.apache.arrow.vector._
+import org.apache.arrow.vector.types.pojo.ArrowType
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.vectorized.ColumnVector
 import org.apache.spark.unsafe.types.UTF8String
@@ -53,7 +54,19 @@ class NullSafeArrowColumnVector(vector: FieldVector)
     if (vector.isNull(rowId)) 0L
     else vector match {
       case v: BigIntVector => v.get(rowId)
-      case v: TimeStampVector => v.get(rowId)
+      case v: TimeStampVector =>
+        // Spark expects timestamps in microseconds. Convert from Arrow's unit.
+        val rawValue = v.get(rowId)
+        v.getField.getType match {
+          case ts: ArrowType.Timestamp =>
+            ts.getUnit match {
+              case org.apache.arrow.vector.types.TimeUnit.SECOND      => rawValue * 1_000_000L
+              case org.apache.arrow.vector.types.TimeUnit.MILLISECOND => rawValue * 1_000L
+              case org.apache.arrow.vector.types.TimeUnit.MICROSECOND => rawValue
+              case org.apache.arrow.vector.types.TimeUnit.NANOSECOND  => rawValue / 1_000L
+            }
+          case _ => rawValue // shouldn't happen, but fallback to raw value
+        }
       case _ => 0L
     }
   }
@@ -123,6 +136,10 @@ object NullSafeArrowColumnVector {
     case _: DateDayVector => DateType
     case _: TimeStampVector => TimestampType
     case _: DecimalVector => DecimalType.SYSTEM_DEFAULT
-    case _ => StringType
+    case other =>
+      throw new UnsupportedOperationException(
+        s"Unsupported Arrow vector type: ${other.getClass.getName}. " +
+          "Please file an issue to add support for this type."
+      )
   }
 }
