@@ -34,19 +34,19 @@ spark.sql("""
 
 ### Clean Error Messages
 
-Use the `.api` extension for user-friendly error messages instead of Spark's verbose stack traces:
+Use `withCleanErrors` or `.showClean()` for user-friendly error messages instead of Spark's verbose stack traces:
 
 ```scala
 import com.apilytics.spark.implicits._
 
-// SQL queries with clean errors
-spark.api.sql("SELECT number, title FROM api.default.issues LIMIT 10").show()
+// Wrap any operation
+withCleanErrors {
+  spark.sql("SELECT * FROM api.default.issues").show()
+}
 
-// DataFrame API with clean errors
-spark.api.table("api.default.issues")
-  .select("number", "title", "state")
-  .filter("state = 'open'")
-  .show()
+// Or use extension methods on DataFrame
+spark.sql("SELECT number, title FROM api.default.issues").showClean()
+spark.table("api.default.issues").showClean(20)
 ```
 
 ### Exploring Catalogs

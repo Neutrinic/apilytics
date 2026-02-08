@@ -68,11 +68,19 @@ object ErrorHandler {
 
   /** Format table not found errors */
   private def formatTableNotFound(e: NoSuchTableException): String = {
-    val ident = Option(e.getMessage)
-      .flatMap(_.split("Table or view").headOption)
-      .map(_.trim)
-      .getOrElse("unknown")
-    s"Table not found: $ident"
+    // Spark 4.0 uses: "[TABLE_OR_VIEW_NOT_FOUND] The table or view `catalog`.`ns`.`table` cannot be found"
+    // Extract table name from the exception's tableName method if available, otherwise parse message
+    val tableName = try {
+      // NoSuchTableException has a tableName() method in Spark 4.0
+      e.getClass.getMethod("tableName").invoke(e).toString
+    } catch {
+      case _: Exception =>
+        // Fallback: try to extract from message
+        val msg = Option(e.getMessage).getOrElse("")
+        val backtickPattern = """`([^`]+)`""".r
+        backtickPattern.findAllIn(msg).toList.lastOption.getOrElse("unknown")
+    }
+    s"Table not found: $tableName"
   }
 
   /** Format namespace not found errors */
@@ -146,11 +154,15 @@ class ApiException private (message: String)
 }
 
 object ApiException {
-  /** Create an ApiException. The original cause is NOT included to keep output clean. */
-  def apply(message: String, cause: Throwable = null): ApiException = {
-    // Log the original cause for debugging if needed
-    if (cause != null && sys.props.get("apilytics.debug").contains("true")) {
-      System.err.println(s"[DEBUG] Original exception: ${cause.getClass.getName}: ${cause.getMessage}")
+  /** Create an ApiException.
+    *
+    * @param message Clean, formatted error message
+    * @param originalError The original exception for debug logging only (not set as cause)
+    */
+  def apply(message: String, originalError: Throwable = null): ApiException = {
+    // Log the original error for debugging if needed
+    if (originalError != null && sys.props.get("apilytics.debug").contains("true")) {
+      System.err.println(s"[DEBUG] Original exception: ${originalError.getClass.getName}: ${originalError.getMessage}")
     }
     new ApiException(message)
   }
