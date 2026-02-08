@@ -114,6 +114,30 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI 3.x specifi
 - **Arrow internals** - zero-copy path to Spark ColumnarBatch
 - **Parent-child joins** - chain API calls (e.g., fetch issues then comments for each)
 
+## Logging & Debugging
+
+APIlytics logs filter pushdown decisions at INFO level. To enable in spark-shell:
+
+```scala
+import org.apache.log4j.{Logger, Level}
+Logger.getLogger("com.apilytics").setLevel(Level.INFO)
+Logger.getLogger("org.apache.spark").setLevel(Level.WARN)
+```
+
+When you run a filtered query, you'll see which filters are pushed to the API:
+
+```
+INFO FilterPushdown: Filters pushed to API: state = 'open'
+```
+
+Filters without a matching `filters` config are applied locally by Spark:
+
+```
+INFO FilterPushdown: Filters applied locally by Spark: author = 'octocat'
+```
+
+This helps debug slow queries — pushed filters reduce API calls, while local filters scan all pages.
+
 ## Configuration
 
 See [`examples/github/github-config.conf`](examples/github/github-config.conf) for a complete configuration reference with all options documented.
