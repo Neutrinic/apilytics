@@ -72,11 +72,6 @@ class NullSafeArrowColumnVectorSuite extends FunSuite {
   // ==========================================================================
 
   test("getLong converts timestamp seconds to microseconds") {
-    val field = new Field(
-      "ts",
-      FieldType.nullable(new ArrowType.Timestamp(TimeUnit.SECOND, "UTC")),
-      null
-    )
     val vector = new TimeStampSecTZVector("ts", allocator, "UTC")
     try {
       vector.allocateNew(2)
