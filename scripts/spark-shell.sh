@@ -35,13 +35,13 @@ if [[ "$EXAMPLE" == "slack" ]] && [[ -z "$SLACK_BOT_TOKEN" ]]; then
     exit 1
 fi
 
-# Find the JAR file (handles version changes)
-JAR_FILE=$(ls target/scala-2.13/apilytics-*.jar 2>/dev/null | head -1)
+# JAR path (unversioned for simpler Docker mounts)
+JAR_FILE="target/scala-2.13/apilytics.jar"
 
 if [[ "$SKIP_BUILD" == "true" ]]; then
     echo "Skipping build..."
-elif [[ "$FORCE" != "true" ]] && [[ -n "$JAR_FILE" ]]; then
-    echo "JAR exists ($(basename "$JAR_FILE")), skipping build. Use --force to rebuild."
+elif [[ "$FORCE" != "true" ]] && [[ -f "$JAR_FILE" ]]; then
+    echo "JAR exists, skipping build. Use --force to rebuild."
 else
     echo "Building JAR..."
     if [[ "$CLEAN" == "true" ]]; then
@@ -49,16 +49,13 @@ else
     else
         sbt assembly || exit 1
     fi
-    # Re-find JAR after build
-    JAR_FILE=$(ls target/scala-2.13/apilytics-*.jar 2>/dev/null | head -1)
 fi
 
-# Set env var for docker compose (used in volume mount)
-if [[ -n "$JAR_FILE" ]]; then
-    export APILYTICS_JAR="$JAR_FILE"
-    echo "Using JAR: $(basename "$JAR_FILE")"
+# Verify JAR exists
+if [[ -f "$JAR_FILE" ]]; then
+    echo "Using JAR: $JAR_FILE"
 else
-    echo "Error: No JAR found matching target/scala-2.13/apilytics-*.jar"
+    echo "Error: JAR not found at $JAR_FILE"
     exit 1
 fi
 

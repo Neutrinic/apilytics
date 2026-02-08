@@ -2,7 +2,7 @@ lazy val root = (project in file("."))
   .settings(
     name := "apilytics",
     organization := "com.apilytics",
-    version := "0.1.0",
+    version := "0.2.0",
     scalaVersion := "2.13.16",
     libraryDependencies ++= Seq(
       // Spark
@@ -53,7 +53,7 @@ lazy val root = (project in file("."))
     Test / fork := true,
 
     // Assembly settings
-    assembly / assemblyJarName := s"apilytics-${version.value}.jar",
+    assembly / assemblyJarName := "apilytics.jar",
     assembly / assemblyMergeStrategy := {
       case PathList("META-INF", xs @ _*)           => MergeStrategy.discard
       case "module-info.class"                     => MergeStrategy.discard

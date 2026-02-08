@@ -26,14 +26,13 @@ if ($Example -eq "slack" -and -not $env:SLACK_BOT_TOKEN) {
     exit 1
 }
 
-# Find the JAR file (handles version changes)
-$JarPattern = "target/scala-2.13/apilytics-*.jar"
-$JarFile = Get-ChildItem -Path $JarPattern -ErrorAction SilentlyContinue | Select-Object -First 1
+# JAR path (unversioned for simpler Docker mounts)
+$JarFile = "target/scala-2.13/apilytics.jar"
 
 if ($SkipBuild) {
     Write-Host "Skipping build..." -ForegroundColor Yellow
-} elseif (-not $Force -and $JarFile) {
-    Write-Host "JAR exists ($($JarFile.Name)), skipping build. Use -Force to rebuild." -ForegroundColor Yellow
+} elseif (-not $Force -and (Test-Path $JarFile)) {
+    Write-Host "JAR exists, skipping build. Use -Force to rebuild." -ForegroundColor Yellow
 } else {
     Write-Host "Building JAR..." -ForegroundColor Cyan
     if ($Clean) {
@@ -45,16 +44,13 @@ if ($SkipBuild) {
         Write-Error "Build failed"
         exit 1
     }
-    # Re-find JAR after build
-    $JarFile = Get-ChildItem -Path $JarPattern -ErrorAction SilentlyContinue | Select-Object -First 1
 }
 
-# Set env var for docker compose (used in volume mount)
-if ($JarFile) {
-    $env:APILYTICS_JAR = $JarFile.FullName -replace '\\', '/'
-    Write-Host "Using JAR: $($JarFile.Name)" -ForegroundColor Gray
+# Verify JAR exists
+if (Test-Path $JarFile) {
+    Write-Host "Using JAR: $JarFile" -ForegroundColor Gray
 } else {
-    Write-Error "No JAR found matching $JarPattern"
+    Write-Error "JAR not found at $JarFile"
     exit 1
 }
 
