@@ -12,7 +12,7 @@ param(
     [switch]$Restart
 )
 
-$ValidExamples = @("pokeapi", "github", "slack")
+$ValidExamples = @("pokeapi", "github", "slack", "multi")
 if ($Example -notin $ValidExamples) {
     Write-Error "Unknown example: $Example. Available: $($ValidExamples -join ', ')"
     exit 1
@@ -102,6 +102,12 @@ if ($Example -eq "pokeapi") {
 } elseif ($Example -eq "slack") {
     Write-Host '  spark.sql("SELECT id, name FROM api.default.channels LIMIT 10").show()' -ForegroundColor DarkGray
     Write-Host '  spark.sql("SELECT id, name, real_name FROM api.default.users LIMIT 10").show()' -ForegroundColor DarkGray
+} elseif ($Example -eq "multi") {
+    Write-Host '  -- Two catalogs: github.default.* and pokemon.default.*' -ForegroundColor DarkGray
+    Write-Host '  spark.sql("SHOW TABLES IN github.default").show()' -ForegroundColor DarkGray
+    Write-Host '  spark.sql("SHOW TABLES IN pokemon.default").show()' -ForegroundColor DarkGray
+    Write-Host '  spark.sql("SELECT number, title FROM github.default.issues LIMIT 5").show()' -ForegroundColor DarkGray
+    Write-Host '  spark.sql("SELECT name, url FROM pokemon.default.pokemon LIMIT 5").show()' -ForegroundColor DarkGray
 }
 Write-Host ""
 
@@ -110,7 +116,17 @@ $EnvArgs = @()
 if ($env:GITHUB_TOKEN) { $EnvArgs += @("-e", "GITHUB_TOKEN=$env:GITHUB_TOKEN") }
 if ($env:SLACK_BOT_TOKEN) { $EnvArgs += @("-e", "SLACK_BOT_TOKEN=$env:SLACK_BOT_TOKEN") }
 
-docker exec -it @EnvArgs $Container spark-shell `
-    --jars $JarPath `
-    --conf "spark.sql.catalog.api=com.apilytics.spark.RESTCatalog" `
-    --conf "spark.sql.catalog.api.config=$ConfigPath"
+# Multi-catalog mode: load both github and pokemon catalogs
+if ($Example -eq "multi") {
+    docker exec -it @EnvArgs $Container spark-shell `
+        --jars $JarPath `
+        --conf "spark.sql.catalog.github=com.apilytics.spark.RESTCatalog" `
+        --conf "spark.sql.catalog.github.config=/opt/spark/examples/github/github-config.conf" `
+        --conf "spark.sql.catalog.pokemon=com.apilytics.spark.RESTCatalog" `
+        --conf "spark.sql.catalog.pokemon.config=/opt/spark/examples/pokeapi/pokeapi-config.conf"
+} else {
+    docker exec -it @EnvArgs $Container spark-shell `
+        --jars $JarPath `
+        --conf "spark.sql.catalog.api=com.apilytics.spark.RESTCatalog" `
+        --conf "spark.sql.catalog.api.config=$ConfigPath"
+}
