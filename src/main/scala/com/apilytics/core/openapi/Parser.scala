@@ -8,32 +8,35 @@ import io.swagger.v3.parser.core.models.ParseOptions
 import scala.jdk.CollectionConverters._
 
 /** Parsed representation of an OpenAPI schema property. */
-sealed trait OpenAPISchema
+@SerialVersionUID(1L)
+sealed trait OpenAPISchema extends Serializable
 object OpenAPISchema {
-  final case class StringType(format: Option[String] = None) extends OpenAPISchema
-  final case class IntegerType(format: Option[String] = None) extends OpenAPISchema
-  final case class NumberType(format: Option[String] = None) extends OpenAPISchema
-  case object BooleanType extends OpenAPISchema
-  final case class ArrayType(items: OpenAPISchema) extends OpenAPISchema
-  final case class ObjectType(properties: Map[String, OpenAPISchema], required: Set[String] = Set.empty) extends OpenAPISchema
+  @SerialVersionUID(1L) final case class StringType(format: Option[String] = None) extends OpenAPISchema
+  @SerialVersionUID(1L) final case class IntegerType(format: Option[String] = None) extends OpenAPISchema
+  @SerialVersionUID(1L) final case class NumberType(format: Option[String] = None) extends OpenAPISchema
+  @SerialVersionUID(1L) case object BooleanType extends OpenAPISchema
+  @SerialVersionUID(1L) final case class ArrayType(items: OpenAPISchema) extends OpenAPISchema
+  @SerialVersionUID(1L) final case class ObjectType(properties: Map[String, OpenAPISchema], required: Set[String] = Set.empty) extends OpenAPISchema
   /** VARIANT for ambiguous schemas: additionalProperties, empty object, missing type, anyOf, oneOf */
-  case object VariantType extends OpenAPISchema
-  case object UnknownType extends OpenAPISchema
+  @SerialVersionUID(1L) case object VariantType extends OpenAPISchema
+  @SerialVersionUID(1L) case object UnknownType extends OpenAPISchema
 }
 
 /** A discovered GET endpoint that returns an array of objects. */
+@SerialVersionUID(1L)
 final case class Endpoint(
     path: String,
     operationId: Option[String],
     responseSchema: OpenAPISchema.ObjectType,
     queryParams: List[QueryParam]
-)
+) extends Serializable
 
+@SerialVersionUID(1L)
 final case class QueryParam(
     name: String,
     schema: OpenAPISchema,
     required: Boolean
-)
+) extends Serializable
 
 object Parser {
 
@@ -171,7 +174,8 @@ object Parser {
   }
 }
 
+@SerialVersionUID(1L)
 final case class ParsedSpec(
     baseUrl: String,
     endpoints: List[Endpoint]
-)
+) extends Serializable
