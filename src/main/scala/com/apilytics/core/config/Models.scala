@@ -95,6 +95,15 @@ final case class TableConfig(
     joinStrategy: Option[JoinStrategy] = None
 )
 
+final case class CacheConfig(
+    /** Enable caching of parsed OpenAPI specs. */
+    enabled: Boolean = false,
+    /** Time-to-live for cached specs. None means indefinite (relies on ETag/mtime). */
+    ttl: Option[FiniteDuration] = None,
+    /** Cache directory. Defaults to ~/.apilytics/cache/ */
+    directory: Option[String] = None
+)
+
 final case class SourceConfig(
     openapi: String,
     auth: AuthConfig,
@@ -104,5 +113,7 @@ final case class SourceConfig(
     tables: Map[String, TableConfig] = Map.empty,
     /** Override the base URL from the OpenAPI spec. Useful when the spec doesn't
       * include servers or when you want to point to a different environment. */
-    baseUrl: Option[String] = None
+    baseUrl: Option[String] = None,
+    /** Cache configuration for parsed OpenAPI specs. */
+    cache: CacheConfig = CacheConfig()
 )

@@ -1,7 +1,7 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config.{ArrayHandling, Loader, SourceConfig, TableConfig}
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, ParsedSpec, Parser}
+import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, ParsedSpec, Parser, SpecCache}
 import com.apilytics.core.schema.SchemaMapper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.connector.catalog._
@@ -32,7 +32,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
     val configPath = options.get("config")
     require(configPath != null, s"Catalog '$name' requires 'config' option pointing to a HOCON config file")
     this.config = Loader.load(configPath)
-    this.spec = Parser.parse(config.openapi)
+    this.spec = SpecCache.getOrParse(config.openapi, config.cache)
   }
 
   // -- TableCatalog --

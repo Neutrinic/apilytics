@@ -28,7 +28,9 @@ object Loader {
              else HttpConfig(maxBackoff = 30.seconds, timeout = 30.seconds),
       tables = if (config.hasPath("tables")) readTables(config.getConfig("tables"))
                else Map.empty,
-      baseUrl = optional(config, "base-url")
+      baseUrl = optional(config, "base-url"),
+      cache = if (config.hasPath("cache")) readCache(config.getConfig("cache"))
+              else CacheConfig()
     )
   }
 
@@ -123,6 +125,15 @@ object Loader {
         } else None
       )
     }.toMap
+  }
+
+  private def readCache(config: Config): CacheConfig = {
+    CacheConfig(
+      enabled = if (config.hasPath("enabled")) config.getBoolean("enabled") else false,
+      ttl = if (config.hasPath("ttl")) Some(Duration(config.getString("ttl")).asInstanceOf[FiniteDuration])
+            else None,
+      directory = optional(config, "directory")
+    )
   }
 
   private def optional(config: Config, path: String): Option[String] =
