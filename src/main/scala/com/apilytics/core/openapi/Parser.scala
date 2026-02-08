@@ -138,7 +138,15 @@ object Parser {
       case _                    => false
     }
 
-    val tpe = Option(schema.getType).map(_.toString).orElse(Option(schema.get$ref).map(_ => "object"))
+    // OpenAPI 3.0 uses getType(), OpenAPI 3.1 uses getTypes() (array of types)
+    // For 3.1, we take the first non-null type from the array
+    val tpe = Option(schema.getType).map(_.toString)
+      .orElse {
+        // OpenAPI 3.1: getTypes() returns Set<String> like ["string", "null"]
+        Option(schema.getTypes)
+          .map(_.asScala.filterNot(_ == "null").headOption.getOrElse("null"))
+      }
+      .orElse(Option(schema.get$ref).map(_ => "object"))
     val hasProps = schema.getProperties != null && !schema.getProperties.isEmpty
 
     tpe match {
