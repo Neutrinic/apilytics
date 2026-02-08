@@ -1,6 +1,7 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config.FilterConfig
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.expressions.{Literal, NamedReference}
 import org.apache.spark.sql.connector.expressions.filter.Predicate
 
@@ -8,7 +9,7 @@ import org.apache.spark.sql.connector.expressions.filter.Predicate
   * Both RESTScanBuilder and ExplodedArrayScanBuilder mix in this trait
   * to map Spark SQL predicates to API query parameters.
   */
-trait FilterPushdown {
+trait FilterPushdown extends Logging {
 
   protected def filterConfigs: List[FilterConfig]
 
@@ -20,7 +21,21 @@ trait FilterPushdown {
     val results = predicates.map(p => p -> matchPredicate(p))
     _pushedPredicates = results.collect { case (p, Some(_)) => p }
     pushedParams = results.flatMap(_._2).toMap
-    results.collect { case (p, None) => p }
+    val localFilters = results.collect { case (p, None) => p }
+
+    // Log filter pushdown decisions
+    if (_pushedPredicates.nonEmpty || localFilters.nonEmpty) {
+      if (_pushedPredicates.nonEmpty) {
+        val pushed = _pushedPredicates.map(formatPredicate).mkString(", ")
+        logInfo(s"Filters pushed to API: $pushed")
+      }
+      if (localFilters.nonEmpty) {
+        val local = localFilters.map(formatPredicate).mkString(", ")
+        logInfo(s"Filters applied locally by Spark: $local")
+      }
+    }
+
+    localFilters
   }
 
   def pushedPredicates(): Array[Predicate] = _pushedPredicates
@@ -70,5 +85,22 @@ trait FilterPushdown {
     filterConfigs.find { fc =>
       fc.column == column && fc.operators.contains(operator)
     }.map(fc => fc.param -> value)
+  }
+
+  /** Format a predicate for human-readable logging. */
+  private def formatPredicate(p: Predicate): String = {
+    val children = p.children()
+    if (children.length == 2) {
+      (children(0), children(1)) match {
+        case (ref: NamedReference, lit: Literal[_]) =>
+          val column = ref.fieldNames().mkString(".")
+          val value = Option(lit.value()).map {
+            case s: String => s"'$s'"
+            case other     => other.toString
+          }.getOrElse("NULL")
+          s"$column ${p.name()} $value"
+        case _ => p.toString
+      }
+    } else p.toString
   }
 }
