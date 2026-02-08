@@ -10,6 +10,11 @@ import scala.concurrent.duration._
 
 class ResponseCacheSuite extends FunSuite {
 
+  // Clear singleton caches between tests to ensure isolation
+  override def beforeEach(context: BeforeEach): Unit = {
+    ResponseCache.clearSingletons()
+  }
+
   private def testResponse(data: String) = ApiResponse(
     json = Json.obj("data" -> Json.fromString(data)),
     status = 200,
@@ -31,7 +36,7 @@ class ResponseCacheSuite extends FunSuite {
 
   test("memory cache stores and retrieves responses") {
     val config = ResponseCacheConfig(enabled = true, ttl = 1.minute, maxEntries = 100)
-    val cache = ResponseCache.fromConfig(config).unsafeRunSync()
+    val cache = ResponseCache.fromConfig(config)
 
     val response = testResponse("hello")
 
@@ -51,7 +56,7 @@ class ResponseCacheSuite extends FunSuite {
 
   test("cache key includes endpoint and params") {
     val config = ResponseCacheConfig(enabled = true, ttl = 1.minute, maxEntries = 100)
-    val cache = ResponseCache.fromConfig(config).unsafeRunSync()
+    val cache = ResponseCache.fromConfig(config)
 
     val response1 = testResponse("response1")
     val response2 = testResponse("response2")
@@ -72,8 +77,9 @@ class ResponseCacheSuite extends FunSuite {
   }
 
   test("cache expires entries after TTL") {
-    val config = ResponseCacheConfig(enabled = true, ttl = 50.millis, maxEntries = 100)
-    val cache = ResponseCache.fromConfig(config).unsafeRunSync()
+    // Use unique TTL to get a fresh cache
+    val config = ResponseCacheConfig(enabled = true, ttl = 50.millis, maxEntries = 101)
+    val cache = ResponseCache.fromConfig(config)
 
     val response = testResponse("expires")
 
@@ -89,8 +95,9 @@ class ResponseCacheSuite extends FunSuite {
   }
 
   test("cache evicts LRU entries when full") {
+    // Use unique maxEntries to get a fresh cache
     val config = ResponseCacheConfig(enabled = true, ttl = 1.minute, maxEntries = 2)
-    val cache = ResponseCache.fromConfig(config).unsafeRunSync()
+    val cache = ResponseCache.fromConfig(config)
 
     val result = (for {
       _ <- cache.put("/a", Map.empty, testResponse("a"))
@@ -113,7 +120,7 @@ class ResponseCacheSuite extends FunSuite {
 
   test("clear removes all entries") {
     val config = ResponseCacheConfig(enabled = true, ttl = 1.minute, maxEntries = 100)
-    val cache = ResponseCache.fromConfig(config).unsafeRunSync()
+    val cache = ResponseCache.fromConfig(config)
 
     val result = (for {
       _ <- cache.put("/a", Map.empty, testResponse("a"))
@@ -131,7 +138,7 @@ class ResponseCacheSuite extends FunSuite {
 
   test("fromConfig returns disabled cache when not enabled") {
     val config = ResponseCacheConfig(enabled = false)
-    val cache = ResponseCache.fromConfig(config).unsafeRunSync()
+    val cache = ResponseCache.fromConfig(config)
 
     val result = (for {
       _ <- cache.put("/test", Map.empty, testResponse("test"))
@@ -143,7 +150,7 @@ class ResponseCacheSuite extends FunSuite {
 
   test("param order does not affect cache key") {
     val config = ResponseCacheConfig(enabled = true, ttl = 1.minute, maxEntries = 100)
-    val cache = ResponseCache.fromConfig(config).unsafeRunSync()
+    val cache = ResponseCache.fromConfig(config)
 
     val response = testResponse("test")
 
@@ -153,5 +160,27 @@ class ResponseCacheSuite extends FunSuite {
     } yield cached).unsafeRunSync()
 
     assertEquals(result, Some(response))
+  }
+
+  test("fromConfig returns singleton for same config") {
+    val config1 = ResponseCacheConfig(enabled = true, ttl = 5.minutes, maxEntries = 500)
+    val config2 = ResponseCacheConfig(enabled = true, ttl = 5.minutes, maxEntries = 500)
+
+    val cache1 = ResponseCache.fromConfig(config1)
+    val cache2 = ResponseCache.fromConfig(config2)
+
+    // Should be the exact same instance
+    assert(cache1 eq cache2, "Expected singleton cache for same config")
+  }
+
+  test("fromConfig returns different caches for different configs") {
+    val config1 = ResponseCacheConfig(enabled = true, ttl = 5.minutes, maxEntries = 500)
+    val config2 = ResponseCacheConfig(enabled = true, ttl = 10.minutes, maxEntries = 500)
+
+    val cache1 = ResponseCache.fromConfig(config1)
+    val cache2 = ResponseCache.fromConfig(config2)
+
+    // Should be different instances
+    assert(!(cache1 eq cache2), "Expected different caches for different configs")
   }
 }

@@ -2,7 +2,7 @@ package com.apilytics.spark
 
 import cats.effect.{IO, Resource}
 import com.apilytics.core.arrow.Converter
-import com.apilytics.core.http.{Client, Paginator}
+import com.apilytics.core.http.{Client, Paginator, ResponseCache}
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
@@ -19,8 +19,11 @@ class ExplodedArrayColumnarPartitionReader(partition: ExplodedArrayInputPartitio
   override protected val allocator: RootAllocator = new RootAllocator()
   override protected val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
 
+  // Use singleton cache that persists across queries on this executor
+  private val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
+
   override protected def clientResource: Resource[IO, Client.RestClient] =
-    Client.resource(partition.sourceConfig.http, partition.sourceConfig.auth)
+    Client.resource(partition.sourceConfig.http, partition.sourceConfig.auth, responseCache)
 
   override protected def buildStream(
       client: Client.RestClient

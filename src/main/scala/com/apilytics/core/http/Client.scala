@@ -22,7 +22,15 @@ final case class ApiResponse(
 
 object Client {
 
-  def resource(httpConfig: HttpConfig, authConfig: AuthConfig): Resource[IO, RestClient] = {
+  /** Create a client resource with an externally-managed response cache.
+    * The cache should be created at catalog initialization and passed here
+    * so it persists across queries.
+    */
+  def resource(
+      httpConfig: HttpConfig,
+      authConfig: AuthConfig,
+      responseCache: ResponseCache = ResponseCache.disabled
+  ): Resource[IO, RestClient] = {
     for {
       httpClient <- EmberClientBuilder.default[IO].withTimeout(httpConfig.timeout).build
       rateLimiter <- Resource.eval(
@@ -31,14 +39,14 @@ object Client {
           case None      => IO.pure(RateLimiter.unlimited)
         }
       )
-      responseCache <- Resource.eval(ResponseCache.fromConfig(httpConfig.responseCache))
     } yield new RestClient(httpClient, httpConfig, authConfig, None, rateLimiter, responseCache)
   }
 
   /** Create a client with OAuth2 token manager for dynamic token refresh. */
   def resourceWithOAuth2(
       httpConfig: HttpConfig,
-      authConfig: AuthConfig
+      authConfig: AuthConfig,
+      responseCache: ResponseCache = ResponseCache.disabled
   ): Resource[IO, RestClient] = {
     val clientId = authConfig.clientId.getOrElse(
       throw new IllegalArgumentException("OAuth2 client credentials requires client-id")
@@ -59,7 +67,6 @@ object Client {
           case None      => IO.pure(RateLimiter.unlimited)
         }
       )
-      responseCache <- Resource.eval(ResponseCache.fromConfig(httpConfig.responseCache))
     } yield new RestClient(httpClient, httpConfig, authConfig, Some(tokenManager), rateLimiter, responseCache)
   }
 
