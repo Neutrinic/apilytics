@@ -324,4 +324,277 @@ class ParserSuite extends FunSuite {
     val props = result.endpoints.head.responseSchema.properties
     assertEquals(props("payload"), OpenAPISchema.VariantType)
   }
+
+  // ==========================================================================
+  // OpenAPI 3.1 compatibility tests
+  // ==========================================================================
+
+  test("OpenAPI 3.1: type array with null (nullable) is parsed") {
+    // In OpenAPI 3.1, nullable is expressed as type: ["string", "null"]
+    val spec =
+      """{
+        |  "openapi": "3.1.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "id": { "type": "integer" },
+        |                    "nickname": { "type": ["string", "null"] }
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val props = result.endpoints.head.responseSchema.properties
+    // swagger-parser converts type array to the first non-null type
+    // If it doesn't, we'd get UnknownType or VariantType
+    assert(
+      props("nickname").isInstanceOf[OpenAPISchema.StringType] ||
+      props("nickname") == OpenAPISchema.VariantType,
+      s"Expected StringType or VariantType for nullable string, got ${props("nickname")}"
+    )
+  }
+
+  test("OpenAPI 3.1: basic spec parses correctly") {
+    val spec =
+      """{
+        |  "openapi": "3.1.0",
+        |  "info": { "title": "Test 3.1", "version": "1.0" },
+        |  "paths": {
+        |    "/users": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "id": { "type": "integer" },
+        |                    "name": { "type": "string" }
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    assertEquals(result.endpoints.size, 1)
+    assertEquals(result.endpoints.head.path, "/users")
+    val props = result.endpoints.head.responseSchema.properties
+    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
+    assert(props("name").isInstanceOf[OpenAPISchema.StringType])
+  }
+
+  test("OpenAPI 3.1: exclusiveMinimum as number (not boolean) parses") {
+    // In 3.0: exclusiveMinimum: true with minimum: 0
+    // In 3.1: exclusiveMinimum: 0 (just the number)
+    val spec =
+      """{
+        |  "openapi": "3.1.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "count": {
+        |                      "type": "integer",
+        |                      "exclusiveMinimum": 0
+        |                    }
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val props = result.endpoints.head.responseSchema.properties
+    // Should still parse as integer, exclusiveMinimum is just validation metadata
+    assert(props("count").isInstanceOf[OpenAPISchema.IntegerType])
+  }
+
+  test("OpenAPI 3.1: const value parses") {
+    // OpenAPI 3.1 supports JSON Schema const
+    val spec =
+      """{
+        |  "openapi": "3.1.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "version": { "type": "string", "const": "v1" },
+        |                    "id": { "type": "integer" }
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val props = result.endpoints.head.responseSchema.properties
+    // const is validation metadata, type should still be string
+    assert(props("version").isInstanceOf[OpenAPISchema.StringType])
+    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
+  }
+
+  test("OpenAPI 3.1: $defs at root level is NOT supported by swagger-parser".ignore) {
+    // LIMITATION: swagger-parser 2.1.x does not support $defs at root level.
+    // It reports: "attribute $defs is unexpected"
+    // Workaround: Use components/schemas instead of root-level $defs
+    //
+    // Note: OpenAPI 3.1 allows $defs at root level per JSON Schema 2020-12,
+    // but swagger-parser doesn't handle this yet.
+    val spec =
+      """{
+        |  "openapi": "3.1.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "$defs": {
+        |    "User": {
+        |      "type": "object",
+        |      "properties": {
+        |        "id": { "type": "integer" },
+        |        "name": { "type": "string" }
+        |      }
+        |    }
+        |  },
+        |  "paths": {
+        |    "/users": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": { "$ref": "#/$defs/User" }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    assertEquals(result.endpoints.size, 1)
+  }
+
+  test("OpenAPI 3.1: union type array produces VariantType") {
+    // In OpenAPI 3.1, type: ["string", "integer"] is a true union (not nullable)
+    // This should produce VariantType, not silently pick the first type
+    val spec =
+      """{
+        |  "openapi": "3.1.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "id": { "type": "integer" },
+        |                    "value": { "type": ["string", "integer"] }
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val props = result.endpoints.head.responseSchema.properties
+    // Union of string|integer should be VariantType, not StringType
+    assertEquals(props("value"), OpenAPISchema.VariantType)
+  }
+
+  test("OpenAPI 3.1: components/schemas references work") {
+    // Use components/schemas (the standard OpenAPI way) instead of $defs
+    val spec =
+      """{
+        |  "openapi": "3.1.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "components": {
+        |    "schemas": {
+        |      "User": {
+        |        "type": "object",
+        |        "properties": {
+        |          "id": { "type": "integer" },
+        |          "name": { "type": "string" }
+        |        }
+        |      }
+        |    }
+        |  },
+        |  "paths": {
+        |    "/users": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "description": "OK",
+        |            "content": {
+        |              "application/json": {
+        |                "schema": { "$ref": "#/components/schemas/User" }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    assertEquals(result.endpoints.size, 1)
+    val props = result.endpoints.head.responseSchema.properties
+    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
+    assert(props("name").isInstanceOf[OpenAPISchema.StringType])
+  }
 }
