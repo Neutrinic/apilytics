@@ -288,4 +288,150 @@ class DateRangePartitioningSuite extends FunSuite {
     val partitions = scan.planInputPartitions()
     assertEquals(partitions.length, 3)
   }
+
+  test("RESTScan handles empty range (start == end)") {
+    val partitionConfig = PartitionConfig(
+      column = "created_at",
+      range = 1.day,
+      startParam = "start",
+      endParam = "end"
+    )
+    val tableConfig = TableConfig(endpoint = "/events", partition = Some(partitionConfig))
+    val table = new RESTTable(
+      tableName = "events",
+      arrowSchema = dummySchema,
+      endpoint = dummyEndpoint,
+      tableConfig = Some(tableConfig),
+      sourceConfig = dummySourceConfig,
+      baseUrl = "https://api.example.com"
+    )
+
+    val scan = new RESTScan(
+      table = table,
+      arrowSchema = dummySchema,
+      prunedSchema = None,
+      pushedParams = Map(
+        "start" -> "2024-01-01T00:00:00Z",
+        "end" -> "2024-01-01T00:00:00Z"
+      ),
+      pushedLimit = None
+    )
+
+    val partitions = scan.planInputPartitions()
+    assertEquals(partitions.length, 0)
+  }
+
+  test("RESTScan handles range larger than span (single partition)") {
+    val partitionConfig = PartitionConfig(
+      column = "created_at",
+      range = 30.days,
+      startParam = "start",
+      endParam = "end"
+    )
+    val tableConfig = TableConfig(endpoint = "/events", partition = Some(partitionConfig))
+    val table = new RESTTable(
+      tableName = "events",
+      arrowSchema = dummySchema,
+      endpoint = dummyEndpoint,
+      tableConfig = Some(tableConfig),
+      sourceConfig = dummySourceConfig,
+      baseUrl = "https://api.example.com"
+    )
+
+    // 3-day range with 30-day partition size = 1 partition
+    val scan = new RESTScan(
+      table = table,
+      arrowSchema = dummySchema,
+      prunedSchema = None,
+      pushedParams = Map(
+        "start" -> "2024-01-01T00:00:00Z",
+        "end" -> "2024-01-04T00:00:00Z"
+      ),
+      pushedLimit = None
+    )
+
+    val partitions = scan.planInputPartitions()
+    assertEquals(partitions.length, 1)
+
+    val restPartition = partitions.head.asInstanceOf[RESTInputPartition]
+    assertEquals(restPartition.pushedParams("start"), "2024-01-01T00:00:00Z")
+    assertEquals(restPartition.pushedParams("end"), "2024-01-04T00:00:00Z")
+  }
+
+  test("RESTScan handles malformed date strings gracefully") {
+    val partitionConfig = PartitionConfig(
+      column = "created_at",
+      range = 1.day,
+      startParam = "start",
+      endParam = "end"
+    )
+    val tableConfig = TableConfig(endpoint = "/events", partition = Some(partitionConfig))
+    val table = new RESTTable(
+      tableName = "events",
+      arrowSchema = dummySchema,
+      endpoint = dummyEndpoint,
+      tableConfig = Some(tableConfig),
+      sourceConfig = dummySourceConfig,
+      baseUrl = "https://api.example.com"
+    )
+
+    // Invalid date format should fall back to single partition
+    val scan = new RESTScan(
+      table = table,
+      arrowSchema = dummySchema,
+      prunedSchema = None,
+      pushedParams = Map(
+        "start" -> "not-a-date",
+        "end" -> "2024-01-04T00:00:00Z"
+      ),
+      pushedLimit = None
+    )
+
+    val partitions = scan.planInputPartitions()
+    assertEquals(partitions.length, 1)
+
+    // Original params should be preserved in fallback
+    val restPartition = partitions.head.asInstanceOf[RESTInputPartition]
+    assertEquals(restPartition.pushedParams("start"), "not-a-date")
+  }
+
+  test("Loader parses table without partition config") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.tables("events").partition, None)
+  }
+
+  test("Loader rejects infinite duration for partition range") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    partition {
+        |      column = "created_at"
+        |      range = "Inf"
+        |      start-param = "start"
+        |      end-param = "end"
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException] {
+      Loader.load(config)
+    }
+    assert(ex.getMessage.contains("finite"))
+  }
 }

@@ -155,9 +155,15 @@ object Loader {
   }
 
   private def readPartition(config: Config): PartitionConfig = {
+    val range = Duration(config.getString("range")) match {
+      case fd: FiniteDuration => fd
+      case _ => throw new IllegalArgumentException(
+        s"partition.range must be a finite duration (got '${config.getString("range")}')"
+      )
+    }
     PartitionConfig(
       column = config.getString("column"),
-      range = Duration(config.getString("range")).asInstanceOf[FiniteDuration],
+      range = range,
       startParam = config.getString("start-param"),
       endParam = config.getString("end-param"),
       format = if (config.hasPath("format")) config.getString("format")

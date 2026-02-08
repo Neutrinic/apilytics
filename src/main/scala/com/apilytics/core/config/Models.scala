@@ -98,7 +98,9 @@ final case class FilterConfig(
 
 /** Configuration for date-range partitioning to enable parallel reads. */
 final case class PartitionConfig(
-    /** Column to partition by (must be a date/datetime column). */
+    /** Column to partition by (must be a date/datetime column).
+      * Currently used for documentation/validation; the actual partitioning
+      * relies on startParam/endParam matching pushed filter params. */
     column: String,
     /** Size of each partition (e.g., "1 day", "1 hour", "7 days"). */
     range: FiniteDuration,

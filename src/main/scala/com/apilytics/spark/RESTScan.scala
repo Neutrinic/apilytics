@@ -48,16 +48,40 @@ class RESTScan(
 
     (startValue, endValue) match {
       case (Some(start), Some(end)) =>
-        val formatter = DateTimeFormatter.ofPattern(config.format).withZone(ZoneOffset.UTC)
-        val startInstant = Instant.from(formatter.parse(start))
-        val endInstant = Instant.from(formatter.parse(end))
-        val rangeMillis = config.range.toMillis
+        tryParseAndPartition(config, start, end).getOrElse(singlePartitionFallback())
 
-        // Generate partition ranges
-        val ranges = generateRanges(startInstant.toEpochMilli, endInstant.toEpochMilli, rangeMillis)
+      case _ =>
+        // Date range not fully specified in query - fall back to single partition
+        // This is a warning because user configured partitioning but it's not being used
+        logWarning(s"Partition config specified but date range params " +
+          s"'${config.startParam}' and '${config.endParam}' not found in query filters. " +
+          "Using single partition. Ensure both predicates are pushed down via filter config.")
+        singlePartitionFallback()
+    }
+  }
+
+  /** Try to parse date range and create partitions. Returns None on parse errors. */
+  private def tryParseAndPartition(
+      config: PartitionConfig,
+      start: String,
+      end: String
+  ): Option[Array[InputPartition]] = {
+    try {
+      val formatter = DateTimeFormatter.ofPattern(config.format).withZone(ZoneOffset.UTC)
+      val startInstant = Instant.from(formatter.parse(start))
+      val endInstant = Instant.from(formatter.parse(end))
+      val rangeMillis = config.range.toMillis
+
+      // Generate partition ranges (iterative to avoid stack overflow)
+      val ranges = generateRanges(startInstant.toEpochMilli, endInstant.toEpochMilli, rangeMillis)
+
+      if (ranges.isEmpty) {
+        logInfo("Date range is empty (start >= end), returning empty partition list")
+        Some(Array.empty)
+      } else {
         logInfo(s"Partitioning into ${ranges.size} date ranges (${config.range} each)")
 
-        ranges.map { case (rangeStart, rangeEnd) =>
+        Some(ranges.map { case (rangeStart, rangeEnd) =>
           val startStr = formatter.format(Instant.ofEpochMilli(rangeStart))
           val endStr = formatter.format(Instant.ofEpochMilli(rangeEnd))
 
@@ -75,30 +99,40 @@ class RESTScan(
             pushedParams = partitionParams,
             pushedLimit = pushedLimit
           )
-        }.toArray
-
-      case _ =>
-        // Date range not fully specified in query - fall back to single partition
-        logInfo("Date range not specified in query, using single partition")
-        Array(RESTInputPartition(
-          endpoint = table.endpoint,
-          tableConfig = table.tableConfig,
-          sourceConfig = table.sourceConfig,
-          baseUrl = table.baseUrl,
-          arrowSchemaJson = arrowSchema.toJson,
-          pushedParams = pushedParams,
-          pushedLimit = pushedLimit
-        ))
+        }.toArray)
+      }
+    } catch {
+      case e: java.time.format.DateTimeParseException =>
+        logWarning(s"Failed to parse date range values (start='$start', end='$end') " +
+          s"with format '${config.format}': ${e.getMessage}. Using single partition.")
+        None
     }
   }
 
-  /** Generate non-overlapping ranges covering [start, end). */
+  /** Single partition fallback when partitioning cannot be applied. */
+  private def singlePartitionFallback(): Array[InputPartition] = {
+    Array(RESTInputPartition(
+      endpoint = table.endpoint,
+      tableConfig = table.tableConfig,
+      sourceConfig = table.sourceConfig,
+      baseUrl = table.baseUrl,
+      arrowSchemaJson = arrowSchema.toJson,
+      pushedParams = pushedParams,
+      pushedLimit = pushedLimit
+    ))
+  }
+
+  /** Generate non-overlapping ranges covering [start, end).
+    * Uses Iterator.unfold for stack safety with fine-grained partitions.
+    */
   private def generateRanges(start: Long, end: Long, rangeSize: Long): List[(Long, Long)] = {
-    if (start >= end) Nil
-    else {
-      val rangeEnd = math.min(start + rangeSize, end)
-      (start, rangeEnd) :: generateRanges(rangeEnd, end, rangeSize)
-    }
+    Iterator.unfold(start) { s =>
+      if (s >= end) None
+      else {
+        val rangeEnd = math.min(s + rangeSize, end)
+        Some(((s, rangeEnd), rangeEnd))
+      }
+    }.toList
   }
 
   override def createReaderFactory(): PartitionReaderFactory =
