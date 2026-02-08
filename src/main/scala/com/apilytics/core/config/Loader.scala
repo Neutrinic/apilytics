@@ -95,7 +95,8 @@ object Loader {
       maxBackoff = if (config.hasPath("max-backoff")) Duration(config.getString("max-backoff")).asInstanceOf[FiniteDuration]
                    else 30.seconds,
       timeout = if (config.hasPath("timeout")) Duration(config.getString("timeout")).asInstanceOf[FiniteDuration]
-                else 30.seconds
+                else 30.seconds,
+      rateLimit = if (config.hasPath("rate-limit")) Some(config.getInt("rate-limit")) else None
     )
   }
 

@@ -66,7 +66,9 @@ final case class SchemaConfig(
 final case class HttpConfig(
     maxRetries: Int = 5,
     maxBackoff: FiniteDuration,
-    timeout: FiniteDuration
+    timeout: FiniteDuration,
+    /** Maximum requests per second. None means no rate limiting. */
+    rateLimit: Option[Int] = None
 )
 
 final case class FilterConfig(
