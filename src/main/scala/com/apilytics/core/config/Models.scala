@@ -84,7 +84,12 @@ final case class HttpConfig(
     maxRetries: Int = 5,
     maxBackoff: FiniteDuration,
     timeout: FiniteDuration,
-    /** Maximum requests per second. None means no rate limiting. */
+    /** Maximum requests per second. None means no rate limiting.
+      *
+      * IMPORTANT: When using date-range partitioning, each partition runs in parallel
+      * with its own rate limiter. For example, with `rate-limit = 10` and 10 partitions,
+      * the effective rate is 100 rps (10 partitions × 10 rps each). Set this value to
+      * your API's rate limit divided by the expected number of partitions. */
     rateLimit: Option[Int] = None,
     /** Response caching configuration. */
     responseCache: ResponseCacheConfig = ResponseCacheConfig()
@@ -96,7 +101,15 @@ final case class FilterConfig(
     operators: List[String]
 )
 
-/** Configuration for date-range partitioning to enable parallel reads. */
+/** Configuration for date-range partitioning to enable parallel reads.
+  *
+  * Partitions are executed in parallel by Spark executors. Each partition creates
+  * its own HTTP client with independent rate limiting. See HttpConfig.rateLimit
+  * for guidance on setting appropriate rate limits with partitioned reads.
+  *
+  * Note: `pushedLimit` (from LIMIT N) applies per-partition, not globally.
+  * A query with LIMIT 10 and 5 partitions may fetch up to 50 rows before
+  * Spark applies the final limit. */
 final case class PartitionConfig(
     /** Column to partition by (must be a date/datetime column).
       * Currently used for documentation/validation; the actual partitioning
