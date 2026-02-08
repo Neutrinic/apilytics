@@ -31,7 +31,8 @@ object Client {
           case None      => IO.pure(RateLimiter.unlimited)
         }
       )
-    } yield new RestClient(httpClient, httpConfig, authConfig, None, rateLimiter)
+      responseCache <- Resource.eval(ResponseCache.fromConfig(httpConfig.responseCache))
+    } yield new RestClient(httpClient, httpConfig, authConfig, None, rateLimiter, responseCache)
   }
 
   /** Create a client with OAuth2 token manager for dynamic token refresh. */
@@ -58,7 +59,8 @@ object Client {
           case None      => IO.pure(RateLimiter.unlimited)
         }
       )
-    } yield new RestClient(httpClient, httpConfig, authConfig, Some(tokenManager), rateLimiter)
+      responseCache <- Resource.eval(ResponseCache.fromConfig(httpConfig.responseCache))
+    } yield new RestClient(httpClient, httpConfig, authConfig, Some(tokenManager), rateLimiter, responseCache)
   }
 
   class RestClient(
@@ -66,7 +68,8 @@ object Client {
       httpConfig: HttpConfig,
       authConfig: AuthConfig,
       tokenManager: Option[OAuth2TokenManager],
-      rateLimiter: RateLimiter
+      rateLimiter: RateLimiter,
+      responseCache: ResponseCache
   ) {
     private val applyAuth: Request[IO] => IO[Request[IO]] = tokenManager match {
       case Some(tm) => Auth.withTokenManager(tm)
@@ -80,12 +83,29 @@ object Client {
       val baseReq = Request[IO](uri = fullUri)
       val endpoint = uri.path.renderString
 
-      // Apply rate limiting before making the request
-      rateLimiter.acquire *>
-        applyAuth(baseReq).flatMap { req =>
-          executeWithRetry(req, baseReq, endpoint, params, attempt = 0, authRetried = false)
-        }
+      // Check cache first
+      responseCache.get(endpoint, params).flatMap {
+        case Some(cached) =>
+          IO.pure(cached)
+        case None =>
+          // Apply rate limiting before making the request
+          rateLimiter.acquire *>
+            applyAuth(baseReq).flatMap { req =>
+              executeWithRetry(req, baseReq, endpoint, params, attempt = 0, authRetried = false)
+            }.flatTap { response =>
+              // Only cache successful responses
+              if (response.status >= 200 && response.status < 300) {
+                responseCache.put(endpoint, params, response)
+              } else IO.unit
+            }
+      }
     }
+
+    /** Get cache statistics (hits, misses, size). */
+    def cacheStats: IO[ResponseCache.Stats] = responseCache.stats
+
+    /** Clear the response cache. */
+    def clearCache: IO[Unit] = responseCache.clear()
 
     private def executeWithRetry(
         req: Request[IO],
