@@ -70,10 +70,18 @@ object SpecCache {
 
   private def getCacheDir(config: CacheConfig): Path = {
     val dir = config.directory
-      .map(Paths.get(_))
+      .map(expandTilde)
       .getOrElse(Paths.get(System.getProperty("user.home"), ".apilytics", "cache"))
     Files.createDirectories(dir)
     dir
+  }
+
+  private def expandTilde(path: String): Path = {
+    if (path.startsWith("~/") || path == "~") {
+      Paths.get(System.getProperty("user.home"), path.stripPrefix("~/").stripPrefix("~"))
+    } else {
+      Paths.get(path)
+    }
   }
 
   private def cacheKey(specLocation: String): String = {
@@ -93,21 +101,23 @@ object SpecCache {
   }
 
   private def isValid(entry: CacheEntry, specLocation: String, config: CacheConfig): Boolean = {
-    // Check TTL first
-    config.ttl.foreach { ttl =>
-      val expiresAt = entry.cachedAt + ttl.toMillis
-      if (System.currentTimeMillis() > expiresAt) {
+    config.ttl match {
+      case Some(ttl) =>
+        // TTL configured: trust cache if within TTL, no remote check needed
+        val expiresAt = entry.cachedAt + ttl.toMillis
+        if (System.currentTimeMillis() <= expiresAt) {
+          log.debug("Cache valid (within TTL)")
+          return true
+        }
         log.debug("Cache entry expired (TTL)")
-        return false
-      }
-    }
-
-    // For remote URLs, check ETag/Last-Modified
-    if (specLocation.startsWith("http://") || specLocation.startsWith("https://")) {
-      checkRemoteValidity(specLocation, entry)
-    } else {
-      // For local files, check mtime
-      checkLocalValidity(specLocation, entry)
+        false
+      case None =>
+        // No TTL: validate against source
+        if (specLocation.startsWith("http://") || specLocation.startsWith("https://")) {
+          checkRemoteValidity(specLocation, entry)
+        } else {
+          checkLocalValidity(specLocation, entry)
+        }
     }
   }
 
