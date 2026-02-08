@@ -157,6 +157,31 @@ object Client {
               ))
             }
         }
+      }.handleErrorWith {
+        // Retry on network-level transient failures (connection timeout, socket errors, etc.)
+        case e if isTransientNetworkError(e) && attempt < httpConfig.maxRetries =>
+          val delay = exponentialBackoff(attempt)
+          IO.sleep(delay) *>
+            executeWithRetry(req, baseReq, endpoint, params, attempt + 1, authRetried)
+        case e => IO.raiseError(e)
+      }
+    }
+
+    /** Check if an exception is a transient network error worth retrying. */
+    private def isTransientNetworkError(e: Throwable): Boolean = {
+      import java.net.{ConnectException, SocketException, SocketTimeoutException}
+      import java.io.IOException
+      import java.util.concurrent.TimeoutException
+
+      e match {
+        case _: ConnectException       => true  // Connection refused, host unreachable
+        case _: SocketException        => true  // Connection reset, broken pipe
+        case _: SocketTimeoutException => true  // Read/connect timeout at socket level
+        case _: TimeoutException       => true  // General timeout (e.g., from http4s)
+        case e: IOException if e.getMessage != null &&
+          (e.getMessage.contains("Connection reset") ||
+           e.getMessage.contains("Broken pipe")) => true
+        case _ => false
       }
     }
 
