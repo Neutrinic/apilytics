@@ -98,7 +98,24 @@ object Loader {
                    else 30.seconds,
       timeout = if (config.hasPath("timeout")) Duration(config.getString("timeout")).asInstanceOf[FiniteDuration]
                 else 30.seconds,
-      rateLimit = if (config.hasPath("rate-limit")) Some(config.getInt("rate-limit")) else None
+      rateLimit = if (config.hasPath("rate-limit")) Some(config.getInt("rate-limit")) else None,
+      responseCache = if (config.hasPath("response-cache")) readResponseCache(config.getConfig("response-cache"))
+                      else ResponseCacheConfig()
+    )
+  }
+
+  private def readResponseCache(config: Config): ResponseCacheConfig = {
+    val backend = if (config.hasPath("backend")) config.getString("backend") match {
+      case "memory" => ResponseCacheBackend.Memory
+      case other    => throw new IllegalArgumentException(s"Unknown response cache backend: $other")
+    } else ResponseCacheBackend.Memory
+
+    ResponseCacheConfig(
+      enabled = if (config.hasPath("enabled")) config.getBoolean("enabled") else false,
+      backend = backend,
+      ttl = if (config.hasPath("ttl")) Duration(config.getString("ttl")).asInstanceOf[FiniteDuration]
+            else 5.minutes,
+      maxEntries = if (config.hasPath("max-entries")) config.getInt("max-entries") else 1000
     )
   }
 

@@ -63,12 +63,31 @@ final case class SchemaConfig(
     explodeOuter: Boolean = false
 )
 
+sealed trait ResponseCacheBackend
+object ResponseCacheBackend {
+  case object Memory extends ResponseCacheBackend
+  // Future: Disk, Redis
+}
+
+final case class ResponseCacheConfig(
+    /** Enable response caching. */
+    enabled: Boolean = false,
+    /** Cache backend. Currently only memory is supported. */
+    backend: ResponseCacheBackend = ResponseCacheBackend.Memory,
+    /** Time-to-live for cached responses. */
+    ttl: FiniteDuration = FiniteDuration(5, "minutes"),
+    /** Maximum number of cached entries (for memory backend). */
+    maxEntries: Int = 1000
+)
+
 final case class HttpConfig(
     maxRetries: Int = 5,
     maxBackoff: FiniteDuration,
     timeout: FiniteDuration,
     /** Maximum requests per second. None means no rate limiting. */
-    rateLimit: Option[Int] = None
+    rateLimit: Option[Int] = None,
+    /** Response caching configuration. */
+    responseCache: ResponseCacheConfig = ResponseCacheConfig()
 )
 
 final case class FilterConfig(

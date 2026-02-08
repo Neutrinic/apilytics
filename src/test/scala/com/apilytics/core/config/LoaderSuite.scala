@@ -171,4 +171,38 @@ class LoaderSuite extends FunSuite {
     assertEquals(result.pagination.resultsPath, Some("/results"))
     assertEquals(result.pagination.maxPages, 50)
   }
+
+  test("response-cache defaults to disabled") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.http.responseCache.enabled, false)
+    assertEquals(result.http.responseCache.backend, ResponseCacheBackend.Memory)
+  }
+
+  test("response-cache can be configured") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |http {
+        |  response-cache {
+        |    enabled = true
+        |    backend = memory
+        |    ttl = "10 minutes"
+        |    max-entries = 500
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.http.responseCache.enabled, true)
+    assertEquals(result.http.responseCache.backend, ResponseCacheBackend.Memory)
+    assertEquals(result.http.responseCache.ttl.toMinutes, 10L)
+    assertEquals(result.http.responseCache.maxEntries, 500)
+  }
 }
