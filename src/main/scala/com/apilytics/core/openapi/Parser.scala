@@ -139,12 +139,18 @@ object Parser {
     }
 
     // OpenAPI 3.0 uses getType(), OpenAPI 3.1 uses getTypes() (array of types)
-    // For 3.1, we take the first non-null type from the array
+    // For 3.1 with multiple non-null types (union), return VariantType
     val tpe = Option(schema.getType).map(_.toString)
       .orElse {
         // OpenAPI 3.1: getTypes() returns Set<String> like ["string", "null"]
-        Option(schema.getTypes)
-          .map(_.asScala.filterNot(_ == "null").headOption.getOrElse("null"))
+        Option(schema.getTypes).flatMap { types =>
+          val nonNullTypes = types.asScala.filterNot(_ == "null").toList
+          nonNullTypes match {
+            case Nil         => Some("null")
+            case single :: Nil => Some(single)
+            case _           => None // Multiple types = union, will fall through to VariantType
+          }
+        }
       }
       .orElse(Option(schema.get$ref).map(_ => "object"))
     val hasProps = schema.getProperties != null && !schema.getProperties.isEmpty

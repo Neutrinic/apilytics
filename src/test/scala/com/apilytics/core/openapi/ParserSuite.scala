@@ -520,6 +520,42 @@ class ParserSuite extends FunSuite {
     assertEquals(result.endpoints.size, 1)
   }
 
+  test("OpenAPI 3.1: union type array produces VariantType") {
+    // In OpenAPI 3.1, type: ["string", "integer"] is a true union (not nullable)
+    // This should produce VariantType, not silently pick the first type
+    val spec =
+      """{
+        |  "openapi": "3.1.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "responses": {
+        |          "200": {
+        |            "content": {
+        |              "application/json": {
+        |                "schema": {
+        |                  "type": "object",
+        |                  "properties": {
+        |                    "id": { "type": "integer" },
+        |                    "value": { "type": ["string", "integer"] }
+        |                  }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val props = result.endpoints.head.responseSchema.properties
+    // Union of string|integer should be VariantType, not StringType
+    assertEquals(props("value"), OpenAPISchema.VariantType)
+  }
+
   test("OpenAPI 3.1: components/schemas references work") {
     // Use components/schemas (the standard OpenAPI way) instead of $defs
     val spec =
