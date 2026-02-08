@@ -23,11 +23,15 @@ final case class ApiResponse(
 object Client {
 
   def resource(httpConfig: HttpConfig, authConfig: AuthConfig): Resource[IO, RestClient] = {
-    EmberClientBuilder
-      .default[IO]
-      .withTimeout(httpConfig.timeout)
-      .build
-      .map(new RestClient(_, httpConfig, authConfig, None))
+    for {
+      httpClient <- EmberClientBuilder.default[IO].withTimeout(httpConfig.timeout).build
+      rateLimiter <- Resource.eval(
+        httpConfig.rateLimit match {
+          case Some(rps) => RateLimiter(rps)
+          case None      => IO.pure(RateLimiter.unlimited)
+        }
+      )
+    } yield new RestClient(httpClient, httpConfig, authConfig, None, rateLimiter)
   }
 
   /** Create a client with OAuth2 token manager for dynamic token refresh. */
@@ -48,14 +52,21 @@ object Client {
     for {
       httpClient <- EmberClientBuilder.default[IO].withTimeout(httpConfig.timeout).build
       tokenManager <- Resource.eval(OAuth2TokenManager(clientId, clientSecret, tokenUrl, httpClient))
-    } yield new RestClient(httpClient, httpConfig, authConfig, Some(tokenManager))
+      rateLimiter <- Resource.eval(
+        httpConfig.rateLimit match {
+          case Some(rps) => RateLimiter(rps)
+          case None      => IO.pure(RateLimiter.unlimited)
+        }
+      )
+    } yield new RestClient(httpClient, httpConfig, authConfig, Some(tokenManager), rateLimiter)
   }
 
   class RestClient(
       underlying: Http4sClient[IO],
       httpConfig: HttpConfig,
       authConfig: AuthConfig,
-      tokenManager: Option[OAuth2TokenManager]
+      tokenManager: Option[OAuth2TokenManager],
+      rateLimiter: RateLimiter
   ) {
     private val applyAuth: Request[IO] => IO[Request[IO]] = tokenManager match {
       case Some(tm) => Auth.withTokenManager(tm)
@@ -69,9 +80,11 @@ object Client {
       val baseReq = Request[IO](uri = fullUri)
       val endpoint = uri.path.renderString
 
-      applyAuth(baseReq).flatMap { req =>
-        executeWithRetry(req, baseReq, endpoint, params, attempt = 0, authRetried = false)
-      }
+      // Apply rate limiting before making the request
+      rateLimiter.acquire *>
+        applyAuth(baseReq).flatMap { req =>
+          executeWithRetry(req, baseReq, endpoint, params, attempt = 0, authRetried = false)
+        }
     }
 
     private def executeWithRetry(
