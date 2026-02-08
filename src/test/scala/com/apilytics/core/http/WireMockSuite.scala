@@ -641,4 +641,136 @@ class WireMockSuite extends FunSuite {
     // All 3 API requests should succeed
     server.verify(3, getRequestedFor(urlPathEqualTo("/api/data")))
   }
+
+  test("OAuth2 proactively refreshes expired token during pagination") {
+    // Issue #79: Token expires mid-scan, should refresh before 401
+    // Token expires after 2 seconds, but we'll expire it 60s early (so effectively 0s)
+    server.stubFor(
+      post(urlPathEqualTo("/oauth/token"))
+        .inScenario("pagination-refresh")
+        .whenScenarioStateIs("Started")
+        .willReturn(okJson("""{"access_token": "token-1", "expires_in": 1}"""))
+        .willSetStateTo("first-token-issued")
+    )
+    server.stubFor(
+      post(urlPathEqualTo("/oauth/token"))
+        .inScenario("pagination-refresh")
+        .whenScenarioStateIs("first-token-issued")
+        .willReturn(okJson("""{"access_token": "token-2", "expires_in": 3600}"""))
+    )
+
+    // Page 1 - uses token-1
+    val page2Url = s"http://localhost:${server.port()}/items?page=2"
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withHeader("Authorization", equalTo("Bearer token-1"))
+        .withQueryParam("per_page", equalTo("5"))
+        .willReturn(
+          okJson("""[{"id": 1}]""")
+            .withHeader("Link", s"""<$page2Url>; rel="next"""")
+        )
+    )
+
+    // Page 2 - token-1 expired, should use token-2 after proactive refresh
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withHeader("Authorization", equalTo("Bearer token-2"))
+        .withQueryParam("page", equalTo("2"))
+        .willReturn(okJson("""[{"id": 2}]"""))
+    )
+
+    val authConfig = AuthConfig(
+      authType = AuthType.OAuth2Client,
+      clientId = Some("test-client"),
+      clientSecret = Some("test-secret"),
+      tokenUrl = Some(s"http://localhost:${server.port()}/oauth/token")
+    )
+
+    val pagination = PaginationConfig(
+      style = PaginationStyle.LinkHeader,
+      pageSizeParam = Some("per_page"),
+      maxPageSize = 5
+    )
+
+    // Wait for token-1 to expire (it has 1s expiry, minus 60s buffer = already expired)
+    // The first page fetch gets token-1, then we sleep to ensure expiry
+    val pages = Client.resourceWithOAuth2(defaultHttp, authConfig).use { client =>
+      Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
+        .evalTap(_ => IO.sleep(100.millis)) // Small delay between pages
+        .compile.toList
+    }.unsafeRunSync()
+
+    assertEquals(pages.size, 2)
+    // Token should be refreshed proactively before page 2
+    server.verify(2, postRequestedFor(urlPathEqualTo("/oauth/token")))
+  }
+
+  test("OAuth2 refreshes token on 401 during pagination") {
+    // Fallback: if proactive refresh fails, 401 triggers refresh
+    server.stubFor(
+      post(urlPathEqualTo("/oauth/token"))
+        .inScenario("pagination-401")
+        .whenScenarioStateIs("Started")
+        .willReturn(okJson("""{"access_token": "token-1", "expires_in": 3600}"""))
+        .willSetStateTo("first-token-issued")
+    )
+    server.stubFor(
+      post(urlPathEqualTo("/oauth/token"))
+        .inScenario("pagination-401")
+        .whenScenarioStateIs("first-token-issued")
+        .willReturn(okJson("""{"access_token": "token-2", "expires_in": 3600}"""))
+    )
+
+    // Page 1 succeeds with token-1
+    val page2Url = s"http://localhost:${server.port()}/items?page=2"
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withHeader("Authorization", equalTo("Bearer token-1"))
+        .withQueryParam("per_page", equalTo("5"))
+        .willReturn(
+          okJson("""[{"id": 1}]""")
+            .withHeader("Link", s"""<$page2Url>; rel="next"""")
+        )
+    )
+
+    // Page 2 with token-1 returns 401 (server-side expiry)
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withHeader("Authorization", equalTo("Bearer token-1"))
+        .withQueryParam("page", equalTo("2"))
+        .willReturn(unauthorized().withBody("Token expired"))
+    )
+
+    // Page 2 retry with token-2 succeeds
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withHeader("Authorization", equalTo("Bearer token-2"))
+        .withQueryParam("page", equalTo("2"))
+        .willReturn(okJson("""[{"id": 2}]"""))
+    )
+
+    val authConfig = AuthConfig(
+      authType = AuthType.OAuth2Client,
+      clientId = Some("test-client"),
+      clientSecret = Some("test-secret"),
+      tokenUrl = Some(s"http://localhost:${server.port()}/oauth/token")
+    )
+
+    val pagination = PaginationConfig(
+      style = PaginationStyle.LinkHeader,
+      pageSizeParam = Some("per_page"),
+      maxPageSize = 5
+    )
+
+    val pages = Client.resourceWithOAuth2(defaultHttp, authConfig).use { client =>
+      Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
+        .compile.toList
+    }.unsafeRunSync()
+
+    assertEquals(pages.size, 2)
+    // Token refreshed after 401
+    server.verify(2, postRequestedFor(urlPathEqualTo("/oauth/token")))
+    // Page 2 was fetched twice (401, then success)
+    server.verify(2, getRequestedFor(urlPathEqualTo("/items")).withQueryParam("page", equalTo("2")))
+  }
 }
