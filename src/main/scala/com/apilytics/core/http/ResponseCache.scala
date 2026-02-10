@@ -51,7 +51,7 @@ object ResponseCache {
     * reduces redundant API calls from that executor.
     */
   def fromConfig(config: ResponseCacheConfig): ResponseCache = synchronized {
-    if (!config.enabled) disabled
+    if (config == null || !config.enabled) disabled
     else {
       // Use singleton cache per config (keyed by ttl + maxEntries for identity)
       val key = (config.ttl, config.maxEntries)

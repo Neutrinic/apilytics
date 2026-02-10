@@ -31,6 +31,8 @@ object Client {
       authConfig: AuthConfig,
       responseCache: ResponseCache = ResponseCache.disabled
   ): Resource[IO, RestClient] = {
+    // Defensive null check - responseCache may be null if config deserialization failed
+    val cache = if (responseCache == null) ResponseCache.disabled else responseCache
     for {
       httpClient <- EmberClientBuilder.default[IO].withTimeout(httpConfig.timeout).build
       rateLimiter <- Resource.eval(
@@ -39,7 +41,7 @@ object Client {
           case None      => IO.pure(RateLimiter.unlimited)
         }
       )
-    } yield new RestClient(httpClient, httpConfig, authConfig, None, rateLimiter, responseCache)
+    } yield new RestClient(httpClient, httpConfig, authConfig, None, rateLimiter, cache)
   }
 
   /** Create a client with OAuth2 token manager for dynamic token refresh. */
@@ -48,6 +50,8 @@ object Client {
       authConfig: AuthConfig,
       responseCache: ResponseCache = ResponseCache.disabled
   ): Resource[IO, RestClient] = {
+    // Defensive null check - responseCache may be null if config deserialization failed
+    val cache = if (responseCache == null) ResponseCache.disabled else responseCache
     val clientId = authConfig.clientId.getOrElse(
       throw new IllegalArgumentException("OAuth2 client credentials requires client-id")
     )
@@ -67,7 +71,7 @@ object Client {
           case None      => IO.pure(RateLimiter.unlimited)
         }
       )
-    } yield new RestClient(httpClient, httpConfig, authConfig, Some(tokenManager), rateLimiter, responseCache)
+    } yield new RestClient(httpClient, httpConfig, authConfig, Some(tokenManager), rateLimiter, cache)
   }
 
   class RestClient(

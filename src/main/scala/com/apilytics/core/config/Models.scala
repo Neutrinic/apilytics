@@ -2,7 +2,7 @@ package com.apilytics.core.config
 
 import scala.concurrent.duration.FiniteDuration
 
-sealed trait AuthType
+sealed trait AuthType extends Serializable
 object AuthType {
   case object None extends AuthType
   case object Bearer extends AuthType
@@ -11,7 +11,7 @@ object AuthType {
   case object OAuth2Client extends AuthType
 }
 
-sealed trait PaginationStyle
+sealed trait PaginationStyle extends Serializable
 object PaginationStyle {
   case object Cursor extends PaginationStyle
   case object Offset extends PaginationStyle
@@ -19,7 +19,7 @@ object PaginationStyle {
   case object None extends PaginationStyle
 }
 
-sealed trait ArrayHandling
+sealed trait ArrayHandling extends Serializable
 object ArrayHandling {
   case object KeepArray extends ArrayHandling
   case object ExplodeView extends ArrayHandling
@@ -63,7 +63,7 @@ final case class SchemaConfig(
     explodeOuter: Boolean = false
 )
 
-sealed trait ResponseCacheBackend
+sealed trait ResponseCacheBackend extends Serializable
 object ResponseCacheBackend {
   case object Memory extends ResponseCacheBackend
   // Future: Disk, Redis
@@ -125,7 +125,7 @@ final case class PartitionConfig(
     format: String = "yyyy-MM-dd'T'HH:mm:ss'Z'"
 )
 
-sealed trait JoinStrategy
+sealed trait JoinStrategy extends Serializable
 object JoinStrategy {
   /** For each parent row, fetch child endpoint with substituted path parameter. */
   case object NestedLoop extends JoinStrategy
