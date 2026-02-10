@@ -139,7 +139,8 @@ object Loader {
         joinStrategy = if (tc.hasPath("join-strategy")) tc.getString("join-strategy") match {
           case "nested_loop" => Some(JoinStrategy.NestedLoop)
           case other         => throw new IllegalArgumentException(s"Unknown join strategy: $other")
-        } else None
+        } else None,
+        partition = if (tc.hasPath("partition")) Some(readPartition(tc.getConfig("partition"))) else None
       )
     }.toMap
   }
@@ -150,6 +151,23 @@ object Loader {
       ttl = if (config.hasPath("ttl")) Some(Duration(config.getString("ttl")).asInstanceOf[FiniteDuration])
             else None,
       directory = optional(config, "directory")
+    )
+  }
+
+  private def readPartition(config: Config): PartitionConfig = {
+    val range = Duration(config.getString("range")) match {
+      case fd: FiniteDuration => fd
+      case _ => throw new IllegalArgumentException(
+        s"partition.range must be a finite duration (got '${config.getString("range")}')"
+      )
+    }
+    PartitionConfig(
+      column = config.getString("column"),
+      range = range,
+      startParam = config.getString("start-param"),
+      endParam = config.getString("end-param"),
+      format = if (config.hasPath("format")) config.getString("format")
+               else "yyyy-MM-dd'T'HH:mm:ss'Z'"
     )
   }
 

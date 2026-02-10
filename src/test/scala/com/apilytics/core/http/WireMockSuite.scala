@@ -705,6 +705,116 @@ class WireMockSuite extends FunSuite {
     server.verify(2, postRequestedFor(urlPathEqualTo("/oauth/token")))
   }
 
+  // ============== DATE-RANGE PARTITIONING TESTS ==============
+
+  test("date-range partitioning sends correct bounded params to API") {
+    // Simulate an API that accepts start/end date params
+    server.stubFor(
+      get(urlPathEqualTo("/events"))
+        .withQueryParam("created_after", equalTo("2024-01-01T00:00:00Z"))
+        .withQueryParam("created_before", equalTo("2024-01-02T00:00:00Z"))
+        .willReturn(okJson("""[{"id": 1, "name": "event1"}]"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/events"))
+        .withQueryParam("created_after", equalTo("2024-01-02T00:00:00Z"))
+        .withQueryParam("created_before", equalTo("2024-01-03T00:00:00Z"))
+        .willReturn(okJson("""[{"id": 2, "name": "event2"}]"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/events"))
+        .withQueryParam("created_after", equalTo("2024-01-03T00:00:00Z"))
+        .withQueryParam("created_before", equalTo("2024-01-04T00:00:00Z"))
+        .willReturn(okJson("""[{"id": 3, "name": "event3"}]"""))
+    )
+
+    val pagination = PaginationConfig(style = PaginationStyle.None, maxPageSize = 100)
+
+    // Simulate 3 partitions making requests (like Spark would)
+    val partitionParams = List(
+      Map("created_after" -> "2024-01-01T00:00:00Z", "created_before" -> "2024-01-02T00:00:00Z"),
+      Map("created_after" -> "2024-01-02T00:00:00Z", "created_before" -> "2024-01-03T00:00:00Z"),
+      Map("created_after" -> "2024-01-03T00:00:00Z", "created_before" -> "2024-01-04T00:00:00Z")
+    )
+
+    val allResults = Client.resource(defaultHttp, noAuth).use { client =>
+      import cats.implicits._
+      partitionParams.traverse { params =>
+        Paginator.pages(client, baseUri.addPath("events"), params, pagination)
+          .compile.toList
+      }
+    }.unsafeRunSync()
+
+    // Each partition should return 1 page with 1 event
+    assertEquals(allResults.size, 3)
+    allResults.foreach(pages => assertEquals(pages.size, 1))
+
+    // Verify all 3 partition requests were made with correct bounded params
+    server.verify(1, getRequestedFor(urlPathEqualTo("/events"))
+      .withQueryParam("created_after", equalTo("2024-01-01T00:00:00Z"))
+      .withQueryParam("created_before", equalTo("2024-01-02T00:00:00Z")))
+    server.verify(1, getRequestedFor(urlPathEqualTo("/events"))
+      .withQueryParam("created_after", equalTo("2024-01-02T00:00:00Z"))
+      .withQueryParam("created_before", equalTo("2024-01-03T00:00:00Z")))
+    server.verify(1, getRequestedFor(urlPathEqualTo("/events"))
+      .withQueryParam("created_after", equalTo("2024-01-03T00:00:00Z"))
+      .withQueryParam("created_before", equalTo("2024-01-04T00:00:00Z")))
+  }
+
+  test("date-range partitioning works with pagination") {
+    // Each partition may have multiple pages
+    val page2Day1 = s"http://localhost:${server.port()}/events?created_after=2024-01-01T00:00:00Z&created_before=2024-01-02T00:00:00Z&page=2"
+
+    server.stubFor(
+      get(urlPathEqualTo("/events"))
+        .withQueryParam("created_after", equalTo("2024-01-01T00:00:00Z"))
+        .withQueryParam("created_before", equalTo("2024-01-02T00:00:00Z"))
+        .withQueryParam("per_page", equalTo("10"))
+        .willReturn(
+          okJson("""[{"id": 1}]""")
+            .withHeader("Link", s"""<$page2Day1>; rel="next"""")
+        )
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/events"))
+        .withQueryParam("created_after", equalTo("2024-01-01T00:00:00Z"))
+        .withQueryParam("created_before", equalTo("2024-01-02T00:00:00Z"))
+        .withQueryParam("page", equalTo("2"))
+        .willReturn(okJson("""[{"id": 2}]"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/events"))
+        .withQueryParam("created_after", equalTo("2024-01-02T00:00:00Z"))
+        .withQueryParam("created_before", equalTo("2024-01-03T00:00:00Z"))
+        .withQueryParam("per_page", equalTo("10"))
+        .willReturn(okJson("""[{"id": 3}]"""))
+    )
+
+    val pagination = PaginationConfig(
+      style = PaginationStyle.LinkHeader,
+      pageSizeParam = Some("per_page"),
+      maxPageSize = 10
+    )
+
+    // Partition 1: 2 pages, Partition 2: 1 page
+    val partitionParams = List(
+      Map("created_after" -> "2024-01-01T00:00:00Z", "created_before" -> "2024-01-02T00:00:00Z"),
+      Map("created_after" -> "2024-01-02T00:00:00Z", "created_before" -> "2024-01-03T00:00:00Z")
+    )
+
+    val allResults = Client.resource(defaultHttp, noAuth).use { client =>
+      import cats.implicits._
+      partitionParams.traverse { params =>
+        Paginator.pages(client, baseUri.addPath("events"), params, pagination)
+          .compile.toList
+      }
+    }.unsafeRunSync()
+
+    // Partition 1 has 2 pages, Partition 2 has 1 page
+    assertEquals(allResults(0).size, 2)
+    assertEquals(allResults(1).size, 1)
+  }
+
   test("OAuth2 refreshes token on 401 during pagination") {
     // Fallback: if proactive refresh fails, 401 triggers refresh
     server.stubFor(

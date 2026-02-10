@@ -73,10 +73,30 @@ trait FilterPushdown extends Logging {
   }
 
   private def literalToString(lit: Literal[_]): Option[String] = {
+    import java.time.{Instant, LocalDate, ZoneOffset}
+    import java.time.format.DateTimeFormatter
+
+    val isoFormatter = DateTimeFormatter.ISO_INSTANT
+
     lit.value() match {
       case null      => None
       case s: String => Some(s)
-      case n: Number => Some(n.toString)
+      case n: Number =>
+        // Check if this is a date/timestamp type by examining the dataType
+        val dataType = lit.dataType().typeName.toLowerCase
+        if (dataType.contains("timestamp")) {
+          // Spark timestamps are microseconds since epoch
+          val micros = n.longValue()
+          val instant = Instant.ofEpochSecond(micros / 1_000_000, (micros % 1_000_000) * 1000)
+          Some(isoFormatter.format(instant))
+        } else if (dataType.contains("date")) {
+          // Spark dates are days since epoch
+          val days = n.intValue()
+          val date = LocalDate.ofEpochDay(days)
+          Some(date.atStartOfDay(ZoneOffset.UTC).format(isoFormatter))
+        } else {
+          Some(n.toString)
+        }
       case other     => Some(other.toString)
     }
   }

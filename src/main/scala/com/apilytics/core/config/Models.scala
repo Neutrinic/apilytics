@@ -2,7 +2,7 @@ package com.apilytics.core.config
 
 import scala.concurrent.duration.FiniteDuration
 
-sealed trait AuthType
+sealed trait AuthType extends Serializable
 object AuthType {
   case object None extends AuthType
   case object Bearer extends AuthType
@@ -11,7 +11,7 @@ object AuthType {
   case object OAuth2Client extends AuthType
 }
 
-sealed trait PaginationStyle
+sealed trait PaginationStyle extends Serializable
 object PaginationStyle {
   case object Cursor extends PaginationStyle
   case object Offset extends PaginationStyle
@@ -19,7 +19,7 @@ object PaginationStyle {
   case object None extends PaginationStyle
 }
 
-sealed trait ArrayHandling
+sealed trait ArrayHandling extends Serializable
 object ArrayHandling {
   case object KeepArray extends ArrayHandling
   case object ExplodeView extends ArrayHandling
@@ -63,7 +63,7 @@ final case class SchemaConfig(
     explodeOuter: Boolean = false
 )
 
-sealed trait ResponseCacheBackend
+sealed trait ResponseCacheBackend extends Serializable
 object ResponseCacheBackend {
   case object Memory extends ResponseCacheBackend
   // Future: Disk, Redis
@@ -84,7 +84,12 @@ final case class HttpConfig(
     maxRetries: Int = 5,
     maxBackoff: FiniteDuration,
     timeout: FiniteDuration,
-    /** Maximum requests per second. None means no rate limiting. */
+    /** Maximum requests per second. None means no rate limiting.
+      *
+      * IMPORTANT: When using date-range partitioning, each partition runs in parallel
+      * with its own rate limiter. For example, with `rate-limit = 10` and 10 partitions,
+      * the effective rate is 100 rps (10 partitions × 10 rps each). Set this value to
+      * your API's rate limit divided by the expected number of partitions. */
     rateLimit: Option[Int] = None,
     /** Response caching configuration. */
     responseCache: ResponseCacheConfig = ResponseCacheConfig()
@@ -96,7 +101,31 @@ final case class FilterConfig(
     operators: List[String]
 )
 
-sealed trait JoinStrategy
+/** Configuration for date-range partitioning to enable parallel reads.
+  *
+  * Partitions are executed in parallel by Spark executors. Each partition creates
+  * its own HTTP client with independent rate limiting. See HttpConfig.rateLimit
+  * for guidance on setting appropriate rate limits with partitioned reads.
+  *
+  * Note: `pushedLimit` (from LIMIT N) applies per-partition, not globally.
+  * A query with LIMIT 10 and 5 partitions may fetch up to 50 rows before
+  * Spark applies the final limit. */
+final case class PartitionConfig(
+    /** Column to partition by (must be a date/datetime column).
+      * Currently used for documentation/validation; the actual partitioning
+      * relies on startParam/endParam matching pushed filter params. */
+    column: String,
+    /** Size of each partition (e.g., "1 day", "1 hour", "7 days"). */
+    range: FiniteDuration,
+    /** API parameter for start of range (inclusive). */
+    startParam: String,
+    /** API parameter for end of range (exclusive). */
+    endParam: String,
+    /** Format for date parameters (default: ISO 8601). */
+    format: String = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+)
+
+sealed trait JoinStrategy extends Serializable
 object JoinStrategy {
   /** For each parent row, fetch child endpoint with substituted path parameter. */
   case object NestedLoop extends JoinStrategy
@@ -111,7 +140,9 @@ final case class TableConfig(
     /** Field from parent table to substitute into endpoint path (e.g., "id"). */
     parentKey: Option[String] = None,
     /** Strategy for joining parent and child data. */
-    joinStrategy: Option[JoinStrategy] = None
+    joinStrategy: Option[JoinStrategy] = None,
+    /** Date-range partitioning configuration for parallel reads. */
+    partition: Option[PartitionConfig] = None
 )
 
 final case class CacheConfig(
