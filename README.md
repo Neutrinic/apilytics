@@ -7,7 +7,39 @@
 
 Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
-## Quick Start
+## Quickstart
+
+Try Apilytics instantly with Docker - no Java, Scala, or build tools required:
+
+```bash
+# Query PokeAPI (no auth needed)
+docker run -it --rm ghcr.io/neutrinic/apilytics:latest \
+  "SELECT name FROM api.default.pokemon LIMIT 5"
+
+# Interactive spark-sql shell
+docker run -it --rm ghcr.io/neutrinic/apilytics:latest
+
+# With your own config file
+docker run -it --rm \
+  -v ./my-config.conf:/config.conf \
+  ghcr.io/neutrinic/apilytics:latest \
+  --config /config.conf
+```
+
+Bundled configs:
+- `pokeapi.conf` (default) - PokeAPI, no auth
+- `github-public.conf` - GitHub public repos, no auth (60 req/hour limit)
+
+```bash
+# Use GitHub public config
+docker run -it --rm ghcr.io/neutrinic/apilytics:latest \
+  --config /opt/apilytics/configs/github-public.conf \
+  "SELECT number, title FROM api.default.issues LIMIT 5"
+```
+
+## Development Setup
+
+For local development or contributing:
 
 ```bash
 # Build the JAR
