@@ -12,30 +12,23 @@ Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 Try Apilytics instantly with Docker - no Java, Scala, or build tools required:
 
 ```bash
-# Query PokeAPI (no auth needed)
-docker run -it --rm ghcr.io/neutrinic/apilytics:latest \
-  "SELECT name FROM api.default.pokemon LIMIT 5"
-
+docker run -it --rm ghcr.io/neutrinic/apilytics:latest "SELECT name FROM api.default.pokemon LIMIT 20"
+```
+```bash
 # Interactive spark-sql shell
 docker run -it --rm ghcr.io/neutrinic/apilytics:latest
-
+# Interactive spark-sql shell with bundled Github
+docker run -it --rm ghcr.io/neutrinic/apilytics:latest --config /opt/apilytics/configs/github-public.conf
 # With your own config file
-docker run -it --rm \
-  -v ./my-config.conf:/config.conf \
-  ghcr.io/neutrinic/apilytics:latest \
-  --config /config.conf
+docker run -it --rm -v /path/to/my.conf:/config.conf ghcr.io/neutrinic/apilytics:latest --config /config.conf
+
+# Additional help
+docker run --rm ghcr.io/neutrinic/apilytics --help
 ```
 
 Bundled configs:
 - `pokeapi.conf` (default) - PokeAPI, no auth
 - `github-public.conf` - GitHub public repos, no auth (60 req/hour limit)
-
-```bash
-# Use GitHub public config
-docker run -it --rm ghcr.io/neutrinic/apilytics:latest \
-  --config /opt/apilytics/configs/github-public.conf \
-  "SELECT number, title FROM api.default.issues LIMIT 5"
-```
 
 ## Development Setup
 
@@ -257,6 +250,35 @@ Spark Catalog ← Tables ← ScanBuilder (pushdown) → HTTP Client
 - Apache Arrow (columnar format)
 - pureconfig (HOCON config)
 - fs2 (streaming pagination)
+
+## Example Queries
+
+```sql
+-- List all Pokemon types
+SELECT name FROM api.default.types;
+
+-- Count Pokemon by first letter
+SELECT SUBSTRING(name, 1, 1) AS letter, COUNT(*) AS count
+FROM api.default.pokemon
+GROUP BY SUBSTRING(name, 1, 1)
+ORDER BY count DESC;
+
+-- Join Pokemon with abilities (using exploded views)
+SELECT p.name AS pokemon, a.name AS ability
+FROM api.default.pokemon p
+JOIN api.default.abilities a ON p.url LIKE CONCAT('%/', a.url, '/%');
+
+-- GitHub: Find oldest open issues
+SELECT number, title, created_at
+FROM api.default.issues
+WHERE state = 'open'
+ORDER BY created_at ASC
+LIMIT 10;
+
+-- Cache results for faster repeated queries
+CACHE TABLE pokemon_cached AS SELECT * FROM api.default.pokemon;
+SELECT * FROM pokemon_cached WHERE name LIKE 'pika%';
+```
 
 ## License
 
