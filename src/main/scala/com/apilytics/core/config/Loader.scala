@@ -191,20 +191,50 @@ object Loader {
   }
 
   private def readPartition(config: Config): PartitionConfig = {
-    val range = Duration(config.getString("range")) match {
-      case fd: FiniteDuration => fd
-      case _ => throw new IllegalArgumentException(
-        s"partition.range must be a finite duration (got '${config.getString("range")}')"
-      )
+    val partitionType = if (config.hasPath("type")) config.getString("type") match {
+      case "date-range" => PartitionType.DateRange
+      case "enum"       => PartitionType.Enum
+      case other        => throw new IllegalArgumentException(s"Unknown partition type: $other")
+    } else PartitionType.DateRange // Default for backward compatibility
+
+    partitionType match {
+      case PartitionType.DateRange =>
+        val range = Duration(config.getString("range")) match {
+          case fd: FiniteDuration => fd
+          case _ => throw new IllegalArgumentException(
+            s"partition.range must be a finite duration (got '${config.getString("range")}')"
+          )
+        }
+        PartitionConfig(
+          partitionType = PartitionType.DateRange,
+          column = Some(config.getString("column")),
+          range = Some(range),
+          startParam = Some(config.getString("start-param")),
+          endParam = Some(config.getString("end-param")),
+          format = if (config.hasPath("format")) config.getString("format")
+                   else "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        )
+
+      case PartitionType.Enum =>
+        val param = if (config.hasPath("param")) config.getString("param")
+                    else throw new IllegalArgumentException(
+                      "Enum partition requires 'param' (query parameter name for filtering)"
+                    )
+        val values = if (config.hasPath("values")) config.getStringList("values").asScala.toList
+                     else throw new IllegalArgumentException(
+                       "Enum partition requires 'values' (list of enum values to partition by)"
+                     )
+        if (values.isEmpty) {
+          throw new IllegalArgumentException(
+            "Enum partition requires non-empty 'values' list"
+          )
+        }
+        PartitionConfig(
+          partitionType = PartitionType.Enum,
+          param = Some(param),
+          values = values
+        )
     }
-    PartitionConfig(
-      column = config.getString("column"),
-      range = range,
-      startParam = config.getString("start-param"),
-      endParam = config.getString("end-param"),
-      format = if (config.hasPath("format")) config.getString("format")
-               else "yyyy-MM-dd'T'HH:mm:ss'Z'"
-    )
   }
 
   private def readCount(config: Config): CountConfig = {
