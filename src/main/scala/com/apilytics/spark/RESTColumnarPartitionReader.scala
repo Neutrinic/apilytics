@@ -17,11 +17,12 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
   override protected val allocator: RootAllocator = new RootAllocator()
   override protected val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
 
-  // Use singleton cache that persists across queries on this executor
-  private val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
+  // Use lazy vals to avoid initialization order issues with LazyColumnarReader's constructor
+  // which starts a fiber that may access these before they're initialized
+  private lazy val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
 
   // Use effective rate limit calculated by RESTScan (distributed across partitions)
-  private val httpConfig = partition.effectiveRateLimit match {
+  private lazy val httpConfig = partition.effectiveRateLimit match {
     case Some(_) => partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
     case None    => partition.sourceConfig.http
   }
