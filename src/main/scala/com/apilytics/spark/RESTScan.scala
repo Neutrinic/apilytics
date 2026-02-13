@@ -3,6 +3,7 @@ package com.apilytics.spark
 import com.apilytics.core.config.PartitionConfig
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.internal.Logging
+import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
 import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan}
 import org.apache.spark.sql.types.StructType
 
@@ -14,7 +15,8 @@ class RESTScan(
     arrowSchema: ArrowSchema,
     prunedSchema: Option[StructType],
     pushedParams: Map[String, String],
-    pushedLimit: Option[Int]
+    pushedLimit: Option[Int],
+    pushedAggregation: Option[Aggregation] = None
 ) extends Scan with Batch with Logging {
 
   // If pruned, return the pruned schema; otherwise return full schema
@@ -23,6 +25,35 @@ class RESTScan(
   override def toBatch(): Batch = this
 
   override def planInputPartitions(): Array[InputPartition] = {
+    // If aggregation is pushed, return a single count partition
+    pushedAggregation match {
+      case Some(_) =>
+        planCountPartition()
+      case None =>
+        planDataPartitions()
+    }
+  }
+
+  /** Plan a single partition for COUNT(*) aggregation. */
+  private def planCountPartition(): Array[InputPartition] = {
+    val tableConfig = table.tableConfig
+      .getOrElse(throw new IllegalStateException("COUNT(*) pushed but no table config"))
+    val countConfig = tableConfig.count
+      .getOrElse(throw new IllegalStateException("COUNT(*) pushed but no count config"))
+
+    logInfo("Planning COUNT(*) partition using count endpoint")
+
+    Array(CountInputPartition(
+      tableConfig = tableConfig,
+      sourceConfig = table.sourceConfig,
+      baseUrl = table.baseUrl,
+      countConfig = countConfig,
+      pushedParams = pushedParams
+    ))
+  }
+
+  /** Plan partitions for regular data reads. */
+  private def planDataPartitions(): Array[InputPartition] = {
     table.tableConfig.flatMap(_.partition) match {
       case Some(partitionConfig) =>
         planDateRangePartitions(partitionConfig)

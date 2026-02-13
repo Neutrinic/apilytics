@@ -145,7 +145,8 @@ object Loader {
         batchParam = optional(tc, "batch-param"),
         batchSize = if (tc.hasPath("batch-size")) tc.getInt("batch-size") else 100,
         batchSeparator = if (tc.hasPath("batch-separator")) tc.getString("batch-separator") else ",",
-        childKeyField = optional(tc, "child-key-field")
+        childKeyField = optional(tc, "child-key-field"),
+        count = if (tc.hasPath("count")) Some(readCount(tc.getConfig("count"))) else None
       )
       
       // Validate batch join configuration
@@ -164,7 +165,18 @@ object Loader {
           )
         }
       }
-      
+
+      // Validate count config requires either endpoint or param
+      tableConfig.count.foreach { countConfig =>
+        if (countConfig.endpoint.isEmpty && countConfig.param.isEmpty) {
+          throw new IllegalArgumentException(
+            s"Table '$name' has count config but missing 'endpoint' or 'param'. " +
+            "Count pushdown requires either a dedicated count endpoint (e.g., endpoint = \"/items/count\") " +
+            "or a query parameter (e.g., param = \"include\", param-value = \"total_count\")."
+          )
+        }
+      }
+
       name -> tableConfig
     }.toMap
   }
@@ -192,6 +204,15 @@ object Loader {
       endParam = config.getString("end-param"),
       format = if (config.hasPath("format")) config.getString("format")
                else "yyyy-MM-dd'T'HH:mm:ss'Z'"
+    )
+  }
+
+  private def readCount(config: Config): CountConfig = {
+    CountConfig(
+      endpoint = optional(config, "endpoint"),
+      param = optional(config, "param"),
+      paramValue = if (config.hasPath("param-value")) config.getString("param-value") else "true",
+      responsePath = config.getString("response-path")
     )
   }
 

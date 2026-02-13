@@ -6,15 +6,30 @@ import org.apache.spark.sql.vectorized.ColumnarBatch
 
 class RESTPartitionReaderFactory extends PartitionReaderFactory {
 
-  override def supportColumnarReads(partition: InputPartition): Boolean = true
+  override def supportColumnarReads(partition: InputPartition): Boolean = {
+    // CountInputPartition returns a single row, use row-based reader
+    partition match {
+      case _: CountInputPartition => false
+      case _                      => true
+    }
+  }
 
   override def createColumnarReader(partition: InputPartition): PartitionReader[ColumnarBatch] = {
-    val p = partition.asInstanceOf[RESTInputPartition]
-    new RESTColumnarPartitionReader(p)
+    partition match {
+      case p: RESTInputPartition => new RESTColumnarPartitionReader(p)
+      case other => throw new IllegalArgumentException(
+        s"Columnar reader not supported for ${other.getClass.getSimpleName}"
+      )
+    }
   }
 
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] = {
-    val p = partition.asInstanceOf[RESTInputPartition]
-    new RESTPartitionReader(p)
+    partition match {
+      case p: RESTInputPartition   => new RESTPartitionReader(p)
+      case p: CountInputPartition  => new CountPartitionReader(p)
+      case other => throw new IllegalArgumentException(
+        s"Unknown partition type: ${other.getClass.getSimpleName}"
+      )
+    }
   }
 }
