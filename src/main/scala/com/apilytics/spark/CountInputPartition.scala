@@ -14,5 +14,9 @@ case class CountInputPartition(
     sourceConfig: SourceConfig,
     baseUrl: String,
     countConfig: CountConfig,
-    pushedParams: Map[String, String]
+    pushedParams: Map[String, String],
+    /** Effective rate limit for this partition.
+      * For COUNT(*), this is typically the full configured limit since
+      * there's only one partition making a single request. */
+    effectiveRateLimit: Option[Int] = None
 ) extends InputPartition

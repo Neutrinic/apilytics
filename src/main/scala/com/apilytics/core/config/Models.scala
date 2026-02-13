@@ -84,12 +84,15 @@ final case class HttpConfig(
     maxRetries: Int = 5,
     maxBackoff: FiniteDuration,
     timeout: FiniteDuration,
-    /** Maximum requests per second. None means no rate limiting.
+    /** Maximum requests per second (global limit). None means no rate limiting.
       *
-      * IMPORTANT: When using date-range partitioning, each partition runs in parallel
-      * with its own rate limiter. For example, with `rate-limit = 10` and 10 partitions,
-      * the effective rate is 100 rps (10 partitions × 10 rps each). Set this value to
-      * your API's rate limit divided by the expected number of partitions. */
+      * When using date-range partitioning, the configured rate limit is automatically
+      * distributed across partitions. For example, with `rate-limit = 100` and 10 partitions,
+      * each partition will be limited to 10 rps to maintain the overall 100 rps limit.
+      *
+      * Edge case: If the rate limit is less than the number of partitions (e.g., 5 rps with
+      * 10 partitions), each partition gets a minimum of 1 rps with a warning that the total
+      * may exceed the configured limit. */
     rateLimit: Option[Int] = None,
     /** Response caching configuration. */
     responseCache: ResponseCacheConfig = ResponseCacheConfig()

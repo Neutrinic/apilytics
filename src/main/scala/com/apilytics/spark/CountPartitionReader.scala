@@ -53,9 +53,15 @@ class CountPartitionReader(partition: CountInputPartition) extends PartitionRead
         partition.pushedParams
     }
 
+    // Use effective rate limit (typically full limit for single COUNT partition)
+    val httpConfig = partition.effectiveRateLimit match {
+      case Some(_) => partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
+      case None    => partition.sourceConfig.http
+    }
+
     // Make request
     val program: IO[Long] = Client
-      .resource(partition.sourceConfig.http, partition.sourceConfig.auth)
+      .resource(httpConfig, partition.sourceConfig.auth)
       .use { client =>
         client.get(uri, params).map { response =>
           extractCount(response.json, config.responsePath)

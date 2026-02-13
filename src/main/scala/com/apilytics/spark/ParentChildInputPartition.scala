@@ -16,5 +16,8 @@ case class ParentChildInputPartition(
     baseUrl: String,
     arrowSchemaJson: String,
     pushedParams: Map[String, String] = Map.empty,
-    pushedLimit: Option[Int] = None
+    pushedLimit: Option[Int] = None,
+    /** Effective rate limit for this partition (configured limit / number of partitions).
+      * Automatically distributed by ParentChildScan to prevent exceeding API limits. */
+    effectiveRateLimit: Option[Int] = None
 ) extends InputPartition

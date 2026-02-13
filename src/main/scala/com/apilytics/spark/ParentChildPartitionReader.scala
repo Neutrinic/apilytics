@@ -48,8 +48,14 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
     val joinStrategy = partition.tableConfig.joinStrategy.getOrElse(JoinStrategy.NestedLoop)
 
+    // Use effective rate limit calculated by ParentChildScan (distributed across partitions)
+    val httpConfig = partition.effectiveRateLimit match {
+      case Some(_) => partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
+      case None    => partition.sourceConfig.http
+    }
+
     val program: IO[List[InternalRow]] = Client
-      .resource(partition.sourceConfig.http, partition.sourceConfig.auth)
+      .resource(httpConfig, partition.sourceConfig.auth)
       .use { client =>
         // Fetch parent records
         val parentPages = Paginator.pages(
