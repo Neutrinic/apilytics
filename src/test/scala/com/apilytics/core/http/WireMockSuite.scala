@@ -1102,4 +1102,144 @@ class WireMockSuite extends FunSuite {
     server.verify(1, getRequestedFor(urlPathEqualTo("/tasks"))
       .withQueryParam("project_ids", equalTo("1,2")))
   }
+
+  // ============== COUNT AGGREGATION PUSHDOWN TESTS ===============
+
+  test("COUNT(*) pushdown uses count endpoint") {
+    // Count endpoint returns total count
+    server.stubFor(
+      get(urlPathEqualTo("/items/count"))
+        .willReturn(okJson("""{"total": 42}"""))
+    )
+
+    val countConfig = CountConfig(
+      endpoint = Some("/items/count"),
+      responsePath = "/total"
+    )
+
+    val tableConfig = TableConfig(
+      endpoint = "/items",
+      count = Some(countConfig)
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    val partition = CountInputPartition(
+      tableConfig = tableConfig,
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      countConfig = countConfig,
+      pushedParams = Map.empty
+    )
+
+    val reader = new CountPartitionReader(partition)
+
+    // Should have exactly one row
+    assert(reader.next())
+    val row = reader.get()
+    assertEquals(row.getLong(0), 42L)
+
+    // No more rows
+    assert(!reader.next())
+    reader.close()
+
+    // Verify count endpoint was called, not the main endpoint
+    server.verify(1, getRequestedFor(urlPathEqualTo("/items/count")))
+    server.verify(0, getRequestedFor(urlPathEqualTo("/items")))
+  }
+
+  test("COUNT(*) pushdown with query param") {
+    // Endpoint returns count when param is passed
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("include", equalTo("total_count"))
+        .willReturn(okJson("""{"total_count": 100, "items": []}"""))
+    )
+
+    val countConfig = CountConfig(
+      param = Some("include"),
+      paramValue = "total_count",
+      responsePath = "/total_count"
+    )
+
+    val tableConfig = TableConfig(
+      endpoint = "/items",
+      count = Some(countConfig)
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    val partition = CountInputPartition(
+      tableConfig = tableConfig,
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      countConfig = countConfig,
+      pushedParams = Map.empty
+    )
+
+    val reader = new CountPartitionReader(partition)
+
+    assert(reader.next())
+    val row = reader.get()
+    assertEquals(row.getLong(0), 100L)
+    assert(!reader.next())
+    reader.close()
+
+    // Verify param was sent
+    server.verify(1, getRequestedFor(urlPathEqualTo("/items"))
+      .withQueryParam("include", equalTo("total_count")))
+  }
+
+  test("COUNT(*) pushdown includes pushed filter params") {
+    server.stubFor(
+      get(urlPathEqualTo("/items/count"))
+        .withQueryParam("status", equalTo("active"))
+        .willReturn(okJson("""{"count": 25}"""))
+    )
+
+    val countConfig = CountConfig(
+      endpoint = Some("/items/count"),
+      responsePath = "/count"
+    )
+
+    val tableConfig = TableConfig(
+      endpoint = "/items",
+      count = Some(countConfig)
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    val partition = CountInputPartition(
+      tableConfig = tableConfig,
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      countConfig = countConfig,
+      pushedParams = Map("status" -> "active")
+    )
+
+    val reader = new CountPartitionReader(partition)
+
+    assert(reader.next())
+    assertEquals(reader.get().getLong(0), 25L)
+    reader.close()
+
+    // Verify filter was passed to count endpoint
+    server.verify(1, getRequestedFor(urlPathEqualTo("/items/count"))
+      .withQueryParam("status", equalTo("active")))
+  }
 }

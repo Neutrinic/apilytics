@@ -133,6 +133,20 @@ object JoinStrategy {
   case object Batch extends JoinStrategy
 }
 
+/** Configuration for COUNT(*) aggregation pushdown. */
+final case class CountConfig(
+    /** Endpoint that returns the count (e.g., "/items/count").
+      * If not specified, uses the main endpoint with countParam. */
+    endpoint: Option[String] = None,
+    /** Query parameter to request count (e.g., "include" for ?include=total_count).
+      * Only used if endpoint is not specified. */
+    param: Option[String] = None,
+    /** Value for the count query parameter (default: "true"). */
+    paramValue: String = "true",
+    /** JSON pointer to extract count from response (e.g., "/total_count"). */
+    responsePath: String
+)
+
 final case class TableConfig(
     endpoint: String,
     dataPath: Option[String] = None,
@@ -153,7 +167,9 @@ final case class TableConfig(
     batchSeparator: String = ",",
     /** Field in child records that references the parent (batch join strategy).
       * Defaults to parentKey if not specified. */
-    childKeyField: Option[String] = None
+    childKeyField: Option[String] = None,
+    /** Configuration for COUNT(*) aggregation pushdown. */
+    count: Option[CountConfig] = None
 )
 
 final case class CacheConfig(

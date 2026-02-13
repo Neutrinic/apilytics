@@ -234,6 +234,32 @@ class ParentChildSuite extends FunSuite {
     assertEquals(tableConfig.childKeyField, Some("proj_id"))
   }
 
+  test("Loader validates count config requires endpoint or param") {
+    import com.typesafe.config.ConfigFactory
+
+    val hocon = """
+      openapi = "test.yaml"
+      auth { type = "bearer", token = "test" }
+      http { timeout = "30s", max-backoff = "30s" }
+      tables {
+        items {
+          endpoint = "/items"
+          count {
+            response-path = "/total"
+          }
+        }
+      }
+    """
+
+    val error = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString(hocon))
+    }
+
+    assert(error.getMessage.contains("count config"))
+    assert(error.getMessage.contains("endpoint"))
+    assert(error.getMessage.contains("param"))
+  }
+
   // --- ParentChildTable tests ---
 
   test("ParentChildTable extracts path parameter name from endpoint template") {
