@@ -3,6 +3,7 @@ package com.apilytics.spark
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
+import com.apilytics.core.config.JoinStrategy
 import com.apilytics.core.http.{Client, Paginator}
 import io.circe.Json
 import org.apache.arrow.memory.RootAllocator
@@ -45,6 +46,7 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
   private def fetchParentChildRows(): Iterator[InternalRow] = {
     val parentBaseUri = Uri.unsafeFromString(partition.baseUrl + partition.parentEndpoint.path)
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
+    val joinStrategy = partition.tableConfig.joinStrategy.getOrElse(JoinStrategy.NestedLoop)
 
     val program: IO[List[InternalRow]] = Client
       .resource(partition.sourceConfig.http, partition.sourceConfig.auth)
@@ -58,72 +60,138 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
           None
         )
 
-        parentPages
-          .flatMap { pageJson =>
-            val records = Converter.extractRecords(pageJson, None)
-            fs2.Stream.emits(records)
-          }
-          .flatMap { parentRecord =>
-            // Extract parent key JSON value (preserve original type for output column)
-            val parentKeyJson = parentRecord.asObject.flatMap(_.apply(partition.parentKey))
+        val parentRecords: fs2.Stream[IO, Json] = parentPages.flatMap { pageJson =>
+          val records = Converter.extractRecords(pageJson, None)
+          fs2.Stream.emits(records)
+        }
 
-            // Convert to string for path substitution
-            val parentKeyString = parentKeyJson.flatMap { json =>
-              json.asString
-                .orElse(json.asNumber.map(_.toString))
-                .orElse(json.asBoolean.map(_.toString))
-            }
-
-            parentKeyString match {
-              case None => fs2.Stream.empty
-              case Some(keyValue) =>
-                val childPath = partition.childEndpointTemplate.replace(
-                  s"{${partition.pathParamName}}",
-                  keyValue
-                )
-                val childUri = Uri.unsafeFromString(partition.baseUrl + childPath)
-                val dataPath = partition.tableConfig.dataPath
-
-                Paginator.pages(
-                  client,
-                  childUri,
-                  partition.pushedParams,
-                  partition.sourceConfig.pagination,
-                  partition.pushedLimit
-                ).flatMap { pageJson =>
-                  val childRecords = Converter.extractRecords(pageJson, dataPath)
-                  if (childRecords.isEmpty) fs2.Stream.empty
-                  else {
-                    // Add parent key column preserving original JSON type
-                    val enrichedRecords = childRecords.map { childRecord =>
-                      childRecord.asObject match {
-                        case Some(obj) =>
-                          Json.fromFields(
-                            (partition.parentKeyColumn -> parentKeyJson.get) +: obj.toList
-                          )
-                        case None =>
-                          Json.obj(
-                            partition.parentKeyColumn -> parentKeyJson.get,
-                            "value" -> childRecord
-                          )
-                      }
-                    }
-
-                    val root = Converter.toArrow(enrichedRecords, arrowSchema, allocator)
-                    val rows = try {
-                      ArrowUtils.arrowToInternalRows(root)
-                    } finally {
-                      root.close()
-                    }
-                    fs2.Stream.emits(rows)
-                  }
-                }
-            }
-          }
-          .compile
-          .toList
+        val rowsStream = joinStrategy match {
+          case JoinStrategy.Batch =>
+            executeBatchJoin(parentRecords, client, batchSize)
+          case JoinStrategy.NestedLoop =>
+            executeNestedLoopJoin(parentRecords, client, batchSize)
+        }
+        rowsStream.compile.toList
       }
 
     program.unsafeRunSync().iterator
+  }
+
+  private def executeNestedLoopJoin(
+      parentRecords: fs2.Stream[IO, Json],
+      client: Client.RestClient,
+      batchSize: Int
+  ): fs2.Stream[IO, InternalRow] = {
+    parentRecords.flatMap { parentRecord =>
+      val parentKeyJson = parentRecord.asObject.flatMap(_.apply(partition.parentKey))
+      val parentKeyString = parentKeyJson.flatMap(ParentChildUtils.jsonToString)
+
+      parentKeyString match {
+        case None => fs2.Stream.empty
+        case Some(keyValue) =>
+          val childPath = partition.childEndpointTemplate.replace(
+            s"{${partition.pathParamName}}",
+            keyValue
+          )
+          val childUri = Uri.unsafeFromString(partition.baseUrl + childPath)
+          val dataPath = partition.tableConfig.dataPath
+
+          Paginator.pages(
+            client,
+            childUri,
+            partition.pushedParams,
+            partition.sourceConfig.pagination,
+            partition.pushedLimit
+          ).flatMap { pageJson =>
+            val childRecords = Converter.extractRecords(pageJson, dataPath)
+            if (childRecords.isEmpty) fs2.Stream.empty
+            else {
+              val enrichedRecords = childRecords.map { childRecord =>
+                ParentChildUtils.enrichChildRecord(childRecord, parentKeyJson.get, partition.parentKeyColumn)
+              }
+              val root = Converter.toArrow(enrichedRecords, arrowSchema, allocator)
+              val rows = try {
+                ArrowUtils.arrowToInternalRows(root)
+              } finally {
+                root.close()
+              }
+              fs2.Stream.emits(rows)
+            }
+          }
+      }
+    }
+  }
+
+  private def executeBatchJoin(
+      parentRecords: fs2.Stream[IO, Json],
+      client: Client.RestClient,
+      arrowBatchSize: Int
+  ): fs2.Stream[IO, InternalRow] = {
+    val batchParam = partition.tableConfig.batchParam.getOrElse(
+      throw new IllegalArgumentException(
+        "Batch join strategy requires 'batch-param' in table config"
+      )
+    )
+    val maxBatchSize = partition.tableConfig.batchSize
+    val separator = partition.tableConfig.batchSeparator
+
+    val childBaseUri = Uri.unsafeFromString(partition.baseUrl + partition.tableConfig.endpoint)
+    val dataPath = partition.tableConfig.dataPath
+
+    parentRecords
+      .map { parentRecord =>
+        val parentKeyJson = parentRecord.asObject.flatMap(_.apply(partition.parentKey))
+        val parentKeyString = parentKeyJson.flatMap(ParentChildUtils.jsonToString)
+        (parentKeyString, parentKeyJson)
+      }
+      .collect { case (Some(keyStr), Some(keyJson)) => (keyStr, keyJson) }
+      .chunkN(maxBatchSize)
+      .flatMap { batchChunk =>
+        val batch = batchChunk.toList
+        // toMap silently drops duplicate parent keys, but this is safe because
+        // we only use the map to look up JSON values for enrichment, and duplicate
+        // keys map to the same value anyway.
+        val parentKeysMap = batch.toMap
+        val keyValues = batch.map(_._1).mkString(separator)
+
+        val batchParams = partition.pushedParams + (batchParam -> keyValues)
+
+        Paginator.pages(
+          client,
+          childBaseUri,
+          batchParams,
+          partition.sourceConfig.pagination,
+          partition.pushedLimit
+        ).flatMap { pageJson =>
+          val childRecords = Converter.extractRecords(pageJson, dataPath)
+          if (childRecords.isEmpty) fs2.Stream.empty
+          else {
+            val enrichedRecords = childRecords.flatMap { childRecord =>
+              ParentChildUtils.findParentKeyForChild(
+                childRecord,
+                parentKeysMap,
+                partition.parentKey,
+                partition.tableConfig.childKeyField
+              ) match {
+                case Some(parentKeyJson) =>
+                  List(ParentChildUtils.enrichChildRecord(childRecord, parentKeyJson, partition.parentKeyColumn))
+                case None =>
+                  List.empty
+              }
+            }
+
+            if (enrichedRecords.isEmpty) fs2.Stream.empty
+            else {
+              val root = Converter.toArrow(enrichedRecords, arrowSchema, allocator)
+              val rows = try {
+                ArrowUtils.arrowToInternalRows(root)
+              } finally {
+                root.close()
+              }
+              fs2.Stream.emits(rows)
+            }
+          }
+        }
+      }
   }
 }

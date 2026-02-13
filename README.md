@@ -138,6 +138,7 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI 3.x specifi
 - **Schema flattening** - nested objects flatten to a configurable depth, deeper nesting falls back to VARIANT
 - **Arrow internals** - zero-copy path to Spark ColumnarBatch
 - **Parent-child joins** - chain API calls (e.g., fetch issues then comments for each)
+- **Batch joins** - reduce API calls from O(n) to O(n/batch_size) for bulk lookups
 
 ## Logging & Debugging
 
