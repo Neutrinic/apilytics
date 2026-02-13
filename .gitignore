@@ -19,3 +19,4 @@ tmpclaude-*
 
 # Docker dist build artifacts
 docker/dist/apilytics.jar
+CLAUDE.md

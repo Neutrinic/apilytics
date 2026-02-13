@@ -129,6 +129,8 @@ sealed trait JoinStrategy extends Serializable
 object JoinStrategy {
   /** For each parent row, fetch child endpoint with substituted path parameter. */
   case object NestedLoop extends JoinStrategy
+  /** Fetch child records in batches by collecting parent keys. */
+  case object Batch extends JoinStrategy
 }
 
 final case class TableConfig(
@@ -142,7 +144,16 @@ final case class TableConfig(
     /** Strategy for joining parent and child data. */
     joinStrategy: Option[JoinStrategy] = None,
     /** Date-range partitioning configuration for parallel reads. */
-    partition: Option[PartitionConfig] = None
+    partition: Option[PartitionConfig] = None,
+    /** Query parameter name for batch ID lookup (batch join strategy). */
+    batchParam: Option[String] = None,
+    /** Maximum number of IDs per batch request (batch join strategy). */
+    batchSize: Int = 100,
+    /** Separator for batch IDs in query param. Default: comma. */
+    batchSeparator: String = ",",
+    /** Field in child records that references the parent (batch join strategy).
+      * Defaults to parentKey if not specified. */
+    childKeyField: Option[String] = None
 )
 
 final case class CacheConfig(

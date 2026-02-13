@@ -122,7 +122,7 @@ object Loader {
   private def readTables(config: Config): Map[String, TableConfig] = {
     config.root().keySet().asScala.map { name =>
       val tc = config.getConfig(name)
-      name -> TableConfig(
+      val tableConfig = TableConfig(
         endpoint = tc.getString("endpoint"),
         dataPath = optional(tc, "data-path"),
         filters = if (tc.hasPath("filters")) {
@@ -138,10 +138,34 @@ object Loader {
         parentKey = optional(tc, "parent-key"),
         joinStrategy = if (tc.hasPath("join-strategy")) tc.getString("join-strategy") match {
           case "nested_loop" => Some(JoinStrategy.NestedLoop)
+          case "batch"       => Some(JoinStrategy.Batch)
           case other         => throw new IllegalArgumentException(s"Unknown join strategy: $other")
         } else None,
-        partition = if (tc.hasPath("partition")) Some(readPartition(tc.getConfig("partition"))) else None
+        partition = if (tc.hasPath("partition")) Some(readPartition(tc.getConfig("partition"))) else None,
+        batchParam = optional(tc, "batch-param"),
+        batchSize = if (tc.hasPath("batch-size")) tc.getInt("batch-size") else 100,
+        batchSeparator = if (tc.hasPath("batch-separator")) tc.getString("batch-separator") else ",",
+        childKeyField = optional(tc, "child-key-field")
       )
+      
+      // Validate batch join configuration
+      if (tableConfig.joinStrategy.contains(JoinStrategy.Batch)) {
+        if (tableConfig.batchParam.isEmpty) {
+          throw new IllegalArgumentException(
+            s"Table '$name' uses batch join strategy but missing 'batch-param'. " +
+            "Batch joins require a query parameter for bulk lookups (e.g., batch-param = \"ids\")"
+          )
+        }
+        if (tableConfig.endpoint.contains("{")) {
+          throw new IllegalArgumentException(
+            s"Table '$name' uses batch join strategy but endpoint contains path template '${tableConfig.endpoint}'. " +
+            "Batch joins require a base endpoint without path parameters (e.g., endpoint = \"/orders\", not \"/orders/{id}/items\"). " +
+            s"The batch IDs are passed via query parameter '${tableConfig.batchParam.get}', not URL substitution."
+          )
+        }
+      }
+      
+      name -> tableConfig
     }.toMap
   }
 

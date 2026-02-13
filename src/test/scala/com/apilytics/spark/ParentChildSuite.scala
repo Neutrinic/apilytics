@@ -80,6 +80,160 @@ class ParentChildSuite extends FunSuite {
     assertEquals(tableConfig.joinStrategy, None)
   }
 
+  // --- Batch Join Strategy tests ---
+
+  test("TableConfig supports batch join strategy with batch parameters") {
+    val config = TableConfig(
+      endpoint = "/orders",
+      parentTable = Some("customers"),
+      parentKey = Some("id"),
+      joinStrategy = Some(JoinStrategy.Batch),
+      batchParam = Some("customer_ids"),
+      batchSize = 50,
+      batchSeparator = ","
+    )
+
+    assertEquals(config.joinStrategy, Some(JoinStrategy.Batch))
+    assertEquals(config.batchParam, Some("customer_ids"))
+    assertEquals(config.batchSize, 50)
+    assertEquals(config.batchSeparator, ",")
+  }
+
+  test("Loader parses batch join strategy from HOCON") {
+    import com.typesafe.config.ConfigFactory
+
+    val hocon = """
+      openapi = "test.yaml"
+      auth { type = "bearer", token = "test" }
+      http { timeout = "30s", max-backoff = "30s" }
+      tables {
+        customer_orders {
+          endpoint = "/orders"
+          parent-table = "customers"
+          parent-key = "id"
+          join-strategy = "batch"
+          batch-param = "customer_ids"
+          batch-size = 100
+          batch-separator = ","
+        }
+      }
+    """
+
+    val config = Loader.load(ConfigFactory.parseString(hocon))
+    val tableConfig = config.tables("customer_orders")
+
+    assertEquals(tableConfig.endpoint, "/orders")
+    assertEquals(tableConfig.joinStrategy, Some(JoinStrategy.Batch))
+    assertEquals(tableConfig.batchParam, Some("customer_ids"))
+    assertEquals(tableConfig.batchSize, 100)
+    assertEquals(tableConfig.batchSeparator, ",")
+  }
+
+  test("Loader uses default batch configuration values") {
+    import com.typesafe.config.ConfigFactory
+
+    val hocon = """
+      openapi = "test.yaml"
+      auth { type = "bearer", token = "test" }
+      http { timeout = "30s", max-backoff = "30s" }
+      tables {
+        customer_orders {
+          endpoint = "/orders"
+          parent-table = "customers"
+          parent-key = "id"
+          join-strategy = "batch"
+          batch-param = "ids"
+        }
+      }
+    """
+
+    val config = Loader.load(ConfigFactory.parseString(hocon))
+    val tableConfig = config.tables("customer_orders")
+
+    assertEquals(tableConfig.joinStrategy, Some(JoinStrategy.Batch))
+    assertEquals(tableConfig.batchParam, Some("ids"))
+    assertEquals(tableConfig.batchSize, 100) // default
+    assertEquals(tableConfig.batchSeparator, ",") // default
+  }
+
+  test("Loader validates batch join strategy requires batch-param") {
+    import com.typesafe.config.ConfigFactory
+
+    val hocon = """
+      openapi = "test.yaml"
+      auth { type = "bearer", token = "test" }
+      http { timeout = "30s", max-backoff = "30s" }
+      tables {
+        customer_orders {
+          endpoint = "/orders"
+          parent-table = "customers"
+          parent-key = "id"
+          join-strategy = "batch"
+        }
+      }
+    """
+
+    // Should fail fast with validation error
+    val error = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString(hocon))
+    }
+    
+    assert(error.getMessage.contains("batch-param"))
+    assert(error.getMessage.contains("batch join strategy"))
+  }
+
+  test("Loader validates batch join requires base endpoint without path templates") {
+    import com.typesafe.config.ConfigFactory
+
+    val hocon = """
+      openapi = "test.yaml"
+      auth { type = "bearer", token = "test" }
+      http { timeout = "30s", max-backoff = "30s" }
+      tables {
+        customer_orders {
+          endpoint = "/customers/{customer_id}/orders"
+          parent-table = "customers"
+          parent-key = "id"
+          join-strategy = "batch"
+          batch-param = "customer_ids"
+        }
+      }
+    """
+
+    val error = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString(hocon))
+    }
+    
+    assert(error.getMessage.contains("path template"))
+    assert(error.getMessage.contains("batch join"))
+  }
+
+  test("Loader parses child-key-field for batch join") {
+    import com.typesafe.config.ConfigFactory
+
+    val hocon = """
+      openapi = "test.yaml"
+      auth { type = "bearer", token = "test" }
+      http { timeout = "30s", max-backoff = "30s" }
+      tables {
+        project_tasks {
+          endpoint = "/tasks"
+          parent-table = "projects"
+          parent-key = "id"
+          join-strategy = "batch"
+          batch-param = "project_ids"
+          child-key-field = "proj_id"
+        }
+      }
+    """
+
+    val config = Loader.load(ConfigFactory.parseString(hocon))
+    val tableConfig = config.tables("project_tasks")
+
+    assertEquals(tableConfig.joinStrategy, Some(JoinStrategy.Batch))
+    assertEquals(tableConfig.childKeyField, Some("proj_id"))
+  }
+
   // --- ParentChildTable tests ---
 
   test("ParentChildTable extracts path parameter name from endpoint template") {

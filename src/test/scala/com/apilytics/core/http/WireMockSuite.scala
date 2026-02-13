@@ -4,7 +4,12 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.config._
+import com.apilytics.core.openapi.{Endpoint, OpenAPISchema}
+import com.apilytics.core.schema.SchemaMapper
+import com.apilytics.spark._
 import com.github.tomakehurst.wiremock.WireMockServer
+import org.apache.arrow.vector.types.pojo.{Field, FieldType, Schema => ArrowSchema, ArrowType}
+import java.util.{ArrayList => JArrayList}
 import com.github.tomakehurst.wiremock.client.WireMock._
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
 import io.circe.parser._
@@ -18,6 +23,7 @@ class WireMockSuite extends FunSuite {
   private var server: WireMockServer = _
 
   override def beforeEach(context: BeforeEach): Unit = {
+    ResponseCache.clearSingletons()
     server = new WireMockServer(wireMockConfig().dynamicPort())
     server.start()
   }
@@ -882,5 +888,218 @@ class WireMockSuite extends FunSuite {
     server.verify(2, postRequestedFor(urlPathEqualTo("/oauth/token")))
     // Page 2 was fetched twice (401, then success)
     server.verify(2, getRequestedFor(urlPathEqualTo("/items")).withQueryParam("page", equalTo("2")))
+  }
+
+  // ============== BATCH JOIN TESTS ===============
+
+  test("batch join fetches children in batches via query params") {
+
+    // Parent endpoint returns 3 customers
+    server.stubFor(
+      get(urlPathEqualTo("/customers"))
+        .willReturn(okJson("""[
+          {"id": "cust1", "name": "Alice"},
+          {"id": "cust2", "name": "Bob"},
+          {"id": "cust3", "name": "Charlie"}
+        ]"""))
+    )
+
+    // Child endpoint with batch query param - first batch (cust1,cust2)
+    server.stubFor(
+      get(urlPathEqualTo("/orders"))
+        .withQueryParam("customer_ids", equalTo("cust1,cust2"))
+        .willReturn(okJson("""[
+          {"order_id": 101, "customer_id": "cust1", "total": 100},
+          {"order_id": 102, "customer_id": "cust1", "total": 200},
+          {"order_id": 201, "customer_id": "cust2", "total": 150}
+        ]"""))
+    )
+
+    // Child endpoint with batch query param - second batch (cust3)
+    server.stubFor(
+      get(urlPathEqualTo("/orders"))
+        .withQueryParam("customer_ids", equalTo("cust3"))
+        .willReturn(okJson("""[
+          {"order_id": 301, "customer_id": "cust3", "total": 300}
+        ]"""))
+    )
+
+    val parentSchema = OpenAPISchema.ObjectType(
+      Map("id" -> OpenAPISchema.StringType(), "name" -> OpenAPISchema.StringType())
+    )
+    val childSchema = OpenAPISchema.ObjectType(
+      Map("order_id" -> OpenAPISchema.IntegerType(), "customer_id" -> OpenAPISchema.StringType(), "total" -> OpenAPISchema.IntegerType())
+    )
+
+    val parentEndpoint = Endpoint(
+      path = "/customers",
+      operationId = Some("listCustomers"),
+      responseSchema = parentSchema,
+      queryParams = Nil
+    )
+
+    val tableConfig = TableConfig(
+      endpoint = "/orders",
+      parentTable = Some("customers"),
+      parentKey = Some("id"),
+      joinStrategy = Some(JoinStrategy.Batch),
+      batchParam = Some("customer_ids"),
+      batchSize = 2, // Small batch size to test multiple batches
+      childKeyField = Some("customer_id") // Match parent 'id' to child 'customer_id'
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    // Build proper Arrow schema: parent key column + child fields
+    val childArrowSchema = SchemaMapper.toArrowSchema(childSchema)
+    val parentKeyField = new Field(
+      "_parent_id",
+      FieldType.nullable(new ArrowType.Utf8()),
+      java.util.Collections.emptyList()
+    )
+    val combinedFields = new JArrayList[Field]()
+    combinedFields.add(parentKeyField)
+    combinedFields.addAll(childArrowSchema.getFields)
+    val arrowSchema = new ArrowSchema(combinedFields)
+
+    val partition = ParentChildInputPartition(
+      childEndpointTemplate = "/orders",
+      parentEndpoint = parentEndpoint,
+      childResponseSchema = childSchema,
+      parentKey = "id",
+      pathParamName = "customer_id",
+      parentKeyColumn = "_parent_id",
+      tableConfig = tableConfig,
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      arrowSchemaJson = arrowSchema.toJson
+    )
+
+    val reader = new ParentChildColumnarPartitionReader(partition)
+
+    // Collect all batches
+    var totalRows = 0
+    while (reader.next()) {
+      val batch = reader.get()
+      totalRows += batch.numRows()
+      batch.close()
+    }
+    reader.close()
+
+    // Should have 4 orders total (2 for cust1, 1 for cust2, 1 for cust3)
+    assertEquals(totalRows, 4)
+
+    // Verify parent endpoint was called once
+    server.verify(1, getRequestedFor(urlPathEqualTo("/customers")))
+
+    // Verify child endpoint was called twice (2 batches for 3 customers with batch-size=2)
+    server.verify(2, getRequestedFor(urlPathEqualTo("/orders")))
+
+    // Verify correct batch params were sent
+    server.verify(1, getRequestedFor(urlPathEqualTo("/orders"))
+      .withQueryParam("customer_ids", equalTo("cust1,cust2")))
+    server.verify(1, getRequestedFor(urlPathEqualTo("/orders"))
+      .withQueryParam("customer_ids", equalTo("cust3")))
+  }
+
+  test("batch join with custom child key field") {
+
+    // Parent: projects
+    server.stubFor(
+      get(urlPathEqualTo("/projects"))
+        .willReturn(okJson("""[
+          {"id": 1, "name": "Project A"},
+          {"id": 2, "name": "Project B"}
+        ]"""))
+    )
+
+    // Child: tasks - note non-standard FK field "proj_id" instead of "project_id"
+    server.stubFor(
+      get(urlPathEqualTo("/tasks"))
+        .withQueryParam("project_ids", equalTo("1,2"))
+        .willReturn(okJson("""[
+          {"task_id": 101, "proj_id": 1, "title": "Task 1"},
+          {"task_id": 102, "proj_id": 1, "title": "Task 2"},
+          {"task_id": 201, "proj_id": 2, "title": "Task 3"}
+        ]"""))
+    )
+
+    val parentSchema = OpenAPISchema.ObjectType(
+      Map("id" -> OpenAPISchema.IntegerType(), "name" -> OpenAPISchema.StringType())
+    )
+    val childSchema = OpenAPISchema.ObjectType(
+      Map("task_id" -> OpenAPISchema.IntegerType(), "proj_id" -> OpenAPISchema.IntegerType(), "title" -> OpenAPISchema.StringType())
+    )
+
+    val parentEndpoint = Endpoint(
+      path = "/projects",
+      operationId = Some("listProjects"),
+      responseSchema = parentSchema,
+      queryParams = Nil
+    )
+
+    val tableConfig = TableConfig(
+      endpoint = "/tasks",
+      parentTable = Some("projects"),
+      parentKey = Some("id"),
+      joinStrategy = Some(JoinStrategy.Batch),
+      batchParam = Some("project_ids"),
+      batchSize = 100,
+      childKeyField = Some("proj_id") // Non-standard FK field name
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    // Build proper Arrow schema: parent key column + child fields
+    val childArrowSchema = SchemaMapper.toArrowSchema(childSchema)
+    val parentKeyField = new Field(
+      "_parent_id",
+      FieldType.nullable(new ArrowType.Utf8()),
+      java.util.Collections.emptyList()
+    )
+    val combinedFields = new JArrayList[Field]()
+    combinedFields.add(parentKeyField)
+    combinedFields.addAll(childArrowSchema.getFields)
+    val arrowSchema = new ArrowSchema(combinedFields)
+
+    val partition = ParentChildInputPartition(
+      childEndpointTemplate = "/tasks",
+      parentEndpoint = parentEndpoint,
+      childResponseSchema = childSchema,
+      parentKey = "id",
+      pathParamName = "project_id",
+      parentKeyColumn = "_parent_id",
+      tableConfig = tableConfig,
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      arrowSchemaJson = arrowSchema.toJson
+    )
+
+    val reader = new ParentChildColumnarPartitionReader(partition)
+
+    var totalRows = 0
+    while (reader.next()) {
+      val batch = reader.get()
+      totalRows += batch.numRows()
+      batch.close()
+    }
+    reader.close()
+
+    // Should have 3 tasks total
+    assertEquals(totalRows, 3)
+
+    // Verify correct query param was sent
+    server.verify(1, getRequestedFor(urlPathEqualTo("/tasks"))
+      .withQueryParam("project_ids", equalTo("1,2")))
   }
 }
