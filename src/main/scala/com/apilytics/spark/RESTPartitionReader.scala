@@ -41,8 +41,14 @@ class RESTPartitionReader(partition: RESTInputPartition) extends PartitionReader
     val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
     val dataPath = partition.tableConfig.flatMap(_.dataPath)
 
+    // Use effective rate limit calculated by RESTScan (distributed across partitions)
+    val httpConfig = partition.effectiveRateLimit match {
+      case Some(_) => partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
+      case None    => partition.sourceConfig.http
+    }
+
     val program: IO[List[InternalRow]] = Client
-      .resource(partition.sourceConfig.http, partition.sourceConfig.auth)
+      .resource(httpConfig, partition.sourceConfig.auth)
       .use { client =>
         Paginator
           .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)

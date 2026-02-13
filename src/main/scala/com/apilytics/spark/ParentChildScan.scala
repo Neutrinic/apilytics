@@ -16,7 +16,10 @@ class ParentChildScan(
 
   override def toBatch(): Batch = this
 
-  override def planInputPartitions(): Array[InputPartition] =
+  override def planInputPartitions(): Array[InputPartition] = {
+    // Single partition for parent-child tables gets the full rate limit
+    val effectiveRateLimit = table.sourceConfig.http.rateLimit
+
     Array(ParentChildInputPartition(
       childEndpointTemplate = table.childEndpointTemplate,
       parentEndpoint = table.parentEndpoint,
@@ -29,8 +32,10 @@ class ParentChildScan(
       baseUrl = table.baseUrl,
       arrowSchemaJson = arrowSchema.toJson,
       pushedParams = pushedParams,
-      pushedLimit = pushedLimit
+      pushedLimit = pushedLimit,
+      effectiveRateLimit = effectiveRateLimit
     ))
+  }
 
   override def createReaderFactory(): PartitionReaderFactory =
     new ParentChildPartitionReaderFactory()

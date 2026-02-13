@@ -43,12 +43,16 @@ class RESTScan(
 
     logInfo("Planning COUNT(*) partition using count endpoint")
 
+    // Single partition gets full rate limit
+    val effectiveRateLimit = table.sourceConfig.http.rateLimit
+
     Array(CountInputPartition(
       tableConfig = tableConfig,
       sourceConfig = table.sourceConfig,
       baseUrl = table.baseUrl,
       countConfig = countConfig,
-      pushedParams = pushedParams
+      pushedParams = pushedParams,
+      effectiveRateLimit = effectiveRateLimit
     ))
   }
 
@@ -58,7 +62,8 @@ class RESTScan(
       case Some(partitionConfig) =>
         planDateRangePartitions(partitionConfig)
       case None =>
-        // No partitioning configured - single partition
+        // No partitioning configured - single partition gets full rate limit
+        val effectiveRateLimit = table.sourceConfig.http.rateLimit
         Array(RESTInputPartition(
           endpoint = table.endpoint,
           tableConfig = table.tableConfig,
@@ -66,7 +71,8 @@ class RESTScan(
           baseUrl = table.baseUrl,
           arrowSchemaJson = arrowSchema.toJson,
           pushedParams = pushedParams,
-          pushedLimit = pushedLimit
+          pushedLimit = pushedLimit,
+          effectiveRateLimit = effectiveRateLimit
         ))
     }
   }
@@ -110,7 +116,16 @@ class RESTScan(
         logInfo("Date range is empty (start >= end), returning empty partition list")
         Some(Array.empty)
       } else {
-        logInfo(s"Partitioning into ${ranges.size} date ranges (${config.range} each)")
+        val numPartitions = ranges.size
+        val effectiveRateLimit = calculateEffectiveRateLimit(numPartitions)
+
+        effectiveRateLimit match {
+          case Some(limit) =>
+            logInfo(s"Partitioning into $numPartitions date ranges (${config.range} each), " +
+              s"rate limit distributed: ${table.sourceConfig.http.rateLimit.get} / $numPartitions = $limit rps per partition")
+          case None =>
+            logInfo(s"Partitioning into $numPartitions date ranges (${config.range} each)")
+        }
 
         Some(ranges.map { case (rangeStart, rangeEnd) =>
           val startStr = formatter.format(Instant.ofEpochMilli(rangeStart))
@@ -128,7 +143,8 @@ class RESTScan(
             baseUrl = table.baseUrl,
             arrowSchemaJson = arrowSchema.toJson,
             pushedParams = partitionParams,
-            pushedLimit = pushedLimit
+            pushedLimit = pushedLimit,
+            effectiveRateLimit = effectiveRateLimit
           )
         }.toArray)
       }
@@ -142,6 +158,8 @@ class RESTScan(
 
   /** Single partition fallback when partitioning cannot be applied. */
   private def singlePartitionFallback(): Array[InputPartition] = {
+    // Single partition gets full rate limit
+    val effectiveRateLimit = table.sourceConfig.http.rateLimit
     Array(RESTInputPartition(
       endpoint = table.endpoint,
       tableConfig = table.tableConfig,
@@ -149,7 +167,8 @@ class RESTScan(
       baseUrl = table.baseUrl,
       arrowSchemaJson = arrowSchema.toJson,
       pushedParams = pushedParams,
-      pushedLimit = pushedLimit
+      pushedLimit = pushedLimit,
+      effectiveRateLimit = effectiveRateLimit
     ))
   }
 
@@ -164,6 +183,28 @@ class RESTScan(
         Some(((s, rangeEnd), rangeEnd))
       }
     }.toList
+  }
+
+  /** Calculate effective rate limit per partition.
+    *
+    * Divides the configured rate limit by the number of partitions to prevent
+    * exceeding the API's global rate limit when partitions run in parallel.
+    *
+    * @param numPartitions Number of partitions that will run in parallel
+    * @return Effective rate limit per partition, or None if no rate limit configured
+    */
+  private def calculateEffectiveRateLimit(numPartitions: Int): Option[Int] = {
+    table.sourceConfig.http.rateLimit.flatMap { configuredLimit =>
+      val perPartition = configuredLimit / numPartitions
+      if (perPartition > 0) {
+        Some(perPartition)
+      } else {
+        // Rate limit is lower than partition count - use minimum of 1 rps
+        logWarning(s"Configured rate limit ($configuredLimit rps) is less than partition count " +
+          s"($numPartitions). Using minimum of 1 rps per partition, which may exceed API limits.")
+        Some(1)
+      }
+    }
   }
 
   override def createReaderFactory(): PartitionReaderFactory =

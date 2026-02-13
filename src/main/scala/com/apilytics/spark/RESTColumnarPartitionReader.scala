@@ -20,8 +20,14 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
   // Use singleton cache that persists across queries on this executor
   private val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
 
+  // Use effective rate limit calculated by RESTScan (distributed across partitions)
+  private val httpConfig = partition.effectiveRateLimit match {
+    case Some(_) => partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
+    case None    => partition.sourceConfig.http
+  }
+
   override protected def clientResource: Resource[IO, Client.RestClient] =
-    Client.resource(partition.sourceConfig.http, partition.sourceConfig.auth, responseCache)
+    Client.resource(httpConfig, partition.sourceConfig.auth, responseCache)
 
   override protected def buildStream(
       client: Client.RestClient

@@ -35,11 +35,18 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
   override protected lazy val allocator: RootAllocator = new RootAllocator()
   override protected lazy val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
 
-  // Use singleton cache that persists across queries on this executor
-  private val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
+  // Use lazy vals to avoid initialization order issues with LazyColumnarReader's constructor
+  // which starts a fiber that may access these before they're initialized
+  private lazy val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
+
+  // Use effective rate limit calculated by ParentChildScan (distributed across partitions)
+  private lazy val httpConfig = partition.effectiveRateLimit match {
+    case Some(_) => partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
+    case None    => partition.sourceConfig.http
+  }
 
   override protected def clientResource: Resource[IO, Client.RestClient] =
-    Client.resource(partition.sourceConfig.http, partition.sourceConfig.auth, responseCache)
+    Client.resource(httpConfig, partition.sourceConfig.auth, responseCache)
 
   override protected def buildStream(
       client: Client.RestClient
