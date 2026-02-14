@@ -80,15 +80,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
           endpoint.responseSchema
         }
       case None =>
-        // Check if this is a synthetic array wrapper from Parser (single "data" array prop)
-        // If so, automatically extract the item schema
-        endpoint.responseSchema.properties.get("data") match {
-          case Some(OpenAPISchema.ArrayType(obj: OpenAPISchema.ObjectType))
-              if endpoint.responseSchema.properties.size == 1 =>
-            obj
-          case _ =>
-            endpoint.responseSchema
-        }
+        unwrapSyntheticArrayWrapper(endpoint.responseSchema)
     }
 
     val arrowSchema = SchemaMapper.toArrowSchema(effectiveSchema, config.schema.flattenDepth)
@@ -252,11 +244,12 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
     val baseTables = (configured ++ discovered).distinct
 
     // Generate exploded view names if array-handling is explode_view or both
+    // Use effective schema (after data-path extraction) to find array fields
     val explodedTables = config.schema.arrayHandling match {
       case ArrayHandling.ExplodeView | ArrayHandling.Both =>
         baseTables.flatMap { tableName =>
-          findEndpointForTable(tableName).toSeq.flatMap { endpoint =>
-            SchemaMapper.findArrayFields(endpoint.responseSchema).map { arrayField =>
+          effectiveSchemaForTable(tableName).toSeq.flatMap { schema =>
+            SchemaMapper.findArrayFields(schema).map { arrayField =>
               s"${tableName}_${arrayField.fieldName}"
             }
           }
@@ -283,6 +276,35 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
         ep.operationId.contains(tableName) ||
           ep.path.split("/").filterNot(s => s.startsWith("{") || s.isEmpty).lastOption.exists(_.equalsIgnoreCase(tableName))
       }
+    }
+  }
+
+  /** Get the effective schema for a table, accounting for data-path extraction.
+    * This is the schema used for exploded view generation.
+    */
+  private def effectiveSchemaForTable(tableName: String): Option[OpenAPISchema.ObjectType] = {
+    findEndpointForTable(tableName).map { endpoint =>
+      val tableConfig = config.tables.get(tableName)
+      tableConfig.flatMap(_.dataPath) match {
+        case Some(dataPath) =>
+          extractSchemaAtPath(endpoint.responseSchema, dataPath).getOrElse(endpoint.responseSchema)
+        case None =>
+          unwrapSyntheticArrayWrapper(endpoint.responseSchema)
+      }
+    }
+  }
+
+  /** Unwrap synthetic array wrappers created by Parser for top-level array responses.
+    * If the schema has a single "data" array property, return the item schema.
+    * This handles APIs that return [{...}] which Parser wraps as {data: [{...}]}.
+    */
+  private def unwrapSyntheticArrayWrapper(schema: OpenAPISchema.ObjectType): OpenAPISchema.ObjectType = {
+    schema.properties.get("data") match {
+      case Some(OpenAPISchema.ArrayType(obj: OpenAPISchema.ObjectType))
+          if schema.properties.size == 1 =>
+        obj
+      case _ =>
+        schema
     }
   }
 
