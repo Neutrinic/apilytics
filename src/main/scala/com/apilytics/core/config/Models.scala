@@ -150,7 +150,9 @@ object JoinStrategy {
   case object Batch extends JoinStrategy
 }
 
-/** Configuration for COUNT(*) aggregation pushdown. */
+/** Configuration for COUNT(*) aggregation pushdown.
+  * @deprecated Use AggregationConfig with function="count" instead.
+  */
 final case class CountConfig(
     /** Endpoint that returns the count (e.g., "/items/count").
       * If not specified, uses the main endpoint with countParam. */
@@ -162,6 +164,55 @@ final case class CountConfig(
     paramValue: String = "true",
     /** JSON pointer to extract count from response (e.g., "/total_count"). */
     responsePath: String
+)
+
+/** Aggregation function type for pushdown. */
+sealed trait AggregationFunction extends Serializable
+object AggregationFunction {
+  case object Count extends AggregationFunction
+  case object Sum extends AggregationFunction
+  case object Avg extends AggregationFunction
+  case object Min extends AggregationFunction
+  case object Max extends AggregationFunction
+  /** Custom aggregation - matched by name. */
+  final case class Custom(name: String) extends AggregationFunction
+}
+
+/** Configuration for a single aggregation pushdown.
+  *
+  * Allows pushing aggregations to API endpoints instead of computing locally.
+  * Supports standard SQL aggregates (SUM, AVG, etc.) and custom API-specific functions.
+  *
+  * Example config:
+  * {{{
+  * aggregations {
+  *   total_amount {
+  *     function = "sum"
+  *     column = "amount"
+  *     endpoint = "/orders/stats"
+  *     response-path = "/total"
+  *   }
+  *   amount_p95 {
+  *     function = "custom"
+  *     name = "PERCENTILE"
+  *     endpoint = "/orders/percentiles"
+  *     params { p = "95" }
+  *     response-path = "/value"
+  *   }
+  * }
+  * }}}
+  */
+final case class AggregationConfig(
+    /** Aggregation function type (sum, avg, min, max, count, custom). */
+    function: AggregationFunction,
+    /** Column to aggregate (required for sum, avg, min, max). */
+    column: Option[String] = None,
+    /** Endpoint to call for this aggregation. */
+    endpoint: String,
+    /** JSON pointer to extract result from response (e.g., "/total"). */
+    responsePath: String,
+    /** Additional query parameters to send with the request. */
+    params: Map[String, String] = Map.empty
 )
 
 final case class TableConfig(
@@ -185,8 +236,11 @@ final case class TableConfig(
     /** Field in child records that references the parent (batch join strategy).
       * Defaults to parentKey if not specified. */
     childKeyField: Option[String] = None,
-    /** Configuration for COUNT(*) aggregation pushdown. */
-    count: Option[CountConfig] = None
+    /** Configuration for COUNT(*) aggregation pushdown.
+      * @deprecated Use aggregations with function="count" instead. */
+    count: Option[CountConfig] = None,
+    /** Configurable aggregation pushdown. Maps aggregation name to config. */
+    aggregations: Map[String, AggregationConfig] = Map.empty
 )
 
 final case class CacheConfig(

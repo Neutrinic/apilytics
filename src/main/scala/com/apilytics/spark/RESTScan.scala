@@ -1,6 +1,6 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.PartitionConfig
+import com.apilytics.core.config.{AggregationConfig, PartitionConfig}
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
@@ -16,7 +16,8 @@ class RESTScan(
     prunedSchema: Option[StructType],
     pushedParams: Map[String, String],
     pushedLimit: Option[Int],
-    pushedAggregation: Option[Aggregation] = None
+    pushedAggregation: Option[Aggregation] = None,
+    resolvedAggConfigs: List[AggregationConfig] = Nil
 ) extends Scan with Batch with SupportsReportStatistics with Logging {
 
   // If pruned, return the pruned schema; otherwise return full schema
@@ -25,23 +26,44 @@ class RESTScan(
   override def toBatch(): Batch = this
 
   override def planInputPartitions(): Array[InputPartition] = {
-    // If aggregation is pushed, return a single count partition
+    // If aggregation is pushed, return an aggregation partition
     pushedAggregation match {
-      case Some(_) =>
-        planCountPartition()
+      case Some(agg) =>
+        planAggregationPartition(agg)
       case None =>
         planDataPartitions()
     }
   }
 
-  /** Plan a single partition for COUNT(*) aggregation. */
-  private def planCountPartition(): Array[InputPartition] = {
+  /** Plan a single partition for aggregation pushdown. */
+  private def planAggregationPartition(agg: Aggregation): Array[InputPartition] = {
+    if (resolvedAggConfigs.isEmpty) {
+      // Fallback to legacy count config for backwards compatibility
+      planLegacyCountPartition()
+    } else {
+      logInfo(s"Planning aggregation partition for ${resolvedAggConfigs.size} aggregate(s)")
+
+      // Single partition gets full rate limit
+      val effectiveRateLimit = table.sourceConfig.http.rateLimit
+
+      Array(AggregationInputPartition(
+        aggregationConfigs = resolvedAggConfigs,
+        sourceConfig = table.sourceConfig,
+        baseUrl = table.baseUrl,
+        pushedParams = pushedParams,
+        effectiveRateLimit = effectiveRateLimit
+      ))
+    }
+  }
+
+  /** Plan a single partition for legacy COUNT(*) config. */
+  private def planLegacyCountPartition(): Array[InputPartition] = {
     val tableConfig = table.tableConfig
       .getOrElse(throw new IllegalStateException("COUNT(*) pushed but no table config"))
     val countConfig = tableConfig.count
       .getOrElse(throw new IllegalStateException("COUNT(*) pushed but no count config"))
 
-    logInfo("Planning COUNT(*) partition using count endpoint")
+    logInfo("Planning COUNT(*) partition using legacy count endpoint")
 
     // Single partition gets full rate limit
     val effectiveRateLimit = table.sourceConfig.http.rateLimit
