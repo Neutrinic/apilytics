@@ -76,6 +76,30 @@ services:
     networks:
       - apilytics-net
 
+# JDBC: jdbc:hive2://localhost:10000
+  spark-thrift:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spark-thrift
+    hostname: spark-thrift
+    environment:
+      - SPARK_ROLE=thriftserver
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      # Configure catalogs: CATALOGS=api,github and CATALOG_<NAME>_CONFIG=path
+      - CATALOGS=api
+      - CATALOG_API_CONFIG=/opt/spark/examples/pokeapi/pokeapi-config.conf
+    volumes:
+      - spark-events:/opt/spark/spark-events
+      - ../../target/scala-2.13/apilytics.jar:/opt/spark/jars/apilytics.jar:ro
+      - ../../examples:/opt/spark/examples:ro
+    ports:
+      - "10000:10000"
+    depends_on:
+      - spark-master
+    networks:
+      - apilytics-net
+
 volumes:
   spark-events: {}
 

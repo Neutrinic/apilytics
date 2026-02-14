@@ -104,21 +104,24 @@ withCleanErrors {
 
 ### Exploring Catalogs
 
-Catalogs are registered at startup, but won't appear in `SHOW CATALOGS` until you query them. Use these commands to explore:
+Catalogs are lazily loaded - they won't appear in `SHOW CATALOGS` until first accessed. To discover available catalogs and tables:
 
-```scala
-// List namespaces in a catalog
-spark.sql("SHOW NAMESPACES IN api").show()
+```sql
+-- Touch the catalog to register it (any query works)
+SHOW NAMESPACES IN api;
 
-// List tables in a namespace
-spark.sql("SHOW TABLES IN api.default").show()
+-- Now it appears in SHOW CATALOGS
+SHOW CATALOGS;
 
-// Describe a table's schema
-spark.sql("DESCRIBE api.default.issues").show()
+-- List tables (always use <catalog>.default.<table> format)
+SHOW TABLES IN api.default;
 
-// Extended table info
-spark.sql("DESCRIBE EXTENDED api.default.issues").show()
+-- Describe schema
+DESCRIBE api.default.issues;
+DESCRIBE EXTENDED api.default.issues;
 ```
+
+**Important**: Always use the full path `<catalog>.default.<table>` format. Using just `<catalog>.<table>` won't work - the `default` namespace is required.
 
 ### Multiple Catalogs
 
@@ -129,13 +132,17 @@ You can load multiple APIs as separate catalogs:
 ./scripts/spark-shell.sh multi
 ```
 
-```scala
-// Query across catalogs
-spark.sql("SHOW TABLES IN github.default").show()
-spark.sql("SHOW TABLES IN pokemon.default").show()
+```sql
+-- Touch each catalog to register it
+SHOW NAMESPACES IN github;
+SHOW NAMESPACES IN pokemon;
 
-spark.sql("SELECT number, title FROM github.default.issues LIMIT 5").show()
-spark.sql("SELECT name, url FROM pokemon.default.pokemon LIMIT 5").show()
+-- Now both appear
+SHOW CATALOGS;
+
+-- Query tables (always use <catalog>.default.<table>)
+SELECT number, title FROM github.default.issues LIMIT 5;
+SELECT name, url FROM pokemon.default.pokemon LIMIT 5;
 ```
 
 To configure multiple catalogs manually:
@@ -148,7 +155,39 @@ spark-shell \
   --conf "spark.sql.catalog.slack.config=/path/to/slack-config.conf"
 ```
 
-Then query with `github.default.*` and `slack.default.*`.
+### JDBC Access (DBeaver, Tableau, PowerBI)
+
+Connect BI tools via standard JDBC using the Thrift Server:
+
+```bash
+cd docker/spark
+docker compose -f compose.spark.yaml up -d
+```
+
+**Connection Details:**
+- **Driver**: Apache Hive JDBC
+- **URL**: `jdbc:hive2://localhost:10000`
+- **Username**: any (e.g., "spark")
+- **Password**: empty
+
+**DBeaver Setup:**
+1. New Connection > Apache Hive
+2. Host: localhost, Port: 10000
+3. Test Connection
+
+**Configure Multiple Catalogs** in `compose.spark.yaml`:
+```yaml
+environment:
+  - CATALOGS=github,pokemon
+  - CATALOG_GITHUB_CONFIG=/opt/spark/examples/github/github-config.conf
+  - CATALOG_POKEMON_CONFIG=/opt/spark/examples/pokeapi/pokeapi-config.conf
+```
+
+Then query with catalog prefix:
+```sql
+SELECT * FROM github.default.issues LIMIT 10;
+SELECT * FROM pokemon.default.pokemon LIMIT 10;
+```
 
 ## Overview
 

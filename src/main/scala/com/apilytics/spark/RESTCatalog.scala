@@ -242,9 +242,13 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
 
   private def tableNames: Seq[String] = {
     val configured = config.tables.keys.toSeq
-    val discovered = spec.endpoints.flatMap { ep =>
-      ep.operationId.orElse(ep.path.split("/").filterNot(s => s.startsWith("{") || s.isEmpty).lastOption)
-    }
+    // Only auto-discover endpoints without path parameters (e.g., /pokemon but not /pokemon/{id})
+    // Endpoints with path parameters require parent-child config to substitute values
+    val discovered = spec.endpoints
+      .filterNot(_.path.contains("{"))
+      .flatMap { ep =>
+        ep.operationId.orElse(ep.path.split("/").filterNot(_.isEmpty).lastOption)
+      }
     val baseTables = (configured ++ discovered).distinct
 
     // Generate exploded view names if array-handling is explode_view or both
