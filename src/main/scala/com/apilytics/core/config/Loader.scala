@@ -191,31 +191,26 @@ object Loader {
   }
 
   private def readPartition(config: Config): PartitionConfig = {
-    val partitionType = if (config.hasPath("type")) config.getString("type") match {
-      case "date-range" => PartitionType.DateRange
-      case "enum"       => PartitionType.Enum
-      case other        => throw new IllegalArgumentException(s"Unknown partition type: $other")
-    } else PartitionType.DateRange // Default for backward compatibility
+    val partitionType = if (config.hasPath("type")) config.getString("type") else "date-range"
 
     partitionType match {
-      case PartitionType.DateRange =>
+      case "date-range" =>
         val range = Duration(config.getString("range")) match {
           case fd: FiniteDuration => fd
           case _ => throw new IllegalArgumentException(
             s"partition.range must be a finite duration (got '${config.getString("range")}')"
           )
         }
-        PartitionConfig(
-          partitionType = PartitionType.DateRange,
-          column = Some(config.getString("column")),
-          range = Some(range),
-          startParam = Some(config.getString("start-param")),
-          endParam = Some(config.getString("end-param")),
+        PartitionConfig.DateRange(
+          column = config.getString("column"),
+          range = range,
+          startParam = config.getString("start-param"),
+          endParam = config.getString("end-param"),
           format = if (config.hasPath("format")) config.getString("format")
                    else "yyyy-MM-dd'T'HH:mm:ss'Z'"
         )
 
-      case PartitionType.Enum =>
+      case "enum" =>
         val param = if (config.hasPath("param")) config.getString("param")
                     else throw new IllegalArgumentException(
                       "Enum partition requires 'param' (query parameter name for filtering)"
@@ -229,11 +224,13 @@ object Loader {
             "Enum partition requires non-empty 'values' list"
           )
         }
-        PartitionConfig(
-          partitionType = PartitionType.Enum,
-          param = Some(param),
+        PartitionConfig.Enum(
+          param = param,
           values = values
         )
+
+      case other =>
+        throw new IllegalArgumentException(s"Unknown partition type: $other")
     }
   }
 

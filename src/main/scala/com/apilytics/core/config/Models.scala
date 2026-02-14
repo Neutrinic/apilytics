@@ -106,10 +106,6 @@ final case class FilterConfig(
 
 /** Configuration for partitioning to enable parallel reads.
   *
-  * Supports two partition types:
-  * - `date-range`: Partition by date range (start/end params)
-  * - `enum`: Partition by enum values (one partition per value)
-  *
   * Partitions are executed in parallel by Spark executors. Each partition creates
   * its own HTTP client with independent rate limiting. See HttpConfig.rateLimit
   * for guidance on setting appropriate rate limits with partitioned reads.
@@ -117,28 +113,34 @@ final case class FilterConfig(
   * Note: `pushedLimit` (from LIMIT N) applies per-partition, not globally.
   * A query with LIMIT 10 and 5 partitions may fetch up to 50 rows before
   * Spark applies the final limit. */
-final case class PartitionConfig(
-    /** Partition type: "date-range" (default) or "enum". */
-    partitionType: PartitionType = PartitionType.DateRange,
-    // --- Date-range fields (used when partitionType = DateRange) ---
-    /** Column to partition by (must be a date/datetime column).
-      * Currently used for documentation/validation; the actual partitioning
-      * relies on startParam/endParam matching pushed filter params. */
-    column: Option[String] = None,
-    /** Size of each partition (e.g., "1 day", "1 hour", "7 days"). */
-    range: Option[FiniteDuration] = None,
-    /** API parameter for start of range (inclusive). */
-    startParam: Option[String] = None,
-    /** API parameter for end of range (exclusive). */
-    endParam: Option[String] = None,
-    /** Format for date parameters (default: ISO 8601). */
-    format: String = "yyyy-MM-dd'T'HH:mm:ss'Z'",
-    // --- Enum fields (used when partitionType = Enum) ---
-    /** Query parameter name for enum filtering (e.g., "status"). */
-    param: Option[String] = None,
-    /** List of enum values to partition by (e.g., ["pending", "shipped"]). */
-    values: List[String] = Nil
-)
+sealed trait PartitionConfig extends Serializable
+
+object PartitionConfig {
+
+  /** Partition by date range (start/end params). */
+  final case class DateRange(
+      /** Column to partition by (must be a date/datetime column).
+        * Currently used for documentation/validation; the actual partitioning
+        * relies on startParam/endParam matching pushed filter params. */
+      column: String,
+      /** Size of each partition (e.g., "1 day", "1 hour", "7 days"). */
+      range: FiniteDuration,
+      /** API parameter for start of range (inclusive). */
+      startParam: String,
+      /** API parameter for end of range (exclusive). */
+      endParam: String,
+      /** Format for date parameters (default: ISO 8601). */
+      format: String = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+  ) extends PartitionConfig
+
+  /** Partition by enum values (one partition per value). */
+  final case class Enum(
+      /** Query parameter name for enum filtering (e.g., "status"). */
+      param: String,
+      /** List of enum values to partition by (e.g., ["pending", "shipped"]). */
+      values: List[String]
+  ) extends PartitionConfig
+}
 
 sealed trait JoinStrategy extends Serializable
 object JoinStrategy {
@@ -146,14 +148,6 @@ object JoinStrategy {
   case object NestedLoop extends JoinStrategy
   /** Fetch child records in batches by collecting parent keys. */
   case object Batch extends JoinStrategy
-}
-
-sealed trait PartitionType extends Serializable
-object PartitionType {
-  /** Partition by date range (start/end params). */
-  case object DateRange extends PartitionType
-  /** Partition by enum values (one partition per value). */
-  case object Enum extends PartitionType
 }
 
 /** Configuration for COUNT(*) aggregation pushdown. */

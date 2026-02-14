@@ -1,6 +1,6 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{PartitionConfig, PartitionType}
+import com.apilytics.core.config.PartitionConfig
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
@@ -59,10 +59,8 @@ class RESTScan(
   /** Plan partitions for regular data reads. */
   private def planDataPartitions(): Array[InputPartition] = {
     table.tableConfig.flatMap(_.partition) match {
-      case Some(config) => config.partitionType match {
-        case PartitionType.DateRange => planDateRangePartitions(config)
-        case PartitionType.Enum      => planEnumPartitions(config)
-      }
+      case Some(config: PartitionConfig.DateRange) => planDateRangePartitions(config)
+      case Some(config: PartitionConfig.Enum)      => planEnumPartitions(config)
       case None =>
         // No partitioning configured - single partition gets full rate limit
         val effectiveRateLimit = table.sourceConfig.http.rateLimit
@@ -80,10 +78,8 @@ class RESTScan(
   }
 
   /** Create multiple partitions for enum-based parallel reads. */
-  private def planEnumPartitions(config: PartitionConfig): Array[InputPartition] = {
-    val paramName = config.param.getOrElse(
-      throw new IllegalStateException("Enum partition missing 'param'")
-    )
+  private def planEnumPartitions(config: PartitionConfig.Enum): Array[InputPartition] = {
+    val paramName = config.param
     val values = config.values
     val numPartitions = values.size
     val effectiveRateLimit = calculateEffectiveRateLimit(numPartitions)
@@ -112,10 +108,10 @@ class RESTScan(
   }
 
   /** Create multiple partitions for date-range parallel reads. */
-  private def planDateRangePartitions(config: PartitionConfig): Array[InputPartition] = {
+  private def planDateRangePartitions(config: PartitionConfig.DateRange): Array[InputPartition] = {
     // Extract date range from pushed params
-    val startValue = config.startParam.flatMap(pushedParams.get)
-    val endValue = config.endParam.flatMap(pushedParams.get)
+    val startValue = pushedParams.get(config.startParam)
+    val endValue = pushedParams.get(config.endParam)
 
     (startValue, endValue) match {
       case (Some(start), Some(end)) =>
@@ -125,7 +121,7 @@ class RESTScan(
         // Date range not fully specified in query - fall back to single partition
         // This is a warning because user configured partitioning but it's not being used
         logWarning(s"Partition config specified but date range params " +
-          s"'${config.startParam.getOrElse("?")}' and '${config.endParam.getOrElse("?")}' not found in query filters. " +
+          s"'${config.startParam}' and '${config.endParam}' not found in query filters. " +
           "Using single partition. Ensure both predicates are pushed down via filter config.")
         singlePartitionFallback()
     }
@@ -133,7 +129,7 @@ class RESTScan(
 
   /** Try to parse date range and create partitions. Returns None on parse errors. */
   private def tryParseAndPartition(
-      config: PartitionConfig,
+      config: PartitionConfig.DateRange,
       start: String,
       end: String
   ): Option[Array[InputPartition]] = {
@@ -141,9 +137,7 @@ class RESTScan(
       val formatter = DateTimeFormatter.ofPattern(config.format).withZone(ZoneOffset.UTC)
       val startInstant = Instant.from(formatter.parse(start))
       val endInstant = Instant.from(formatter.parse(end))
-      val rangeMillis = config.range.getOrElse(
-        throw new IllegalStateException("Date-range partition missing 'range'")
-      ).toMillis
+      val rangeMillis = config.range.toMillis
 
       // Generate partition ranges (iterative to avoid stack overflow)
       val ranges = generateRanges(startInstant.toEpochMilli, endInstant.toEpochMilli, rangeMillis)
@@ -157,10 +151,10 @@ class RESTScan(
 
         effectiveRateLimit match {
           case Some(limit) =>
-            logInfo(s"Partitioning into $numPartitions date ranges (${config.range.get} each), " +
+            logInfo(s"Partitioning into $numPartitions date ranges (${config.range} each), " +
               s"rate limit distributed: ${table.sourceConfig.http.rateLimit.get} / $numPartitions = $limit rps per partition")
           case None =>
-            logInfo(s"Partitioning into $numPartitions date ranges (${config.range.get} each)")
+            logInfo(s"Partitioning into $numPartitions date ranges (${config.range} each)")
         }
 
         Some(ranges.map { case (rangeStart, rangeEnd) =>
@@ -169,8 +163,8 @@ class RESTScan(
 
           // Replace date range params with partition-specific values
           val partitionParams = pushedParams
-            .updated(config.startParam.get, startStr)
-            .updated(config.endParam.get, endStr)
+            .updated(config.startParam, startStr)
+            .updated(config.endParam, endStr)
 
           RESTInputPartition(
             endpoint = table.endpoint,
