@@ -34,8 +34,8 @@ VOLUME ["/opt/spark/logs", "/opt/spark/work", "/opt/spark/spark-events"]
 
 # Ports
 # 8080: Master WebUI, 7077: Master port, 8081: Worker WebUI
-# 18080: History Server, 4040: Application UI
-EXPOSE 8080 7077 8081 18080 4040
+# 18080: History Server, 4040: Application UI, 10000: Thrift/JDBC
+EXPOSE 8080 7077 8081 18080 4040 10000
 
 # Entrypoint script
 RUN chmod +x /entrypoint.sh
