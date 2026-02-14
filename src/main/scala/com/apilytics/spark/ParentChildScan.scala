@@ -1,7 +1,7 @@
 package com.apilytics.spark
 
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
-import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan}
+import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan, Statistics, SupportsReportStatistics}
 import org.apache.spark.sql.types.StructType
 
 class ParentChildScan(
@@ -10,7 +10,7 @@ class ParentChildScan(
     prunedSchema: Option[StructType],
     pushedParams: Map[String, String],
     pushedLimit: Option[Int]
-) extends Scan with Batch {
+) extends Scan with Batch with SupportsReportStatistics {
 
   override def readSchema(): StructType = prunedSchema.getOrElse(table.schema())
 
@@ -39,4 +39,8 @@ class ParentChildScan(
 
   override def createReaderFactory(): PartitionReaderFactory =
     new ParentChildPartitionReaderFactory()
+
+  /** Report statistics to Spark for query optimization. */
+  override def estimateStatistics(): Statistics =
+    ScanStatistics.estimate(pushedLimit, table.sourceConfig.pagination, readSchema())
 }
