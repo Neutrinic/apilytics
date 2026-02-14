@@ -165,14 +165,9 @@ class RESTScanBuilder(table: RESTTable) extends ScanBuilder
     * from the API, so Spark doesn't need to do any additional aggregation.
     */
   override def supportCompletePushDown(aggregation: Aggregation): Boolean = {
-    val groups = aggregation.groupByExpressions()
-    val aggs = aggregation.aggregateExpressions()
-
-    // Complete pushdown only if no GROUP BY and all aggs are matched
-    if (groups.nonEmpty) return false
-
-    val matched = aggs.flatMap(matchAggregateToConfig)
-    matched.length == aggs.length
+    // pushAggregation already validated and stored resolved configs
+    // Complete pushdown if we matched all aggregates (no GROUP BY check needed - already done)
+    resolvedAggConfigs.length == aggregation.aggregateExpressions().length
   }
 
   override def build(): Scan = {

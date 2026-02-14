@@ -10,6 +10,7 @@ import io.circe.Json
 import io.circe.pointer.Pointer
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.connector.read.PartitionReader
+import org.apache.spark.unsafe.types.UTF8String
 import org.http4s.Uri
 
 /** Partition reader for aggregation pushdown.
@@ -87,13 +88,15 @@ class AggregationPartitionReader(partition: AggregationInputPartition) extends P
     }
   }
 
-  /** Convert JSON value to Scala type for InternalRow. */
+  /** Convert JSON value to Spark InternalRow types.
+    * Strings must be UTF8String for Spark compatibility.
+    */
   private def jsonToScala(json: Json): Any = {
     json.fold(
       jsonNull = null,
       jsonBoolean = identity,
       jsonNumber = n => n.toLong.getOrElse(n.toDouble),
-      jsonString = identity,
+      jsonString = s => UTF8String.fromString(s),
       jsonArray = arr => arr.map(jsonToScala).toArray,
       jsonObject = obj => obj.toMap.map { case (k, v) => k -> jsonToScala(v) }
     )
