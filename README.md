@@ -1,13 +1,39 @@
 # APIlytics
 
 [![Build](https://github.com/Neutrinic/apilytics/actions/workflows/ci.yml/badge.svg)](https://github.com/Neutrinic/apilytics/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics_2.13)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Scala](https://img.shields.io/badge/Scala-2.13-red.svg)](https://www.scala-lang.org/)
 [![Spark](https://img.shields.io/badge/Spark-4.0-orange.svg)](https://spark.apache.org/)
 
 Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
-## Quickstart
+## Installation
+
+### Maven Central
+
+```scala
+// build.sbt
+libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.4.0"
+```
+
+```bash
+# spark-submit
+spark-submit --packages io.github.neutrinic:apilytics_2.13:0.4.0 your-app.jar
+
+# spark-shell
+spark-shell --packages io.github.neutrinic:apilytics_2.13:0.4.0
+```
+
+Then configure the catalog:
+
+```scala
+spark.conf.set("spark.sql.catalog.api", "com.apilytics.spark.RESTCatalog")
+spark.conf.set("spark.sql.catalog.api.config", "/path/to/config.conf")
+spark.sql("SELECT * FROM api.default.issues LIMIT 5").show()
+```
+
+### Docker
 
 Try Apilytics instantly with Docker - no Java, Scala, or build tools required:
 
@@ -135,10 +161,13 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI 3.x specifi
 - **Authentication** - bearer token, basic auth, custom headers, OAuth2 client credentials
 - **Filter pushdown** - Spark SQL filters map to API query parameters
 - **Limit pushdown** - stops pagination early when a LIMIT clause is present
+- **COUNT(*) pushdown** - single API call for counts when count endpoint configured
 - **Schema flattening** - nested objects flatten to a configurable depth, deeper nesting falls back to VARIANT
 - **Arrow internals** - zero-copy path to Spark ColumnarBatch
 - **Parent-child joins** - chain API calls (e.g., fetch issues then comments for each)
 - **Batch joins** - reduce API calls from O(n) to O(n/batch_size) for bulk lookups
+- **Parallel partitioning** - date-range or enum partitioning for concurrent reads
+- **Rate limit distribution** - automatically divides rate limits across partitions
 
 ## Logging & Debugging
 
