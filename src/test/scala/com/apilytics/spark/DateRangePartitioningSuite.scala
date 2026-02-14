@@ -47,13 +47,12 @@ class DateRangePartitioningSuite extends FunSuite {
         |""".stripMargin)
 
     val result = Loader.load(config)
-    val partition = result.tables("events").partition.get
+    val partition = result.tables("events").partition.get.asInstanceOf[PartitionConfig.DateRange]
 
-    assertEquals(partition.partitionType, PartitionType.DateRange)
-    assertEquals(partition.column, Some("created_at"))
-    assertEquals(partition.range, Some(1.day))
-    assertEquals(partition.startParam, Some("created_after"))
-    assertEquals(partition.endParam, Some("created_before"))
+    assertEquals(partition.column, "created_at")
+    assertEquals(partition.range, 1.day)
+    assertEquals(partition.startParam, "created_after")
+    assertEquals(partition.endParam, "created_before")
     assertEquals(partition.format, "yyyy-MM-dd'T'HH:mm:ss'Z'")
   }
 
@@ -77,9 +76,9 @@ class DateRangePartitioningSuite extends FunSuite {
         |""".stripMargin)
 
     val result = Loader.load(config)
-    val partition = result.tables("events").partition.get
+    val partition = result.tables("events").partition.get.asInstanceOf[PartitionConfig.DateRange]
 
-    assertEquals(partition.range, Some(7.days))
+    assertEquals(partition.range, 7.days)
     assertEquals(partition.format, "yyyy-MM-dd")
   }
 
@@ -107,12 +106,11 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("RESTScan creates single partition when date range not in query") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.DateRange,
-      column = Some("created_at"),
-      range = Some(1.day),
-      startParam = Some("created_after"),
-      endParam = Some("created_before")
+    val partitionConfig = PartitionConfig.DateRange(
+      column = "created_at",
+      range = 1.day,
+      startParam = "created_after",
+      endParam = "created_before"
     )
     val tableConfig = TableConfig(endpoint = "/events", partition = Some(partitionConfig))
     val table = new RESTTable(
@@ -137,12 +135,11 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("RESTScan creates multiple partitions for date range query") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.DateRange,
-      column = Some("created_at"),
-      range = Some(1.day),
-      startParam = Some("created_after"),
-      endParam = Some("created_before")
+    val partitionConfig = PartitionConfig.DateRange(
+      column = "created_at",
+      range = 1.day,
+      startParam = "created_after",
+      endParam = "created_before"
     )
     val tableConfig = TableConfig(endpoint = "/events", partition = Some(partitionConfig))
     val table = new RESTTable(
@@ -183,12 +180,11 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("RESTScan handles partial day range correctly") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.DateRange,
-      column = Some("created_at"),
-      range = Some(1.day),
-      startParam = Some("start"),
-      endParam = Some("end")
+    val partitionConfig = PartitionConfig.DateRange(
+      column = "created_at",
+      range = 1.day,
+      startParam = "start",
+      endParam = "end"
     )
     val tableConfig = TableConfig(endpoint = "/events", partition = Some(partitionConfig))
     val table = new RESTTable(
@@ -225,12 +221,11 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("RESTScan preserves other pushed params in partitions") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.DateRange,
-      column = Some("created_at"),
-      range = Some(1.day),
-      startParam = Some("created_after"),
-      endParam = Some("created_before")
+    val partitionConfig = PartitionConfig.DateRange(
+      column = "created_at",
+      range = 1.day,
+      startParam = "created_after",
+      endParam = "created_before"
     )
     val tableConfig = TableConfig(endpoint = "/events", partition = Some(partitionConfig))
     val table = new RESTTable(
@@ -262,12 +257,11 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("RESTScan handles hourly partitions") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.DateRange,
-      column = Some("timestamp"),
-      range = Some(1.hour),
-      startParam = Some("from"),
-      endParam = Some("to")
+    val partitionConfig = PartitionConfig.DateRange(
+      column = "timestamp",
+      range = 1.hour,
+      startParam = "from",
+      endParam = "to"
     )
     val tableConfig = TableConfig(endpoint = "/logs", partition = Some(partitionConfig))
     val table = new RESTTable(
@@ -296,12 +290,11 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("RESTScan handles empty range (start == end)") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.DateRange,
-      column = Some("created_at"),
-      range = Some(1.day),
-      startParam = Some("start"),
-      endParam = Some("end")
+    val partitionConfig = PartitionConfig.DateRange(
+      column = "created_at",
+      range = 1.day,
+      startParam = "start",
+      endParam = "end"
     )
     val tableConfig = TableConfig(endpoint = "/events", partition = Some(partitionConfig))
     val table = new RESTTable(
@@ -329,12 +322,11 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("RESTScan handles range larger than span (single partition)") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.DateRange,
-      column = Some("created_at"),
-      range = Some(30.days),
-      startParam = Some("start"),
-      endParam = Some("end")
+    val partitionConfig = PartitionConfig.DateRange(
+      column = "created_at",
+      range = 30.days,
+      startParam = "start",
+      endParam = "end"
     )
     val tableConfig = TableConfig(endpoint = "/events", partition = Some(partitionConfig))
     val table = new RESTTable(
@@ -367,12 +359,11 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("RESTScan handles malformed date strings gracefully") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.DateRange,
-      column = Some("created_at"),
-      range = Some(1.day),
-      startParam = Some("start"),
-      endParam = Some("end")
+    val partitionConfig = PartitionConfig.DateRange(
+      column = "created_at",
+      range = 1.day,
+      startParam = "start",
+      endParam = "end"
     )
     val tableConfig = TableConfig(endpoint = "/events", partition = Some(partitionConfig))
     val table = new RESTTable(
@@ -464,17 +455,15 @@ class DateRangePartitioningSuite extends FunSuite {
         |""".stripMargin)
 
     val result = Loader.load(config)
-    val partition = result.tables("orders").partition.get
+    val partition = result.tables("orders").partition.get.asInstanceOf[PartitionConfig.Enum]
 
-    assertEquals(partition.partitionType, PartitionType.Enum)
-    assertEquals(partition.param, Some("status"))
+    assertEquals(partition.param, "status")
     assertEquals(partition.values, List("pending", "processing", "shipped", "delivered"))
   }
 
   test("RESTScan creates N partitions for N enum values") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.Enum,
-      param = Some("status"),
+    val partitionConfig = PartitionConfig.Enum(
+      param = "status",
       values = List("pending", "processing", "shipped")
     )
     val tableConfig = TableConfig(endpoint = "/orders", partition = Some(partitionConfig))
@@ -500,9 +489,8 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("Enum partition sets correct param value for each partition") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.Enum,
-      param = Some("status"),
+    val partitionConfig = PartitionConfig.Enum(
+      param = "status",
       values = List("active", "inactive")
     )
     val tableConfig = TableConfig(endpoint = "/users", partition = Some(partitionConfig))
@@ -534,9 +522,8 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("Enum partition distributes rate limit across partitions") {
-    val partitionConfig = PartitionConfig(
-      partitionType = PartitionType.Enum,
-      param = Some("status"),
+    val partitionConfig = PartitionConfig.Enum(
+      param = "status",
       values = List("a", "b", "c", "d")
     )
     val tableConfig = TableConfig(endpoint = "/items", partition = Some(partitionConfig))
@@ -656,9 +643,8 @@ class DateRangePartitioningSuite extends FunSuite {
         |""".stripMargin)
 
     val result = Loader.load(config)
-    val partition = result.tables("events").partition.get
+    val partition = result.tables("events").partition.get.asInstanceOf[PartitionConfig.DateRange]
 
-    assertEquals(partition.partitionType, PartitionType.DateRange)
-    assertEquals(partition.column, Some("created_at"))
+    assertEquals(partition.column, "created_at")
   }
 }
