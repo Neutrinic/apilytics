@@ -1,9 +1,28 @@
+ThisBuild / organization := "io.github.neutrinic"
+ThisBuild / version := "0.4.0"
+ThisBuild / scalaVersion := "2.13.16"
+
+// Publishing settings for Maven Central
+ThisBuild / homepage := Some(url("https://github.com/Neutrinic/apilytics"))
+ThisBuild / licenses := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
+ThisBuild / developers := List(
+  Developer(
+    id = "neutrinic",
+    name = "Neutrinic",
+    email = "neutrinic@users.noreply.github.com",
+    url = url("https://github.com/Neutrinic")
+  )
+)
+ThisBuild / scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/Neutrinic/apilytics"),
+    "scm:git@github.com:Neutrinic/apilytics.git"
+  )
+)
+
 lazy val root = (project in file("."))
   .settings(
     name := "apilytics",
-    organization := "com.apilytics",
-    version := "0.2.0",
-    scalaVersion := "2.13.16",
     libraryDependencies ++= Seq(
       // Spark
       "org.apache.spark" %% "spark-sql"          % "4.0.0" % "provided",
