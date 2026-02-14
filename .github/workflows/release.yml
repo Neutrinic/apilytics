@@ -17,6 +17,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+          cache: sbt
+
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
 
       - name: Publish to Maven Central
         run: sbt ci-release
