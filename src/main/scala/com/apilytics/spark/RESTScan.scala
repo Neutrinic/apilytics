@@ -4,7 +4,7 @@ import com.apilytics.core.config.PartitionConfig
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
-import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan}
+import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan, Statistics, SupportsReportStatistics}
 import org.apache.spark.sql.types.StructType
 
 import java.time.format.DateTimeFormatter
@@ -17,7 +17,7 @@ class RESTScan(
     pushedParams: Map[String, String],
     pushedLimit: Option[Int],
     pushedAggregation: Option[Aggregation] = None
-) extends Scan with Batch with Logging {
+) extends Scan with Batch with SupportsReportStatistics with Logging {
 
   // If pruned, return the pruned schema; otherwise return full schema
   override def readSchema(): StructType = prunedSchema.getOrElse(table.schema())
@@ -239,4 +239,8 @@ class RESTScan(
 
   override def createReaderFactory(): PartitionReaderFactory =
     new RESTPartitionReaderFactory()
+
+  /** Report statistics to Spark for query optimization. */
+  override def estimateStatistics(): Statistics =
+    ScanStatistics.estimate(pushedLimit, table.sourceConfig.pagination, readSchema())
 }
