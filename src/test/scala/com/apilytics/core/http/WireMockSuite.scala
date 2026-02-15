@@ -1242,4 +1242,274 @@ class WireMockSuite extends FunSuite {
     server.verify(1, getRequestedFor(urlPathEqualTo("/items/count"))
       .withQueryParam("status", equalTo("active")))
   }
+
+  // ============== AGGREGATION PUSHDOWN TESTS ===============
+
+  test("aggregation pushdown fetches SUM from configured endpoint") {
+    server.stubFor(
+      get(urlPathEqualTo("/orders/stats"))
+        .willReturn(okJson("""{"total": 12500}"""))
+    )
+
+    val aggConfig = AggregationConfig(
+      function = AggregationFunction.Sum,
+      column = Some("amount"),
+      endpoint = "/orders/stats",
+      responsePath = "/total"
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    val partition = AggregationInputPartition(
+      aggregationConfigs = List(aggConfig),
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      pushedParams = Map.empty
+    )
+
+    val reader = new AggregationPartitionReader(partition)
+
+    // Should have exactly one row
+    assert(reader.next())
+    val row = reader.get()
+    assertEquals(row.getLong(0), 12500L)
+
+    // No more rows
+    assert(!reader.next())
+    reader.close()
+
+    // Verify aggregation endpoint was called
+    server.verify(1, getRequestedFor(urlPathEqualTo("/orders/stats")))
+  }
+
+  test("aggregation pushdown fetches multiple aggregates") {
+    // Different endpoints for different aggregates
+    server.stubFor(
+      get(urlPathEqualTo("/orders/stats"))
+        .willReturn(okJson("""{"total": 10000, "average": 250.5}"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/orders/count"))
+        .willReturn(okJson("""{"count": 40}"""))
+    )
+
+    val sumConfig = AggregationConfig(
+      function = AggregationFunction.Sum,
+      column = Some("amount"),
+      endpoint = "/orders/stats",
+      responsePath = "/total"
+    )
+    val avgConfig = AggregationConfig(
+      function = AggregationFunction.Avg,
+      column = Some("amount"),
+      endpoint = "/orders/stats",
+      responsePath = "/average"
+    )
+    val countConfig = AggregationConfig(
+      function = AggregationFunction.Count,
+      column = None,
+      endpoint = "/orders/count",
+      responsePath = "/count"
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    val partition = AggregationInputPartition(
+      aggregationConfigs = List(sumConfig, avgConfig, countConfig),
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      pushedParams = Map.empty
+    )
+
+    val reader = new AggregationPartitionReader(partition)
+
+    assert(reader.next())
+    val row = reader.get()
+    assertEquals(row.getLong(0), 10000L)       // SUM
+    assertEquals(row.getDouble(1), 250.5, 0.001)  // AVG
+    assertEquals(row.getLong(2), 40L)          // COUNT
+
+    assert(!reader.next())
+    reader.close()
+
+    // Verify both endpoints were called
+    // Note: Currently each agg makes its own request (issue #131 tracks deduplication)
+    server.verify(2, getRequestedFor(urlPathEqualTo("/orders/stats")))
+    server.verify(1, getRequestedFor(urlPathEqualTo("/orders/count")))
+  }
+
+  test("aggregation pushdown includes pushed filter params") {
+    server.stubFor(
+      get(urlPathEqualTo("/orders/stats"))
+        .withQueryParam("status", equalTo("completed"))
+        .willReturn(okJson("""{"sum": 5000}"""))
+    )
+
+    val aggConfig = AggregationConfig(
+      function = AggregationFunction.Sum,
+      column = Some("amount"),
+      endpoint = "/orders/stats",
+      responsePath = "/sum"
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    val partition = AggregationInputPartition(
+      aggregationConfigs = List(aggConfig),
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      pushedParams = Map("status" -> "completed")
+    )
+
+    val reader = new AggregationPartitionReader(partition)
+
+    assert(reader.next())
+    assertEquals(reader.get().getLong(0), 5000L)
+    reader.close()
+
+    // Verify filter was passed to aggregation endpoint
+    server.verify(1, getRequestedFor(urlPathEqualTo("/orders/stats"))
+      .withQueryParam("status", equalTo("completed")))
+  }
+
+  test("aggregation pushdown merges config params with pushed params") {
+    server.stubFor(
+      get(urlPathEqualTo("/orders/percentiles"))
+        .withQueryParam("percentile", equalTo("95"))
+        .withQueryParam("column", equalTo("amount"))
+        .withQueryParam("region", equalTo("us-west"))
+        .willReturn(okJson("""{"p95": 999.99}"""))
+    )
+
+    val aggConfig = AggregationConfig(
+      function = AggregationFunction.Custom("PERCENTILE"),
+      column = None,
+      endpoint = "/orders/percentiles",
+      responsePath = "/p95",
+      params = Map("percentile" -> "95", "column" -> "amount")
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    val partition = AggregationInputPartition(
+      aggregationConfigs = List(aggConfig),
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      pushedParams = Map("region" -> "us-west")
+    )
+
+    val reader = new AggregationPartitionReader(partition)
+
+    assert(reader.next())
+    assertEquals(reader.get().getDouble(0), 999.99, 0.001)
+    reader.close()
+
+    // Verify both config params and pushed params were sent
+    server.verify(1, getRequestedFor(urlPathEqualTo("/orders/percentiles"))
+      .withQueryParam("percentile", equalTo("95"))
+      .withQueryParam("column", equalTo("amount"))
+      .withQueryParam("region", equalTo("us-west")))
+  }
+
+  test("aggregation pushdown handles string values with UTF8String") {
+    server.stubFor(
+      get(urlPathEqualTo("/orders/mode"))
+        .willReturn(okJson("""{"mode_value": "premium"}"""))
+    )
+
+    val aggConfig = AggregationConfig(
+      function = AggregationFunction.Custom("MODE"),
+      column = Some("tier"),
+      endpoint = "/orders/mode",
+      responsePath = "/mode_value"
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    val partition = AggregationInputPartition(
+      aggregationConfigs = List(aggConfig),
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      pushedParams = Map.empty
+    )
+
+    val reader = new AggregationPartitionReader(partition)
+
+    assert(reader.next())
+    val row = reader.get()
+    // The value should be UTF8String, not regular String
+    val value = row.getUTF8String(0)
+    assertEquals(value.toString, "premium")
+
+    reader.close()
+  }
+
+  test("aggregation pushdown handles MIN and MAX") {
+    server.stubFor(
+      get(urlPathEqualTo("/orders/stats"))
+        .willReturn(okJson("""{"min_price": 10, "max_price": 500}"""))
+    )
+
+    val minConfig = AggregationConfig(
+      function = AggregationFunction.Min,
+      column = Some("price"),
+      endpoint = "/orders/stats",
+      responsePath = "/min_price"
+    )
+    val maxConfig = AggregationConfig(
+      function = AggregationFunction.Max,
+      column = Some("price"),
+      endpoint = "/orders/stats",
+      responsePath = "/max_price"
+    )
+
+    val sourceConfig = SourceConfig(
+      openapi = "test.yaml",
+      auth = noAuth,
+      http = defaultHttp,
+      baseUrl = Some(s"http://localhost:${server.port()}")
+    )
+
+    val partition = AggregationInputPartition(
+      aggregationConfigs = List(minConfig, maxConfig),
+      sourceConfig = sourceConfig,
+      baseUrl = s"http://localhost:${server.port()}",
+      pushedParams = Map.empty
+    )
+
+    val reader = new AggregationPartitionReader(partition)
+
+    assert(reader.next())
+    val row = reader.get()
+    assertEquals(row.getLong(0), 10L)   // MIN
+    assertEquals(row.getLong(1), 500L)  // MAX
+
+    assert(!reader.next())
+    reader.close()
+  }
 }

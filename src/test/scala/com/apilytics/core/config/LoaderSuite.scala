@@ -205,4 +205,162 @@ class LoaderSuite extends FunSuite {
     assertEquals(result.http.responseCache.ttl.toMinutes, 10L)
     assertEquals(result.http.responseCache.maxEntries, 500)
   }
+
+  test("aggregations config with standard functions") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  orders {
+        |    endpoint = "/orders"
+        |    aggregations {
+        |      total_amount {
+        |        function = sum
+        |        column = "amount"
+        |        endpoint = "/orders/stats"
+        |        response-path = "/total"
+        |      }
+        |      avg_amount {
+        |        function = avg
+        |        column = "amount"
+        |        endpoint = "/orders/stats"
+        |        response-path = "/average"
+        |      }
+        |      min_price {
+        |        function = min
+        |        column = "price"
+        |        endpoint = "/orders/stats"
+        |        response-path = "/min_price"
+        |      }
+        |      max_price {
+        |        function = max
+        |        column = "price"
+        |        endpoint = "/orders/stats"
+        |        response-path = "/max_price"
+        |      }
+        |      order_count {
+        |        function = count
+        |        endpoint = "/orders/count"
+        |        response-path = "/count"
+        |      }
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val orders = result.tables("orders")
+    assertEquals(orders.aggregations.size, 5)
+
+    val sumAgg = orders.aggregations("total_amount")
+    assertEquals(sumAgg.function, AggregationFunction.Sum)
+    assertEquals(sumAgg.column, Some("amount"))
+    assertEquals(sumAgg.endpoint, "/orders/stats")
+    assertEquals(sumAgg.responsePath, "/total")
+
+    val avgAgg = orders.aggregations("avg_amount")
+    assertEquals(avgAgg.function, AggregationFunction.Avg)
+
+    val minAgg = orders.aggregations("min_price")
+    assertEquals(minAgg.function, AggregationFunction.Min)
+
+    val maxAgg = orders.aggregations("max_price")
+    assertEquals(maxAgg.function, AggregationFunction.Max)
+
+    val countAgg = orders.aggregations("order_count")
+    assertEquals(countAgg.function, AggregationFunction.Count)
+    assertEquals(countAgg.column, None)
+  }
+
+  test("aggregations config with custom function") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  orders {
+        |    endpoint = "/orders"
+        |    aggregations {
+        |      amount_p95 {
+        |        function = custom
+        |        name = "PERCENTILE"
+        |        endpoint = "/orders/percentiles"
+        |        response-path = "/p95"
+        |        params {
+        |          percentile = "95"
+        |          column = "amount"
+        |        }
+        |      }
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val orders = result.tables("orders")
+    val pctAgg = orders.aggregations("amount_p95")
+
+    pctAgg.function match {
+      case AggregationFunction.Custom(name) =>
+        assertEquals(name, "PERCENTILE")
+      case other =>
+        fail(s"Expected Custom function, got $other")
+    }
+    assertEquals(pctAgg.params, Map("percentile" -> "95", "column" -> "amount"))
+  }
+
+  test("aggregation with custom function requires name") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  orders {
+        |    endpoint = "/orders"
+        |    aggregations {
+        |      custom_agg {
+        |        function = custom
+        |        endpoint = "/orders/custom"
+        |        response-path = "/result"
+        |      }
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException] {
+      Loader.load(config)
+    }
+    assert(ex.getMessage.contains("missing 'name'"))
+  }
+
+  test("sum/avg/min/max aggregation requires column") {
+    val functions = List("sum", "avg", "min", "max")
+
+    functions.foreach { fn =>
+      val config = ConfigFactory.parseString(
+        s"""
+           |openapi = "spec.json"
+           |auth { type = bearer, token = "t" }
+           |tables {
+           |  orders {
+           |    endpoint = "/orders"
+           |    aggregations {
+           |      test_agg {
+           |        function = $fn
+           |        endpoint = "/orders/stats"
+           |        response-path = "/value"
+           |      }
+           |    }
+           |  }
+           |}
+           |""".stripMargin)
+
+      val ex = intercept[IllegalArgumentException] {
+        Loader.load(config)
+      }
+      assert(ex.getMessage.contains("requires 'column'"), s"$fn should require column")
+    }
+  }
 }

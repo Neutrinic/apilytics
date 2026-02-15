@@ -146,7 +146,9 @@ object Loader {
         batchSize = if (tc.hasPath("batch-size")) tc.getInt("batch-size") else 100,
         batchSeparator = if (tc.hasPath("batch-separator")) tc.getString("batch-separator") else ",",
         childKeyField = optional(tc, "child-key-field"),
-        count = if (tc.hasPath("count")) Some(readCount(tc.getConfig("count"))) else None
+        count = if (tc.hasPath("count")) Some(readCount(tc.getConfig("count"))) else None,
+        aggregations = if (tc.hasPath("aggregations")) readAggregations(tc.getConfig("aggregations"))
+                       else Map.empty
       )
       
       // Validate batch join configuration
@@ -241,6 +243,51 @@ object Loader {
       paramValue = if (config.hasPath("param-value")) config.getString("param-value") else "true",
       responsePath = config.getString("response-path")
     )
+  }
+
+  private def readAggregations(config: Config): Map[String, AggregationConfig] = {
+    config.root().keySet().asScala.map { name =>
+      val ac = config.getConfig(name)
+      val function = ac.getString("function") match {
+        case "count"  => AggregationFunction.Count
+        case "sum"    => AggregationFunction.Sum
+        case "avg"    => AggregationFunction.Avg
+        case "min"    => AggregationFunction.Min
+        case "max"    => AggregationFunction.Max
+        case "custom" =>
+          val customName = if (ac.hasPath("name")) ac.getString("name")
+                           else throw new IllegalArgumentException(
+                             s"Aggregation '$name' has function=custom but missing 'name' field"
+                           )
+          AggregationFunction.Custom(customName)
+        case other => throw new IllegalArgumentException(s"Unknown aggregation function: $other")
+      }
+
+      val aggConfig = AggregationConfig(
+        function = function,
+        column = optional(ac, "column"),
+        endpoint = ac.getString("endpoint"),
+        responsePath = ac.getString("response-path"),
+        params = if (ac.hasPath("params")) {
+          val paramsConfig = ac.getConfig("params")
+          paramsConfig.root().keySet().asScala.map { key =>
+            key -> paramsConfig.getString(key)
+          }.toMap
+        } else Map.empty
+      )
+
+      // Validate column is required for sum/avg/min/max
+      function match {
+        case AggregationFunction.Sum | AggregationFunction.Avg |
+             AggregationFunction.Min | AggregationFunction.Max if aggConfig.column.isEmpty =>
+          throw new IllegalArgumentException(
+            s"Aggregation '$name' with function=${ac.getString("function")} requires 'column' field"
+          )
+        case _ => // OK
+      }
+
+      name -> aggConfig
+    }.toMap
   }
 
   private def optional(config: Config, path: String): Option[String] =
