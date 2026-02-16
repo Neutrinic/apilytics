@@ -1,6 +1,7 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{SourceConfig, TableConfig}
+import com.apilytics.core.config.{SchemaMode, SourceConfig, TableConfig}
+import org.slf4j.LoggerFactory
 import com.apilytics.core.openapi.{Endpoint, OpenAPISchema}
 import com.apilytics.core.schema.SchemaMapper
 import com.apilytics.core.schema.SchemaMapper.ArrayFieldInfo
@@ -27,25 +28,39 @@ class ExplodedArrayTable(
     val baseUrl: String
 ) extends Table with SupportsRead {
 
+  private val log = LoggerFactory.getLogger(getClass)
+
   // Build schema: parent scalar fields + exploded array element field
   private lazy val (arrowSchema, sparkSchema) = buildExplodedSchema()
 
   private def buildExplodedSchema(): (ArrowSchema, StructType) = {
+    // Exploded views require schema knowledge - variant mode not supported
+    // Use strict mode for exploded views regardless of global setting
+    val effectiveMode = sourceConfig.schema.mode match {
+      case SchemaMode.Variant =>
+        log.warn("Exploded view '{}' requires schema knowledge; using strict mode instead of variant",
+          tableName)
+        SchemaMode.Strict
+      case SchemaMode.Strict => SchemaMode.Strict
+    }
+
     // Array item schema: wrap in object keyed by arrayFieldName
     // For object arrays, this produces prefixed fields (e.g., addresses_city)
     // For primitive arrays, this produces a single field (e.g., tags)
-    val itemSchema = SchemaMapper.toArrowSchema(
+    val itemSchema = SchemaMapper.toArrowSchemaWithMode(
       OpenAPISchema.ObjectType(Map(arrayFieldName -> arrayFieldInfo.itemSchema), Set.empty),
-      sourceConfig.schema.flattenDepth
+      sourceConfig.schema.flattenDepth,
+      effectiveMode
     )
 
     // Parent scalar fields (exclude the array field itself)
-    val parentSchema = SchemaMapper.toArrowSchema(
+    val parentSchema = SchemaMapper.toArrowSchemaWithMode(
       OpenAPISchema.ObjectType(
         endpoint.responseSchema.properties.filterNot(_._1 == arrayFieldName),
         endpoint.responseSchema.required
       ),
-      sourceConfig.schema.flattenDepth
+      sourceConfig.schema.flattenDepth,
+      effectiveMode
     )
 
     // Combine parent fields with exploded item fields

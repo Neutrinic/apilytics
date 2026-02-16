@@ -1,6 +1,6 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{ArrayHandling, Loader, SourceConfig, TableConfig}
+import com.apilytics.core.config.{ArrayHandling, Loader, SchemaMode, SourceConfig, TableConfig}
 import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, ParsedSpec, Parser, SpecCache}
 import com.apilytics.core.schema.SchemaMapper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
@@ -83,7 +83,11 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
         unwrapSyntheticArrayWrapper(endpoint.responseSchema)
     }
 
-    val arrowSchema = SchemaMapper.toArrowSchema(effectiveSchema, config.schema.flattenDepth)
+    val arrowSchema = SchemaMapper.toArrowSchemaWithMode(
+      effectiveSchema,
+      config.schema.flattenDepth,
+      config.schema.mode
+    )
 
     new RESTTable(
       tableName = tableName,

@@ -94,7 +94,8 @@ class RESTScan(
           arrowSchemaJson = arrowSchema.toJson,
           pushedParams = pushedParams,
           pushedLimit = pushedLimit,
-          effectiveRateLimit = effectiveRateLimit
+          effectiveRateLimit = effectiveRateLimit,
+          schemaMode = table.sourceConfig.schema.mode
         ))
     }
   }
@@ -124,7 +125,8 @@ class RESTScan(
         arrowSchemaJson = arrowSchema.toJson,
         pushedParams = partitionParams,
         pushedLimit = pushedLimit,
-        effectiveRateLimit = effectiveRateLimit
+        effectiveRateLimit = effectiveRateLimit,
+        schemaMode = table.sourceConfig.schema.mode
       )
     }.toArray
   }
@@ -196,7 +198,8 @@ class RESTScan(
             arrowSchemaJson = arrowSchema.toJson,
             pushedParams = partitionParams,
             pushedLimit = pushedLimit,
-            effectiveRateLimit = effectiveRateLimit
+            effectiveRateLimit = effectiveRateLimit,
+            schemaMode = table.sourceConfig.schema.mode
           )
         }.toArray)
       }
@@ -220,7 +223,8 @@ class RESTScan(
       arrowSchemaJson = arrowSchema.toJson,
       pushedParams = pushedParams,
       pushedLimit = pushedLimit,
-      effectiveRateLimit = effectiveRateLimit
+      effectiveRateLimit = effectiveRateLimit,
+      schemaMode = table.sourceConfig.schema.mode
     ))
   }
 

@@ -1,5 +1,6 @@
 package com.apilytics.core.schema
 
+import com.apilytics.core.config.SchemaMode
 import com.apilytics.core.openapi.OpenAPISchema
 import org.apache.arrow.vector.types.pojo.{ArrowType, Field, FieldType, Schema}
 
@@ -11,6 +12,13 @@ object SchemaMapper {
     * Stored as comma-separated keys: field "address_city" has json.path = "address,city".
     * The Converter uses this to navigate the original JSON without ambiguity from underscores. */
   val JsonPathKey = "json.path"
+
+  /** Metadata key indicating this field should receive the entire JSON response.
+    * Used for variant mode where the whole response is returned as a single column. */
+  val VariantKey = "variant"
+
+  /** Default column name for variant mode output. */
+  val VariantColumnName = "value"
 
   /** Information about an array field for generating exploded views. */
   final case class ArrayFieldInfo(
@@ -38,6 +46,27 @@ object SchemaMapper {
       )
     }
     new Schema(fields.asJava)
+  }
+
+  /** Create a schema based on the schema mode.
+    *
+    * - Strict: use OpenAPI schema with flattening, nested objects become STRING
+    * - Variant: single "value" column as native VARIANT type
+    */
+  def toArrowSchemaWithMode(obj: OpenAPISchema.ObjectType, maxDepth: Int, mode: SchemaMode): Schema = {
+    mode match {
+      case SchemaMode.Variant => variantSchema()
+      case SchemaMode.Strict  => toArrowSchema(obj, maxDepth)
+    }
+  }
+
+  /** Create a schema with a single native VARIANT column for the entire response.
+    * The data is binary-encoded using Spark 4.0's VariantBuilder for faster queries.
+    */
+  def variantSchema(): Schema = {
+    val metadata = java.util.Map.of(VariantKey, "true")
+    val field = new Field(VariantColumnName, new FieldType(true, new ArrowType.Utf8(), null, metadata), null)
+    new Schema(java.util.List.of(field))
   }
 
   private def flattenFields(

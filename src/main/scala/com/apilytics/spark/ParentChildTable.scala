@@ -1,6 +1,6 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{SourceConfig, TableConfig}
+import com.apilytics.core.config.{SchemaMode, SourceConfig, TableConfig}
 import com.apilytics.core.openapi.{Endpoint, OpenAPISchema}
 import com.apilytics.core.schema.SchemaMapper
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
@@ -51,7 +51,11 @@ class ParentChildTable(
   /** Build schema: parent key column + child response fields. */
   private def buildSchema(): (ArrowSchema, StructType) = {
     // Child fields from response schema
-    val childSchema = SchemaMapper.toArrowSchema(childResponseSchema, sourceConfig.schema.flattenDepth)
+    val childSchema = SchemaMapper.toArrowSchemaWithMode(
+      childResponseSchema,
+      sourceConfig.schema.flattenDepth,
+      sourceConfig.schema.mode
+    )
 
     // Add parent key column (string type) at the beginning
     val parentKeyField = new org.apache.arrow.vector.types.pojo.Field(

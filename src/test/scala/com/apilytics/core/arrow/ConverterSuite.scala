@@ -185,4 +185,63 @@ class ConverterSuite extends FunSuite {
       assert(vec.isNull(3))
     } finally root.close()
   }
+
+  // ==========================================================================
+  // Variant mode tests (#137)
+  // ==========================================================================
+
+  test("toArrow with variant schema stores entire record as JSON") {
+    val schema = SchemaMapper.variantSchema()
+    val records = List(
+      parse("""{"id": 1, "name": "Alice", "nested": {"x": 10}}""").toOption.get,
+      parse("""{"id": 2, "name": "Bob", "tags": ["a", "b"]}""").toOption.get
+    )
+
+    val root = Converter.toArrow(records, schema, allocator)
+    try {
+      assertEquals(root.getRowCount, 2)
+      val vec = root.getVector(SchemaMapper.VariantColumnName).asInstanceOf[org.apache.arrow.vector.VarCharVector]
+
+      // First record serialized as compact JSON
+      val row1 = new String(vec.get(0), StandardCharsets.UTF_8)
+      assert(row1.contains(""""id":1"""))
+      assert(row1.contains(""""name":"Alice""""))
+      assert(row1.contains(""""nested":{"x":10}"""))
+
+      // Second record serialized as compact JSON
+      val row2 = new String(vec.get(1), StandardCharsets.UTF_8)
+      assert(row2.contains(""""id":2"""))
+      assert(row2.contains(""""tags":["a","b"]"""))
+    } finally root.close()
+  }
+
+  test("toArrow with variant schema handles null JSON") {
+    val schema = SchemaMapper.variantSchema()
+    val records = List(Json.Null)
+
+    val root = Converter.toArrow(records, schema, allocator)
+    try {
+      val vec = root.getVector(SchemaMapper.VariantColumnName).asInstanceOf[org.apache.arrow.vector.VarCharVector]
+      assert(vec.isNull(0))
+    } finally root.close()
+  }
+
+  test("toArrow with variant schema preserves array records") {
+    val schema = SchemaMapper.variantSchema()
+    val records = List(
+      parse("""[1, 2, 3]""").toOption.get,
+      parse("""{"arr": [1, 2]}""").toOption.get
+    )
+
+    val root = Converter.toArrow(records, schema, allocator)
+    try {
+      val vec = root.getVector(SchemaMapper.VariantColumnName).asInstanceOf[org.apache.arrow.vector.VarCharVector]
+
+      val row1 = new String(vec.get(0), StandardCharsets.UTF_8)
+      assertEquals(row1, "[1,2,3]")
+
+      val row2 = new String(vec.get(1), StandardCharsets.UTF_8)
+      assert(row2.contains(""""arr":[1,2]"""))
+    } finally root.close()
+  }
 }

@@ -28,15 +28,27 @@ object Converter {
       val vector = root.getVector(field.getName)
       vector.allocateNew()
 
-      // Read the original JSON path from field metadata (set by SchemaMapper)
-      val pathParts = Option(field.getMetadata)
-        .flatMap(m => Option(m.get(SchemaMapper.JsonPathKey)))
-        .map(_.split(",").toList)
-        .getOrElse(List(field.getName))
+      // Check if this is a variant field (entire JSON as string)
+      val isVariant = Option(field.getMetadata)
+        .flatMap(m => Option(m.get(SchemaMapper.VariantKey)))
+        .contains("true")
 
-      records.zipWithIndex.foreach { case (record, idx) =>
-        val value = navigateJson(record, pathParts)
-        writeValue(vector, idx, value, field.getType)
+      if (isVariant) {
+        // Write entire record as JSON string
+        records.zipWithIndex.foreach { case (record, idx) =>
+          writeValue(vector, idx, record, field.getType)
+        }
+      } else {
+        // Read the original JSON path from field metadata (set by SchemaMapper)
+        val pathParts = Option(field.getMetadata)
+          .flatMap(m => Option(m.get(SchemaMapper.JsonPathKey)))
+          .map(_.split(",").toList)
+          .getOrElse(List(field.getName))
+
+        records.zipWithIndex.foreach { case (record, idx) =>
+          val value = navigateJson(record, pathParts)
+          writeValue(vector, idx, value, field.getType)
+        }
       }
 
       vector.setValueCount(records.size)

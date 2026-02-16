@@ -363,4 +363,49 @@ class LoaderSuite extends FunSuite {
       assert(ex.getMessage.contains("requires 'column'"), s"$fn should require column")
     }
   }
+
+  // ==========================================================================
+  // Schema mode tests (#137)
+  // ==========================================================================
+
+  test("schema mode defaults to strict") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.schema.mode, SchemaMode.Strict)
+  }
+
+  test("schema mode can be set to variant") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |schema {
+        |  mode = variant
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.schema.mode, SchemaMode.Variant)
+  }
+
+  test("unknown schema mode throws") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |schema {
+        |  mode = unknown
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException] {
+      Loader.load(config)
+    }
+    assert(ex.getMessage.contains("Unknown schema mode"))
+  }
 }

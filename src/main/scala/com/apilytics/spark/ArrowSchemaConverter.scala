@@ -1,5 +1,6 @@
 package com.apilytics.spark
 
+import com.apilytics.core.schema.SchemaMapper
 import org.apache.arrow.vector.types.pojo.{ArrowType, Field, Schema => ArrowSchema}
 import org.apache.spark.sql.types._
 
@@ -25,8 +26,17 @@ object ArrowSchemaConverter {
   }
 
   private def toSparkField(field: Field): StructField = {
-    val sparkType = toSparkType(field.getType)
-    StructField(field.getName, sparkType, field.isNullable)
+    // Check if this is a variant field - return native VariantType
+    val isVariant = Option(field.getMetadata)
+      .flatMap(m => Option(m.get(SchemaMapper.VariantKey)))
+      .contains("true")
+
+    if (isVariant) {
+      StructField(field.getName, VariantType, field.isNullable)
+    } else {
+      val sparkType = toSparkType(field.getType)
+      StructField(field.getName, sparkType, field.isNullable)
+    }
   }
 
   private def toSparkType(arrowType: ArrowType): DataType = arrowType match {

@@ -26,6 +26,20 @@ object ArrayHandling {
   case object Both extends ArrayHandling
 }
 
+/** Schema handling mode.
+  *
+  * Controls how the OpenAPI schema is used:
+  * - strict: Use OpenAPI schema with flattening, typed columns, nested objects as STRING
+  * - variant: Single native VARIANT column for schema-free queries (faster than JSON strings)
+  */
+sealed trait SchemaMode extends Serializable
+object SchemaMode {
+  /** Use OpenAPI schema strictly with flattening. Nested objects beyond depth become STRING. (Default) */
+  case object Strict extends SchemaMode
+  /** Return entire response as single native VARIANT column. No schema needed. */
+  case object Variant extends SchemaMode
+}
+
 final case class AuthConfig(
     authType: AuthType,
     token: Option[String] = None,
@@ -60,7 +74,12 @@ final case class SchemaConfig(
     arrowBatchSize: Int = 4096,
     /** When true, empty/null arrays emit one row with null element (OUTER semantics).
       * When false (default), empty arrays produce no rows (INNER semantics). */
-    explodeOuter: Boolean = false
+    explodeOuter: Boolean = false,
+    /** Schema handling mode. Controls how OpenAPI schema is used.
+      *
+      * - strict: Use OpenAPI schema with flattening (default)
+      * - variant: Return entire response as single native VARIANT column */
+    mode: SchemaMode = SchemaMode.Strict
 )
 
 sealed trait ResponseCacheBackend extends Serializable
