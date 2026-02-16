@@ -148,7 +148,4 @@ private class BinaryChildVector(data: Array[Array[Byte]]) extends ColumnVector(B
     throw new UnsupportedOperationException("BinaryType does not support getChild")
 }
 
-object VariantColumnVector {
-  /** Column name used for variant mode tables */
-  val ColumnName = "value"
-}
+// Column name defined in SchemaMapper.VariantColumnName

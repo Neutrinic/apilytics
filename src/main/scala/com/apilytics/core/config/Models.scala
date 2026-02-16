@@ -30,7 +30,7 @@ object ArrayHandling {
   *
   * Controls how the OpenAPI schema is used:
   * - strict: Use OpenAPI schema with flattening, typed columns, nested objects as STRING
-  * - variant: Single native VARIANT column for schema-free queries (~8x faster than JSON strings)
+  * - variant: Single native VARIANT column for schema-free queries (faster than JSON strings)
   */
 sealed trait SchemaMode extends Serializable
 object SchemaMode {

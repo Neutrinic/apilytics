@@ -61,7 +61,7 @@ object SchemaMapper {
   }
 
   /** Create a schema with a single native VARIANT column for the entire response.
-    * The data is binary-encoded using Spark 4.0's VariantBuilder for ~8x faster queries.
+    * The data is binary-encoded using Spark 4.0's VariantBuilder for faster queries.
     */
   def variantSchema(): Schema = {
     val metadata = java.util.Map.of(VariantKey, "true")

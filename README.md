@@ -316,7 +316,7 @@ Control how OpenAPI schemas are used with the `mode` setting:
 | Mode | Description |
 |------|-------------|
 | `strict` | (Default) Use OpenAPI schema with flattening. Typed columns, nested objects beyond depth become STRING. |
-| `variant` | Return entire response as native Spark VARIANT column. ~8x faster than JSON strings. |
+| `variant` | Return entire response as native Spark VARIANT column. Faster than JSON strings ([benchmark](https://www.databricks.com/blog/introducing-open-variant-data-type-delta-lake-and-apache-spark)). |
 
 **Strict mode** (default) uses the OpenAPI schema to produce typed columns. Nested objects are flattened to `flatten-depth`, deeper nesting becomes JSON strings which you can parse with `parse_json()` if needed.
 

@@ -57,7 +57,7 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
       case Some(Right((batch, root))) =>
         // Release the previous batch before storing the new one
         if (currentBatch != null) currentBatch.close()
-        if (currentRoot != null) currentRoot.close()
+        if (currentRoot != null) currentRoot.close() // null for variant path (no Arrow)
         currentBatch = batch
         currentRoot = root
         true
@@ -94,7 +94,7 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
       item.flatten.foreach {
         case Right((batch, root)) =>
           batch.close()
-          root.close()
+          if (root != null) root.close() // null for variant path (no Arrow)
         case Left(_) => // discard errors during drain
       }
       item = queue.tryTake.unsafeRunSync()
