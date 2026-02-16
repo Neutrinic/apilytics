@@ -1342,9 +1342,10 @@ class WireMockSuite extends FunSuite {
     assert(!reader.next())
     reader.close()
 
-    // Verify both endpoints were called
-    // Note: Currently each agg makes its own request (issue #131 tracks deduplication)
-    server.verify(2, getRequestedFor(urlPathEqualTo("/orders/stats")))
+    // Verify deduplication: same endpoint called once, different endpoint called once
+    // SUM and AVG both use /orders/stats with same params -> 1 call (deduplicated)
+    // COUNT uses /orders/count -> 1 call
+    server.verify(1, getRequestedFor(urlPathEqualTo("/orders/stats")))
     server.verify(1, getRequestedFor(urlPathEqualTo("/orders/count")))
   }
 
