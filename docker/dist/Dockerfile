@@ -38,14 +38,14 @@ RUN curl -L https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-$
 # Configure Spark
 RUN mkdir -p ${SPARK_HOME}/logs ${SPARK_HOME}/work
 
-# Copy Apilytics JAR (built externally and passed as build context)
-COPY apilytics.jar ${SPARK_HOME}/jars/
+# Copy Apilytics JAR from build output
+COPY target/scala-2.13/apilytics.jar ${SPARK_HOME}/jars/
 
 # Copy examples (configs are in examples/pokeapi/, examples/github/)
 COPY examples/ /opt/apilytics/examples/
 
 # Copy entrypoint
-COPY entrypoint.sh /entrypoint.sh
+COPY docker/dist/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 WORKDIR /opt/spark

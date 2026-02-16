@@ -27,9 +27,12 @@ ENV SPARK_HOME=/opt/spark
 ENV PYSPARK_PYTHON=/usr/bin/python3
 ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/python
 
-# JVM options for Java 21 compatibility
-ENV SPARK_DAEMON_JAVA_OPTS="--add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED"
-ENV SPARK_SUBMIT_OPTS="$SPARK_DAEMON_JAVA_OPTS"
+# JVM options for Java 21 compatibility (includes Arrow memory module access)
+ENV JAVA_OPTS="--add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED"
+ENV SPARK_DAEMON_JAVA_OPTS="$JAVA_OPTS"
+ENV SPARK_SUBMIT_OPTS="$JAVA_OPTS"
+# For Almond/Scala kernel
+ENV JAVA_TOOL_OPTIONS="$JAVA_OPTS"
 
 # Download and install Spark 4.0 with Scala 2.13
 RUN curl -L https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz | \
