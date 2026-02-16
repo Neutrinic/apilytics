@@ -393,34 +393,6 @@ class LoaderSuite extends FunSuite {
     assertEquals(result.schema.mode, SchemaMode.Variant)
   }
 
-  test("schema mode can be set to lenient") {
-    val config = ConfigFactory.parseString(
-      """
-        |openapi = "spec.json"
-        |auth { type = bearer, token = "t" }
-        |schema {
-        |  mode = lenient
-        |}
-        |""".stripMargin)
-
-    val result = Loader.load(config)
-    assertEquals(result.schema.mode, SchemaMode.Lenient)
-  }
-
-  test("schema mode can be set to infer") {
-    val config = ConfigFactory.parseString(
-      """
-        |openapi = "spec.json"
-        |auth { type = bearer, token = "t" }
-        |schema {
-        |  mode = infer
-        |}
-        |""".stripMargin)
-
-    val result = Loader.load(config)
-    assertEquals(result.schema.mode, SchemaMode.Infer)
-  }
-
   test("unknown schema mode throws") {
     val config = ConfigFactory.parseString(
       """

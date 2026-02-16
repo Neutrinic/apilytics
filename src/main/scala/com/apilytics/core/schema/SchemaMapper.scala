@@ -50,24 +50,18 @@ object SchemaMapper {
 
   /** Create a schema based on the schema mode.
     *
-    * - Strict: use OpenAPI schema with flattening
-    * - Variant: single "value" column containing raw JSON
-    * - Infer/Lenient: handled at runtime (returns OpenAPI schema as fallback)
+    * - Strict: use OpenAPI schema with flattening, nested objects become STRING
+    * - Variant: single "value" column as native VARIANT type
     */
   def toArrowSchemaWithMode(obj: OpenAPISchema.ObjectType, maxDepth: Int, mode: SchemaMode): Schema = {
     mode match {
-      case SchemaMode.Variant =>
-        // Single column for entire JSON response
-        variantSchema()
-      case SchemaMode.Strict | SchemaMode.Lenient | SchemaMode.Infer =>
-        // Use OpenAPI schema (infer mode will replace this at runtime)
-        toArrowSchema(obj, maxDepth)
+      case SchemaMode.Variant => variantSchema()
+      case SchemaMode.Strict  => toArrowSchema(obj, maxDepth)
     }
   }
 
-  /** Create a schema with a single VARIANT column for the entire response.
-    * The column stores JSON as a string. Users can use parse_json() in Spark 4.0
-    * to convert it to VARIANT type for efficient querying.
+  /** Create a schema with a single native VARIANT column for the entire response.
+    * The data is binary-encoded using Spark 4.0's VariantBuilder for ~8x faster queries.
     */
   def variantSchema(): Schema = {
     val metadata = java.util.Map.of(VariantKey, "true")

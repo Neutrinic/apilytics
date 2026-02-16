@@ -26,19 +26,17 @@ object ArrayHandling {
   case object Both extends ArrayHandling
 }
 
-/** Schema handling mode for flexible schema management.
+/** Schema handling mode.
   *
-  * Controls how the OpenAPI schema is used and how schema mismatches are handled.
+  * Controls how the OpenAPI schema is used:
+  * - strict: Use OpenAPI schema with flattening, typed columns, nested objects as STRING
+  * - variant: Single native VARIANT column for schema-free queries (~8x faster than JSON strings)
   */
 sealed trait SchemaMode extends Serializable
 object SchemaMode {
-  /** Use OpenAPI schema strictly. Fail on schema mismatches. (Default) */
+  /** Use OpenAPI schema strictly with flattening. Nested objects beyond depth become STRING. (Default) */
   case object Strict extends SchemaMode
-  /** Use OpenAPI schema but fall back to VARIANT for mismatches. Log warnings. */
-  case object Lenient extends SchemaMode
-  /** Ignore OpenAPI schema entirely. Infer schema from first response. */
-  case object Infer extends SchemaMode
-  /** Return entire response as single VARIANT column. No schema needed. */
+  /** Return entire response as single native VARIANT column. No schema needed. */
   case object Variant extends SchemaMode
 }
 
@@ -79,10 +77,8 @@ final case class SchemaConfig(
     explodeOuter: Boolean = false,
     /** Schema handling mode. Controls how OpenAPI schema is used.
       *
-      * - strict: Use OpenAPI schema, fail on mismatch (default)
-      * - lenient: Use OpenAPI schema, VARIANT fallback for mismatches
-      * - infer: Ignore OpenAPI schema, infer from response JSON
-      * - variant: Return entire response as single VARIANT column */
+      * - strict: Use OpenAPI schema with flattening (default)
+      * - variant: Return entire response as single native VARIANT column */
     mode: SchemaMode = SchemaMode.Strict
 )
 

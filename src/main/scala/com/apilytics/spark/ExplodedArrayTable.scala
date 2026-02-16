@@ -34,14 +34,14 @@ class ExplodedArrayTable(
   private lazy val (arrowSchema, sparkSchema) = buildExplodedSchema()
 
   private def buildExplodedSchema(): (ArrowSchema, StructType) = {
-    // Exploded views require schema knowledge - variant/infer modes not supported
+    // Exploded views require schema knowledge - variant mode not supported
     // Use strict mode for exploded views regardless of global setting
     val effectiveMode = sourceConfig.schema.mode match {
-      case SchemaMode.Variant | SchemaMode.Infer =>
-        log.warn("Exploded view '{}' requires schema knowledge; using strict mode instead of {}",
-          tableName, sourceConfig.schema.mode)
+      case SchemaMode.Variant =>
+        log.warn("Exploded view '{}' requires schema knowledge; using strict mode instead of variant",
+          tableName)
         SchemaMode.Strict
-      case other => other
+      case SchemaMode.Strict => SchemaMode.Strict
     }
 
     // Array item schema: wrap in object keyed by arrayFieldName

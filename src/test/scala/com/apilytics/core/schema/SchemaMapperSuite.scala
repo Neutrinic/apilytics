@@ -211,31 +211,6 @@ class SchemaMapperSuite extends FunSuite {
     assertEquals(names, Set("id", "name"))
   }
 
-  test("lenient mode uses normal flattening") {
-    val schema = OpenAPISchema.ObjectType(
-      Map("id" -> OpenAPISchema.IntegerType())
-    )
-
-    val arrow = SchemaMapper.toArrowSchemaWithMode(schema, maxDepth = 2, SchemaMode.Lenient)
-    val fields = arrow.getFields.asScala.toList
-
-    assertEquals(fields.size, 1)
-    assertEquals(fields.head.getName, "id")
-  }
-
-  test("infer mode uses OpenAPI schema as fallback") {
-    val schema = OpenAPISchema.ObjectType(
-      Map("id" -> OpenAPISchema.IntegerType())
-    )
-
-    // Infer mode falls back to OpenAPI schema initially (actual inference happens at runtime)
-    val arrow = SchemaMapper.toArrowSchemaWithMode(schema, maxDepth = 2, SchemaMode.Infer)
-    val fields = arrow.getFields.asScala.toList
-
-    assertEquals(fields.size, 1)
-    assertEquals(fields.head.getName, "id")
-  }
-
   test("variantSchema creates correct schema structure") {
     val arrow = SchemaMapper.variantSchema()
     val fields = arrow.getFields.asScala.toList

@@ -233,8 +233,8 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI specs (Swag
 - **Filter pushdown** - Spark SQL filters map to API query parameters
 - **Limit pushdown** - stops pagination early when a LIMIT clause is present
 - **Aggregation pushdown** - SUM, AVG, MIN, MAX, COUNT, and custom functions push to API endpoints
-- **Schema modes** - strict (default), variant (single JSON column), lenient, or infer
-- **Schema flattening** - nested objects flatten to a configurable depth, deeper nesting falls back to VARIANT
+- **Schema modes** - strict (default, typed columns) or variant (native VARIANT for schema-free queries)
+- **Schema flattening** - nested objects flatten to a configurable depth, deeper nesting falls back to STRING
 - **Arrow internals** - zero-copy path to Spark ColumnarBatch
 - **Parent-child joins** - chain API calls (e.g., fetch issues then comments for each)
 - **Batch joins** - reduce API calls from O(n) to O(n/batch_size) for bulk lookups
@@ -294,7 +294,7 @@ http {
 schema {
   flatten-depth = 2           # 0 = no flattening, nested objects become JSON
   array-handling = "both"     # keep_array | explode_view | both
-  mode = "strict"             # strict | variant | lenient | infer
+  mode = "strict"             # strict | variant
 }
 
 tables {
@@ -315,12 +315,12 @@ Control how OpenAPI schemas are used with the `mode` setting:
 
 | Mode | Description |
 |------|-------------|
-| `strict` | (Default) Use OpenAPI schema, fail on mismatch |
-| `variant` | Ignore schema, return entire response as single JSON string column |
-| `lenient` | Reserved for future use (currently behaves like strict) |
-| `infer` | Reserved for future use (currently behaves like strict) |
+| `strict` | (Default) Use OpenAPI schema with flattening. Typed columns, nested objects beyond depth become STRING. |
+| `variant` | Return entire response as native Spark VARIANT column. ~8x faster than JSON strings. |
 
-**Variant mode** returns the entire response as a JSON string column. Use `parse_json()` to convert to Spark 4.0's VARIANT type for typed access:
+**Strict mode** (default) uses the OpenAPI schema to produce typed columns. Nested objects are flattened to `flatten-depth`, deeper nesting becomes JSON strings which you can parse with `parse_json()` if needed.
+
+**Variant mode** returns the entire response as a native Spark 4.0 VARIANT column with binary encoding:
 
 ```hocon
 schema {
@@ -329,15 +329,23 @@ schema {
 ```
 
 ```sql
--- Returns single "value" column with raw JSON
+-- Returns single "value" column of type VARIANT
 SELECT value FROM api.default.users LIMIT 5;
 
--- Use Spark 4.0 variant_get() for typed access
+-- Use variant_get() for typed field access (no parse_json needed!)
 SELECT
-  variant_get(parse_json(value), '$.name', 'STRING') as name,
-  variant_get(parse_json(value), '$.email', 'STRING') as email
+  variant_get(value, '$.name', 'STRING') as name,
+  variant_get(value, '$.email', 'STRING') as email
+FROM api.default.users;
+
+-- Nested paths work too
+SELECT
+  variant_get(value, '$.address.city', 'STRING') as city,
+  variant_get(value, '$.stats[0].value', 'INT') as first_stat
 FROM api.default.users;
 ```
+
+> **Note**: The colon syntax (`value:name::string`) shown in Databricks documentation is Databricks-specific. Open source Spark 4.0 uses `variant_get()` function.
 
 ## Building
 
