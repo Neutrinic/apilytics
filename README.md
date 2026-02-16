@@ -78,6 +78,16 @@ docker run -p 8888:8888 --rm ghcr.io/neutrinic/apilytics:latest jupyter
 
 Open http://localhost:8888 (token shown in logs). Example notebooks are included in `/opt/apilytics/examples/notebooks/`.
 
+### Thrift/JDBC
+
+Start a Thrift server for JDBC access (DBeaver, Tableau, PowerBI):
+
+```bash
+docker run -p 10000:10000 --rm ghcr.io/neutrinic/apilytics:latest thrift
+```
+
+Connect with JDBC URL `jdbc:hive2://localhost:10000`. Both `pokeapi` and `github` catalogs are pre-configured.
+
 ## Development Setup
 
 For local development or contributing:
