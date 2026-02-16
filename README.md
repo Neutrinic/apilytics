@@ -14,15 +14,15 @@ Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
 ```scala
 // build.sbt
-libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.5.0"
+libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.6.0"
 ```
 
 ```bash
 # spark-submit
-spark-submit --packages io.github.neutrinic:apilytics_2.13:0.5.0 your-app.jar
+spark-submit --packages io.github.neutrinic:apilytics_2.13:0.6.0 your-app.jar
 
 # spark-shell
-spark-shell --packages io.github.neutrinic:apilytics_2.13:0.5.0
+spark-shell --packages io.github.neutrinic:apilytics_2.13:0.6.0
 ```
 
 Then configure the catalog:
@@ -44,7 +44,7 @@ docker run -it --rm ghcr.io/neutrinic/apilytics:latest "SELECT name FROM api.def
 # Interactive spark-sql shell
 docker run -it --rm ghcr.io/neutrinic/apilytics:latest
 # Interactive spark-sql shell with bundled Github
-docker run -it --rm ghcr.io/neutrinic/apilytics:latest --config /opt/apilytics/configs/github-public.conf
+docker run -it --rm ghcr.io/neutrinic/apilytics:latest --config /opt/apilytics/examples/github/github-config.conf
 # With your own config file
 docker run -it --rm -v /path/to/my.conf:/config.conf ghcr.io/neutrinic/apilytics:latest --config /config.conf
 
@@ -53,8 +53,8 @@ docker run --rm ghcr.io/neutrinic/apilytics --help
 ```
 
 Bundled configs:
-- `pokeapi.conf` (default) - PokeAPI, no auth
-- `github-public.conf` - GitHub public repos, no auth (60 req/hour limit)
+- `examples/pokeapi/pokeapi-config.conf` (default) - PokeAPI, no auth
+- `examples/github/github-config.conf` - GitHub public repos, no auth (60 req/hour limit)
 
 ### PySpark
 
@@ -67,6 +67,23 @@ docker run -it --rm ghcr.io/neutrinic/apilytics:latest pyspark
 # Run a Python script
 docker run -it --rm ghcr.io/neutrinic/apilytics:latest spark-submit /opt/apilytics/examples/pyspark/basic.py
 ```
+
+### Jupyter Notebooks
+
+For interactive development with Jupyter notebooks:
+
+```bash
+cd docker/spark
+docker compose -f compose.spark.yaml up jupyter
+```
+
+Then open http://localhost:8888 (token shown in logs). Two catalogs are pre-configured:
+- `pokeapi` - Query PokeAPI (pokemon, types, abilities)
+- `github` - Query GitHub API (issues from octocat/Hello-World)
+
+Example notebooks included:
+- `quickstart-pyspark.ipynb` - Python notebook with both APIs
+- `quickstart-scala.ipynb` - Scala notebook (requires Almond kernel)
 
 ## Development Setup
 
@@ -218,7 +235,8 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI 3.x specifi
 - **Parent-child joins** - chain API calls (e.g., fetch issues then comments for each)
 - **Batch joins** - reduce API calls from O(n) to O(n/batch_size) for bulk lookups
 - **Parallel partitioning** - date-range or enum partitioning for concurrent reads
-- **Rate limit distribution** - automatically divides rate limits across partitions
+- **Rate limiting** - configurable requests per second with automatic distribution across partitions
+- **Retry with backoff** - exponential backoff for transient failures (429, 5xx)
 
 ## Logging & Debugging
 
@@ -331,35 +349,6 @@ Spark Catalog ← Tables ← ScanBuilder (pushdown) → HTTP Client
 - Apache Arrow (columnar format)
 - pureconfig (HOCON config)
 - fs2 (streaming pagination)
-
-## Example Queries
-
-```sql
--- List all Pokemon types
-SELECT name FROM api.default.types;
-
--- Count Pokemon by first letter
-SELECT SUBSTRING(name, 1, 1) AS letter, COUNT(*) AS count
-FROM api.default.pokemon
-GROUP BY SUBSTRING(name, 1, 1)
-ORDER BY count DESC;
-
--- Join Pokemon with abilities (using exploded views)
-SELECT p.name AS pokemon, a.name AS ability
-FROM api.default.pokemon p
-JOIN api.default.abilities a ON p.url LIKE CONCAT('%/', a.url, '/%');
-
--- GitHub: Find oldest open issues
-SELECT number, title, created_at
-FROM api.default.issues
-WHERE state = 'open'
-ORDER BY created_at ASC
-LIMIT 10;
-
--- Cache results for faster repeated queries
-CACHE TABLE pokemon_cached AS SELECT * FROM api.default.pokemon;
-SELECT * FROM pokemon_cached WHERE name LIKE 'pika%';
-```
 
 ## License
 

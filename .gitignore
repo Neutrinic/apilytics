@@ -17,6 +17,5 @@ project/project/
 .claude/
 tmpclaude-*
 
-# Docker dist build artifacts
-docker/dist/apilytics.jar
+# Claude
 CLAUDE.md

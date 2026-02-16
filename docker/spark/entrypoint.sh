@@ -56,6 +56,19 @@ case $role in
             $CATALOG_CONFS \
             spark-internal
         ;;
+    jupyter)
+        # Start Jupyter notebook with PySpark
+        # Configure both pokeapi and github catalogs
+        export PYSPARK_DRIVER_PYTHON=jupyter
+        export PYSPARK_DRIVER_PYTHON_OPTS="notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/opt/spark/examples/notebooks"
+
+        exec ${SPARK_HOME}/bin/pyspark \
+            --master ${SPARK_MASTER_URL:-local[*]} \
+            --conf spark.sql.catalog.pokeapi=com.apilytics.spark.RESTCatalog \
+            --conf spark.sql.catalog.pokeapi.config=/opt/spark/examples/pokeapi/pokeapi-config.conf \
+            --conf spark.sql.catalog.github=com.apilytics.spark.RESTCatalog \
+            --conf spark.sql.catalog.github.config=/opt/spark/examples/github/github-config.conf
+        ;;
     *)
         echo "Unknown role: $role"
         exit 1

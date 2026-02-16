@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-CONFIG_DIR="/opt/apilytics/configs"
-DEFAULT_CONFIG="$CONFIG_DIR/pokeapi.conf"
+EXAMPLES_DIR="/opt/apilytics/examples"
+DEFAULT_CONFIG="$EXAMPLES_DIR/pokeapi/pokeapi-config.conf"
 
 # Parse arguments
 CONFIG_FILE="$DEFAULT_CONFIG"
@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: docker run -it ghcr.io/neutrinic/apilytics [OPTIONS] [SQL_QUERY]"
       echo ""
       echo "Options:"
-      echo "  --config FILE    Path to config file (default: /opt/apilytics/configs/pokeapi.conf)"
+      echo "  --config FILE    Path to config file (default: /opt/apilytics/examples/pokeapi/pokeapi-config.conf)"
       echo "  --catalog NAME   Catalog name (default: api)"
       echo "  -h, --help       Show this help message"
       echo ""
@@ -37,22 +37,25 @@ while [[ $# -gt 0 ]]; do
       echo "  docker run -it neutrinic/apilytics \"SELECT name FROM api.default.pokemon LIMIT 5\""
       echo ""
       echo "  # Use bundled Github config"
-      echo "  docker run -it ghcr.io/neutrinic/apilytics --config /opt/apilytics/configs/github-public.conf"
+      echo "  docker run -it ghcr.io/neutrinic/apilytics --config /opt/apilytics/examples/github/github-config.conf"
       echo ""
       echo "  # Use custom config"
       echo "  docker run -it -v ./my.conf:/config.conf neutrinic/apilytics --config /config.conf"
       echo ""
       echo "Bundled configs:"
-      echo "  /opt/apilytics/configs/pokeapi.conf       - PokeAPI (default)"
-      echo "  /opt/apilytics/configs/github-public.conf - GitHub public repos"
+      echo "  /opt/apilytics/examples/pokeapi/pokeapi-config.conf  - PokeAPI (default)"
+      echo "  /opt/apilytics/examples/github/github-config.conf    - GitHub public repos"
       echo ""
       echo "PySpark:"
-      echo "  # Run PySpark example"
-      echo "  docker run -it neutrinic/apilytics pyspark"
-      echo "  docker run -it neutrinic/apilytics python3 /opt/apilytics/examples/pyspark/basic.py"
-      echo ""
       echo "  # Interactive PySpark shell"
       echo "  docker run -it neutrinic/apilytics pyspark"
+      echo ""
+      echo "  # Run a Python script"
+      echo "  docker run -it neutrinic/apilytics spark-submit /opt/apilytics/examples/pyspark/basic.py"
+      echo ""
+      echo "Jupyter:"
+      echo "  # Start Jupyter notebook server"
+      echo "  docker run -p 8888:8888 neutrinic/apilytics jupyter"
       echo ""
       echo "Example Queries (PokeAPI - default):"
       echo "  -- List types"
@@ -92,6 +95,14 @@ while [[ $# -gt 0 ]]; do
         --conf "spark.sql.catalog.$CATALOG_NAME=com.apilytics.spark.RESTCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.config=$CONFIG_FILE" \
         "$@"
+      ;;
+    jupyter)
+      # Start Jupyter notebook server
+      export PYSPARK_DRIVER_PYTHON=jupyter
+      export PYSPARK_DRIVER_PYTHON_OPTS="notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/opt/apilytics/examples/notebooks"
+      exec pyspark \
+        --conf "spark.sql.catalog.$CATALOG_NAME=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.config=$CONFIG_FILE"
       ;;
     *)
       SQL_QUERY="$1"

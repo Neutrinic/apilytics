@@ -15,7 +15,7 @@ from pyspark.sql import SparkSession
 spark = SparkSession.builder \
     .appName("Apilytics PySpark Example") \
     .config("spark.sql.catalog.api", "com.apilytics.spark.RESTCatalog") \
-    .config("spark.sql.catalog.api.config", "/opt/apilytics/configs/pokeapi.conf") \
+    .config("spark.sql.catalog.api.config", "/opt/apilytics/examples/pokeapi/pokeapi-config.conf") \
     .getOrCreate()
 
 # Query Pokemon API
