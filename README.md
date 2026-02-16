@@ -70,20 +70,23 @@ docker run -it --rm ghcr.io/neutrinic/apilytics:latest spark-submit /opt/apilyti
 
 ### Jupyter Notebooks
 
-For interactive development with Jupyter notebooks:
+Start a Jupyter notebook server with pre-configured catalogs:
 
 ```bash
-cd docker/spark
-docker compose -f compose.spark.yaml up jupyter
+docker run -p 8888:8888 --rm ghcr.io/neutrinic/apilytics:latest jupyter
 ```
 
-Then open http://localhost:8888 (token shown in logs). Two catalogs are pre-configured:
-- `pokeapi` - Query PokeAPI (pokemon, types, abilities)
-- `github` - Query GitHub API (issues from octocat/Hello-World)
+Open http://localhost:8888 (token shown in logs). Example notebooks are included in `/opt/apilytics/examples/notebooks/`.
 
-Example notebooks included:
-- `quickstart-pyspark.ipynb` - Python notebook with both APIs
-- `quickstart-scala.ipynb` - Scala notebook (requires Almond kernel)
+### Thrift/JDBC
+
+Start a Thrift server for JDBC access (DBeaver, Tableau, PowerBI):
+
+```bash
+docker run -p 10000:10000 --rm ghcr.io/neutrinic/apilytics:latest thrift
+```
+
+Connect with JDBC URL `jdbc:hive2://localhost:10000`. Both `pokeapi` and `github` catalogs are pre-configured.
 
 ## Development Setup
 

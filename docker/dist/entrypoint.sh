@@ -57,6 +57,10 @@ while [[ $# -gt 0 ]]; do
       echo "  # Start Jupyter notebook server"
       echo "  docker run -p 8888:8888 neutrinic/apilytics jupyter"
       echo ""
+      echo "Thrift/JDBC:"
+      echo "  # Start Thrift server for JDBC access (DBeaver, Tableau, etc.)"
+      echo "  docker run -p 10000:10000 neutrinic/apilytics thrift"
+      echo ""
       echo "Example Queries (PokeAPI - default):"
       echo "  -- List types"
       echo "  SELECT name FROM api.default.types;"
@@ -97,12 +101,27 @@ while [[ $# -gt 0 ]]; do
         "$@"
       ;;
     jupyter)
-      # Start Jupyter notebook server
+      # Start Jupyter notebook server with both pokeapi and github catalogs
       export PYSPARK_DRIVER_PYTHON=jupyter
       export PYSPARK_DRIVER_PYTHON_OPTS="notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/opt/apilytics/examples/notebooks"
       exec pyspark \
-        --conf "spark.sql.catalog.$CATALOG_NAME=com.apilytics.spark.RESTCatalog" \
-        --conf "spark.sql.catalog.$CATALOG_NAME.config=$CONFIG_FILE"
+        --conf "spark.sql.catalog.pokeapi=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.pokeapi.config=$EXAMPLES_DIR/pokeapi/pokeapi-config.conf" \
+        --conf "spark.sql.catalog.github=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.github.config=$EXAMPLES_DIR/github/github-config.conf"
+      ;;
+    thrift)
+      # Start Thrift server for JDBC access with both pokeapi and github catalogs
+      ${SPARK_HOME}/sbin/start-thriftserver.sh \
+        --master local[*] \
+        --conf "spark.sql.catalog.pokeapi=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.pokeapi.config=$EXAMPLES_DIR/pokeapi/pokeapi-config.conf" \
+        --conf "spark.sql.catalog.github=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.github.config=$EXAMPLES_DIR/github/github-config.conf" \
+        --hiveconf hive.server2.thrift.port=10000 \
+        --hiveconf hive.server2.thrift.bind.host=0.0.0.0
+      # Keep container running and tail the log
+      tail -f ${SPARK_HOME}/logs/spark-*-org.apache.spark.sql.hive.thriftserver.HiveThriftServer2-*.out
       ;;
     *)
       SQL_QUERY="$1"
