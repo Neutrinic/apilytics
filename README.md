@@ -14,15 +14,15 @@ Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
 ```scala
 // build.sbt
-libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.4.0"
+libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.5.0"
 ```
 
 ```bash
 # spark-submit
-spark-submit --packages io.github.neutrinic:apilytics_2.13:0.4.0 your-app.jar
+spark-submit --packages io.github.neutrinic:apilytics_2.13:0.5.0 your-app.jar
 
 # spark-shell
-spark-shell --packages io.github.neutrinic:apilytics_2.13:0.4.0
+spark-shell --packages io.github.neutrinic:apilytics_2.13:0.5.0
 ```
 
 Then configure the catalog:
@@ -55,6 +55,18 @@ docker run --rm ghcr.io/neutrinic/apilytics --help
 Bundled configs:
 - `pokeapi.conf` (default) - PokeAPI, no auth
 - `github-public.conf` - GitHub public repos, no auth (60 req/hour limit)
+
+### PySpark
+
+The Docker image includes Python for PySpark:
+
+```bash
+# Interactive PySpark shell
+docker run -it --rm ghcr.io/neutrinic/apilytics:latest pyspark
+
+# Run a Python script
+docker run -it --rm ghcr.io/neutrinic/apilytics:latest spark-submit /opt/apilytics/examples/pyspark/basic.py
+```
 
 ## Development Setup
 

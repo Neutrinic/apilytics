@@ -12,15 +12,18 @@ LABEL org.opencontainers.image.description="Query REST APIs with Spark SQL"
 ARG SPARK_VERSION=4.0.0
 ARG JDK_VERSION=21
 
-# Install dependencies
+# Install dependencies (including Python for PySpark)
 RUN microdnf update -y && \
-    microdnf install -y java-${JDK_VERSION}-openjdk-devel tar gzip curl procps && \
-    microdnf clean all
+    microdnf install -y java-${JDK_VERSION}-openjdk-devel tar gzip curl procps python3.11 python3.11-pip && \
+    microdnf clean all && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python
 
 # Environment variables
 ENV JAVA_HOME=/usr/lib/jvm/java-${JDK_VERSION}-openjdk
 ENV SPARK_HOME=/opt/spark
-ENV PATH=$PATH:$SPARK_HOME/bin
+ENV PYSPARK_PYTHON=/usr/bin/python3
+ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/python
 
 # JVM options for Java 21 compatibility
 ENV SPARK_DAEMON_JAVA_OPTS="--add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED"
@@ -37,8 +40,9 @@ RUN mkdir -p ${SPARK_HOME}/logs ${SPARK_HOME}/work
 # Copy Apilytics JAR (built externally and passed as build context)
 COPY apilytics.jar ${SPARK_HOME}/jars/
 
-# Copy bundled configs
+# Copy bundled configs and examples
 COPY configs/ /opt/apilytics/configs/
+COPY examples/ /opt/apilytics/examples/
 
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
