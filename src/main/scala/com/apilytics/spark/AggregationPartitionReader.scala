@@ -39,7 +39,11 @@ class AggregationPartitionReader(partition: AggregationInputPartition) extends P
 
   override def close(): Unit = ()
 
-  /** Fetch all aggregation results. */
+  /** Fetch all aggregation results.
+    *
+    * Optimizes by grouping configs with the same endpoint+params, making one
+    * HTTP call per unique combination, then extracting multiple values.
+    */
   private def fetchAggregations(): Array[Any] = {
     // Use effective rate limit
     val httpConfig = partition.effectiveRateLimit match {
@@ -47,28 +51,42 @@ class AggregationPartitionReader(partition: AggregationInputPartition) extends P
       case None    => partition.sourceConfig.http
     }
 
+    // Index configs to preserve original order in results
+    val indexedConfigs = partition.aggregationConfigs.zipWithIndex
+
+    // Group by (endpoint, merged params) to deduplicate HTTP calls
+    val grouped = indexedConfigs.groupBy { case (config, _) =>
+      (config.endpoint, partition.pushedParams ++ config.params)
+    }
+
     val program: IO[Array[Any]] = Client
       .resource(httpConfig, partition.sourceConfig.auth)
       .use { client =>
-        // Fetch each aggregation
-        // TODO: Optimize by grouping configs with same endpoint
-        partition.aggregationConfigs.traverse { config =>
-          fetchSingleAggregation(client, config)
-        }.map(_.toArray)
+        // Fetch once per unique endpoint+params, extract all response paths
+        grouped.toList.traverse { case ((endpoint, params), configsWithIndex) =>
+          fetchAndExtract(client, endpoint, params, configsWithIndex)
+        }.map { results =>
+          // Flatten and sort by original index to restore order
+          results.flatten.sortBy(_._1).map(_._2).toArray
+        }
       }
 
     program.unsafeRunSync()
   }
 
-  /** Fetch a single aggregation result. */
-  private def fetchSingleAggregation(client: RestClient, config: AggregationConfig): IO[Any] = {
-    val uri = Uri.unsafeFromString(partition.baseUrl + config.endpoint)
-
-    // Merge pushed params with config params
-    val params = partition.pushedParams ++ config.params
+  /** Fetch endpoint once and extract multiple values for all configs sharing it. */
+  private def fetchAndExtract(
+      client: RestClient,
+      endpoint: String,
+      params: Map[String, String],
+      configsWithIndex: List[(AggregationConfig, Int)]
+  ): IO[List[(Int, Any)]] = {
+    val uri = Uri.unsafeFromString(partition.baseUrl + endpoint)
 
     client.get(uri, params).map { response =>
-      extractValue(response.json, config.responsePath)
+      configsWithIndex.map { case (config, idx) =>
+        idx -> extractValue(response.json, config.responsePath)
+      }
     }
   }
 
