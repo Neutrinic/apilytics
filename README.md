@@ -70,20 +70,13 @@ docker run -it --rm ghcr.io/neutrinic/apilytics:latest spark-submit /opt/apilyti
 
 ### Jupyter Notebooks
 
-For interactive development with Jupyter notebooks:
+Start a Jupyter notebook server with pre-configured catalogs:
 
 ```bash
-cd docker/spark
-docker compose -f compose.spark.yaml up jupyter
+docker run -p 8888:8888 --rm ghcr.io/neutrinic/apilytics:latest jupyter
 ```
 
-Then open http://localhost:8888 (token shown in logs). Two catalogs are pre-configured:
-- `pokeapi` - Query PokeAPI (pokemon, types, abilities)
-- `github` - Query GitHub API (issues from octocat/Hello-World)
-
-Example notebooks included:
-- `quickstart-pyspark.ipynb` - Python notebook with both APIs
-- `quickstart-scala.ipynb` - Scala notebook (requires Almond kernel)
+Open http://localhost:8888 (token shown in logs). Example notebooks are included in `/opt/apilytics/examples/notebooks/`.
 
 ## Development Setup
 
