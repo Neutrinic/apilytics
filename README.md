@@ -223,11 +223,11 @@ SELECT * FROM pokemon.default.pokemon LIMIT 10;
 
 ## Overview
 
-APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI 3.x specifications and exposes API endpoints as Spark tables. Filters and limits are pushed down to query parameters, pagination is handled automatically, and responses are converted to Arrow columnar format for efficient processing.
+APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI specs (Swagger 2.0, OpenAPI 3.0/3.1) and exposes API endpoints as Spark tables. Filters and limits are pushed down to query parameters, pagination is handled automatically, and responses are converted to Arrow columnar format for efficient processing.
 
 ## Features
 
-- **OpenAPI 3.x** parsing via swagger-parser - GET endpoints with array responses become tables
+- **OpenAPI parsing** - Swagger 2.0, OpenAPI 3.0/3.1 via swagger-parser; GET endpoints with array responses become tables
 - **Pagination** - cursor, offset, and link header strategies with configurable page sizes
 - **Authentication** - bearer token, basic auth, custom headers, OAuth2 client credentials
 - **Filter pushdown** - Spark SQL filters map to API query parameters

@@ -597,4 +597,211 @@ class ParserSuite extends FunSuite {
     assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
     assert(props("name").isInstanceOf[OpenAPISchema.StringType])
   }
+
+  // ==========================================================================
+  // Swagger 2.0 compatibility tests (#138)
+  // ==========================================================================
+
+  test("Swagger 2.0: basic spec parses correctly") {
+    // Swagger 2.0 uses "swagger": "2.0" instead of "openapi"
+    // and has different response structure (no "content" wrapper)
+    val spec =
+      """{
+        |  "swagger": "2.0",
+        |  "info": { "title": "Test Swagger 2.0", "version": "1.0" },
+        |  "host": "api.example.com",
+        |  "basePath": "/v1",
+        |  "schemes": ["https"],
+        |  "paths": {
+        |    "/users": {
+        |      "get": {
+        |        "produces": ["application/json"],
+        |        "responses": {
+        |          "200": {
+        |            "description": "OK",
+        |            "schema": {
+        |              "type": "object",
+        |              "properties": {
+        |                "id": { "type": "integer" },
+        |                "name": { "type": "string" }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    assertEquals(result.endpoints.size, 1)
+    assertEquals(result.endpoints.head.path, "/users")
+    val props = result.endpoints.head.responseSchema.properties
+    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
+    assert(props("name").isInstanceOf[OpenAPISchema.StringType])
+  }
+
+  test("Swagger 2.0: array response parses") {
+    val spec =
+      """{
+        |  "swagger": "2.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "produces": ["application/json"],
+        |        "responses": {
+        |          "200": {
+        |            "description": "OK",
+        |            "schema": {
+        |              "type": "array",
+        |              "items": {
+        |                "type": "object",
+        |                "properties": {
+        |                  "id": { "type": "integer" },
+        |                  "name": { "type": "string" }
+        |                }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    assertEquals(result.endpoints.size, 1)
+    // Array responses get wrapped in "data" key
+    assert(result.endpoints.head.responseSchema.properties.contains("data"))
+  }
+
+  test("Swagger 2.0: query parameters parse") {
+    val spec =
+      """{
+        |  "swagger": "2.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "paths": {
+        |    "/users": {
+        |      "get": {
+        |        "produces": ["application/json"],
+        |        "parameters": [
+        |          { "name": "page", "in": "query", "type": "integer", "required": false },
+        |          { "name": "limit", "in": "query", "type": "integer", "required": true }
+        |        ],
+        |        "responses": {
+        |          "200": {
+        |            "description": "OK",
+        |            "schema": {
+        |              "type": "object",
+        |              "properties": {
+        |                "id": { "type": "integer" }
+        |              }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    val ep = result.endpoints.head
+    assertEquals(ep.queryParams.size, 2)
+
+    val pageParam = ep.queryParams.find(_.name == "page").get
+    assert(!pageParam.required)
+
+    val limitParam = ep.queryParams.find(_.name == "limit").get
+    assert(limitParam.required)
+  }
+
+  test("Swagger 2.0: definitions references work") {
+    // Swagger 2.0 uses "definitions" instead of "components/schemas"
+    val spec =
+      """{
+        |  "swagger": "2.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "definitions": {
+        |    "User": {
+        |      "type": "object",
+        |      "properties": {
+        |        "id": { "type": "integer" },
+        |        "email": { "type": "string" }
+        |      }
+        |    }
+        |  },
+        |  "paths": {
+        |    "/users": {
+        |      "get": {
+        |        "produces": ["application/json"],
+        |        "responses": {
+        |          "200": {
+        |            "description": "OK",
+        |            "schema": { "$ref": "#/definitions/User" }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    assertEquals(result.endpoints.size, 1)
+    val props = result.endpoints.head.responseSchema.properties
+    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
+    assert(props("email").isInstanceOf[OpenAPISchema.StringType])
+  }
+
+  test("Swagger 2.0: baseUrl is constructed from host/basePath/schemes") {
+    val spec =
+      """{
+        |  "swagger": "2.0",
+        |  "info": { "title": "Test", "version": "1.0" },
+        |  "host": "api.example.com",
+        |  "basePath": "/v2",
+        |  "schemes": ["https"],
+        |  "paths": {
+        |    "/items": {
+        |      "get": {
+        |        "produces": ["application/json"],
+        |        "responses": {
+        |          "200": {
+        |            "description": "OK",
+        |            "schema": {
+        |              "type": "object",
+        |              "properties": { "id": { "type": "integer" } }
+        |            }
+        |          }
+        |        }
+        |      }
+        |    }
+        |  }
+        |}""".stripMargin
+
+    val result = Parser.parseContent(spec)
+    // SwaggerConverter constructs servers[0].url from host+basePath+schemes
+    assertEquals(result.baseUrl, "https://api.example.com/v2")
+  }
+
+  test("Swagger 2.0: Petstore spec from URL".tag(munit.Slow)) {
+    // Integration test - fetches real Petstore 2.0 spec
+    // Note: This test is tagged Slow and may be skipped in CI if petstore.swagger.io is down
+    val result = Parser.parse("https://petstore.swagger.io/v2/swagger.json")
+
+    // Should find multiple GET endpoints
+    assert(result.endpoints.nonEmpty, "Expected endpoints from Petstore spec")
+
+    // Check for known endpoints
+    val paths = result.endpoints.map(_.path).toSet
+    assert(paths.contains("/pet/findByStatus"), s"Expected /pet/findByStatus, got: $paths")
+
+    // Check baseUrl was extracted
+    assertEquals(result.baseUrl, "https://petstore.swagger.io/v2")
+
+    // Check Pet schema from /pet/findByStatus (array of Pet)
+    val findByStatus = result.endpoints.find(_.path == "/pet/findByStatus").get
+    // Array response gets wrapped in "data" key
+    assert(findByStatus.responseSchema.properties.contains("data"))
+  }
 }

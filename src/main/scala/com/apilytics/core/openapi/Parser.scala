@@ -3,6 +3,7 @@ package com.apilytics.core.openapi
 import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.media.{Schema => SwaggerSchema}
 import io.swagger.v3.parser.OpenAPIV3Parser
+import io.swagger.v3.parser.converter.SwaggerConverter
 import io.swagger.v3.parser.core.models.ParseOptions
 
 import scala.jdk.CollectionConverters._
@@ -39,31 +40,55 @@ final case class QueryParam(
 ) extends Serializable
 
 object Parser {
+  import io.swagger.v3.parser.core.models.SwaggerParseResult
 
   def parse(specLocation: String): ParsedSpec = {
-    val opts = new ParseOptions()
-    opts.setResolve(true)
-    opts.setResolveFully(true)
-
-    val result = new OpenAPIV3Parser().readLocation(specLocation, null, opts)
-    if (result.getOpenAPI == null) {
-      val messages = Option(result.getMessages).map(_.asScala.mkString(", ")).getOrElse("unknown error")
-      throw new IllegalArgumentException(s"Failed to parse OpenAPI spec: $messages")
-    }
-    extractEndpoints(result.getOpenAPI)
+    val opts = parseOptions()
+    parseWithFallback(
+      () => new OpenAPIV3Parser().readLocation(specLocation, null, opts),
+      () => new SwaggerConverter().readLocation(specLocation, null, opts)
+    )
   }
 
   def parseContent(specJson: String): ParsedSpec = {
+    val opts = parseOptions()
+    parseWithFallback(
+      () => new OpenAPIV3Parser().readContents(specJson, null, opts),
+      () => new SwaggerConverter().readContents(specJson, null, opts)
+    )
+  }
+
+  private def parseOptions(): ParseOptions = {
     val opts = new ParseOptions()
     opts.setResolve(true)
     opts.setResolveFully(true)
+    opts
+  }
 
-    val result = new OpenAPIV3Parser().readContents(specJson, null, opts)
-    if (result.getOpenAPI == null) {
-      val messages = Option(result.getMessages).map(_.asScala.mkString(", ")).getOrElse("unknown error")
-      throw new IllegalArgumentException(s"Failed to parse OpenAPI spec: $messages")
+  private def parseWithFallback(
+      tryOpenApi3: () => SwaggerParseResult,
+      trySwagger2: () => SwaggerParseResult
+  ): ParsedSpec = {
+    val result3x = tryOpenApi3()
+    if (result3x.getOpenAPI != null) {
+      return extractEndpoints(result3x.getOpenAPI)
     }
-    extractEndpoints(result.getOpenAPI)
+
+    val result2 = trySwagger2()
+    if (result2.getOpenAPI != null) {
+      return extractEndpoints(result2.getOpenAPI)
+    }
+
+    // Collect error messages from both parsers
+    val msgs3x = Option(result3x.getMessages).map(_.asScala.toList).getOrElse(Nil)
+    val msgs2 = Option(result2.getMessages).map(_.asScala.toList).getOrElse(Nil)
+    val combined = (msgs3x, msgs2) match {
+      case (Nil, Nil) => "unknown error"
+      case (m3, Nil)  => s"OpenAPI 3.x: ${m3.mkString(", ")}"
+      case (Nil, m2)  => s"Swagger 2.0: ${m2.mkString(", ")}"
+      case (m3, m2)   => s"OpenAPI 3.x: ${m3.mkString(", ")}; Swagger 2.0: ${m2.mkString(", ")}"
+    }
+    throw new IllegalArgumentException(s"Failed to parse spec: $combined")
   }
 
   private def extractEndpoints(api: OpenAPI): ParsedSpec = {
