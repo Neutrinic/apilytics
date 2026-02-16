@@ -233,6 +233,7 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI specs (Swag
 - **Filter pushdown** - Spark SQL filters map to API query parameters
 - **Limit pushdown** - stops pagination early when a LIMIT clause is present
 - **Aggregation pushdown** - SUM, AVG, MIN, MAX, COUNT, and custom functions push to API endpoints
+- **Schema modes** - strict (default), variant (single JSON column), lenient, or infer
 - **Schema flattening** - nested objects flatten to a configurable depth, deeper nesting falls back to VARIANT
 - **Arrow internals** - zero-copy path to Spark ColumnarBatch
 - **Parent-child joins** - chain API calls (e.g., fetch issues then comments for each)
@@ -293,6 +294,7 @@ http {
 schema {
   flatten-depth = 2           # 0 = no flattening, nested objects become JSON
   array-handling = "both"     # keep_array | explode_view | both
+  mode = "strict"             # strict | variant | lenient | infer
 }
 
 tables {
@@ -306,6 +308,36 @@ tables {
 ```
 
 The script registers the catalog as `api`, so queries use `api.default.<table>`.
+
+### Schema Modes
+
+Control how OpenAPI schemas are used with the `mode` setting:
+
+| Mode | Description |
+|------|-------------|
+| `strict` | (Default) Use OpenAPI schema, fail on mismatch |
+| `variant` | Ignore schema, return entire response as single JSON string column |
+| `lenient` | Reserved for future use (currently behaves like strict) |
+| `infer` | Reserved for future use (currently behaves like strict) |
+
+**Variant mode** returns the entire response as a JSON string column. Use `parse_json()` to convert to Spark 4.0's VARIANT type for typed access:
+
+```hocon
+schema {
+  mode = "variant"
+}
+```
+
+```sql
+-- Returns single "value" column with raw JSON
+SELECT value FROM api.default.users LIMIT 5;
+
+-- Use Spark 4.0 variant_get() for typed access
+SELECT
+  variant_get(parse_json(value), '$.name', 'STRING') as name,
+  variant_get(parse_json(value), '$.email', 'STRING') as email
+FROM api.default.users;
+```
 
 ## Building
 

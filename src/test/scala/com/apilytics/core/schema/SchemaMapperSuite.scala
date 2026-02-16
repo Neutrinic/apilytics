@@ -1,5 +1,6 @@
 package com.apilytics.core.schema
 
+import com.apilytics.core.config.SchemaMode
 import com.apilytics.core.openapi.OpenAPISchema
 import munit.FunSuite
 import org.apache.arrow.vector.types.pojo.ArrowType
@@ -172,6 +173,78 @@ class SchemaMapperSuite extends FunSuite {
     val arrow = SchemaMapper.toArrowSchema(schema)
     val field = arrow.getFields.asScala.find(_.getName == "extra").get
     assert(field.getType.isInstanceOf[ArrowType.Utf8])
+  }
+
+  // ==========================================================================
+  // Schema Mode tests (#137)
+  // ==========================================================================
+
+  test("variant mode produces single 'value' column") {
+    val schema = OpenAPISchema.ObjectType(
+      Map(
+        "id" -> OpenAPISchema.IntegerType(),
+        "name" -> OpenAPISchema.StringType(),
+        "nested" -> OpenAPISchema.ObjectType(Map("x" -> OpenAPISchema.IntegerType()))
+      )
+    )
+
+    val arrow = SchemaMapper.toArrowSchemaWithMode(schema, maxDepth = 2, SchemaMode.Variant)
+    val fields = arrow.getFields.asScala.toList
+
+    assertEquals(fields.size, 1)
+    assertEquals(fields.head.getName, SchemaMapper.VariantColumnName)
+    assert(fields.head.getType.isInstanceOf[ArrowType.Utf8])
+    assertEquals(fields.head.getMetadata.get(SchemaMapper.VariantKey), "true")
+  }
+
+  test("strict mode uses normal flattening") {
+    val schema = OpenAPISchema.ObjectType(
+      Map(
+        "id" -> OpenAPISchema.IntegerType(),
+        "name" -> OpenAPISchema.StringType()
+      )
+    )
+
+    val arrow = SchemaMapper.toArrowSchemaWithMode(schema, maxDepth = 2, SchemaMode.Strict)
+    val names = arrow.getFields.asScala.map(_.getName).toSet
+
+    assertEquals(names, Set("id", "name"))
+  }
+
+  test("lenient mode uses normal flattening") {
+    val schema = OpenAPISchema.ObjectType(
+      Map("id" -> OpenAPISchema.IntegerType())
+    )
+
+    val arrow = SchemaMapper.toArrowSchemaWithMode(schema, maxDepth = 2, SchemaMode.Lenient)
+    val fields = arrow.getFields.asScala.toList
+
+    assertEquals(fields.size, 1)
+    assertEquals(fields.head.getName, "id")
+  }
+
+  test("infer mode uses OpenAPI schema as fallback") {
+    val schema = OpenAPISchema.ObjectType(
+      Map("id" -> OpenAPISchema.IntegerType())
+    )
+
+    // Infer mode falls back to OpenAPI schema initially (actual inference happens at runtime)
+    val arrow = SchemaMapper.toArrowSchemaWithMode(schema, maxDepth = 2, SchemaMode.Infer)
+    val fields = arrow.getFields.asScala.toList
+
+    assertEquals(fields.size, 1)
+    assertEquals(fields.head.getName, "id")
+  }
+
+  test("variantSchema creates correct schema structure") {
+    val arrow = SchemaMapper.variantSchema()
+    val fields = arrow.getFields.asScala.toList
+
+    assertEquals(fields.size, 1)
+    assertEquals(fields.head.getName, "value")
+    assert(fields.head.isNullable)
+    assert(fields.head.getType.isInstanceOf[ArrowType.Utf8])
+    assertEquals(fields.head.getMetadata.get(SchemaMapper.VariantKey), "true")
   }
 
 }
