@@ -97,12 +97,14 @@ while [[ $# -gt 0 ]]; do
         "$@"
       ;;
     jupyter)
-      # Start Jupyter notebook server
+      # Start Jupyter notebook server with both pokeapi and github catalogs
       export PYSPARK_DRIVER_PYTHON=jupyter
       export PYSPARK_DRIVER_PYTHON_OPTS="notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/opt/apilytics/examples/notebooks"
       exec pyspark \
-        --conf "spark.sql.catalog.$CATALOG_NAME=com.apilytics.spark.RESTCatalog" \
-        --conf "spark.sql.catalog.$CATALOG_NAME.config=$CONFIG_FILE"
+        --conf "spark.sql.catalog.pokeapi=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.pokeapi.config=$EXAMPLES_DIR/pokeapi/pokeapi-config.conf" \
+        --conf "spark.sql.catalog.github=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.github.config=$EXAMPLES_DIR/github/github-config.conf"
       ;;
     *)
       SQL_QUERY="$1"
