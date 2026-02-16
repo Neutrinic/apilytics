@@ -17,7 +17,8 @@ RUN microdnf update -y && \
     microdnf install -y java-${JDK_VERSION}-openjdk-devel tar gzip curl procps python3.11 python3.11-pip && \
     microdnf clean all && \
     ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
-    ln -sf /usr/bin/python3.11 /usr/bin/python
+    ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    pip3 install --no-cache-dir jupyter pandas
 
 # Environment variables
 ENV JAVA_HOME=/usr/lib/jvm/java-${JDK_VERSION}-openjdk
@@ -40,8 +41,7 @@ RUN mkdir -p ${SPARK_HOME}/logs ${SPARK_HOME}/work
 # Copy Apilytics JAR (built externally and passed as build context)
 COPY apilytics.jar ${SPARK_HOME}/jars/
 
-# Copy bundled configs and examples
-COPY configs/ /opt/apilytics/configs/
+# Copy examples (configs are in examples/pokeapi/, examples/github/)
 COPY examples/ /opt/apilytics/examples/
 
 # Copy entrypoint

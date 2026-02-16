@@ -5,15 +5,27 @@ ARG SPARK_VERSION=4.0.0
 ARG SCALA_VERSION=2.13
 ARG JDK_VERSION=21
 
-# Install dependencies
+# Install dependencies (including Python for PySpark/Jupyter)
 RUN microdnf update -y && \
-    microdnf install -y java-${JDK_VERSION}-openjdk-devel tar gzip curl procps && \
-    microdnf clean all
+    microdnf install -y java-${JDK_VERSION}-openjdk-devel tar gzip curl procps python3.11 python3.11-pip && \
+    microdnf clean all && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    pip3 install --no-cache-dir jupyter pandas
+
+# Install Almond (Scala kernel for Jupyter)
+ARG ALMOND_VERSION=0.14.0-RC15
+ARG SCALA_KERNEL_VERSION=2.13.14
+RUN curl -Lo coursier https://git.io/coursier-cli && \
+    chmod +x coursier && \
+    ./coursier launch --fork almond:${ALMOND_VERSION} --scala ${SCALA_KERNEL_VERSION} -- --install && \
+    rm coursier
 
 # Environment variables
 ENV JAVA_HOME=/usr/lib/jvm/java-${JDK_VERSION}-openjdk
 ENV SPARK_HOME=/opt/spark
-ENV PATH=$PATH:$SPARK_HOME/bin
+ENV PYSPARK_PYTHON=/usr/bin/python3
+ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/python
 
 # JVM options for Java 21 compatibility
 ENV SPARK_DAEMON_JAVA_OPTS="--add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED"

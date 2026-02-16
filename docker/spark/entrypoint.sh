@@ -56,6 +56,16 @@ case $role in
             $CATALOG_CONFS \
             spark-internal
         ;;
+    jupyter)
+        # Start Jupyter notebook with PySpark
+        export PYSPARK_DRIVER_PYTHON=jupyter
+        export PYSPARK_DRIVER_PYTHON_OPTS="notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/opt/spark/examples/notebooks"
+
+        exec ${SPARK_HOME}/bin/pyspark \
+            --master ${SPARK_MASTER_URL:-local[*]} \
+            --conf spark.sql.catalog.api=com.apilytics.spark.RESTCatalog \
+            --conf spark.sql.catalog.api.config=${CATALOG_CONFIG:-/opt/spark/examples/pokeapi/pokeapi-config.conf}
+        ;;
     *)
         echo "Unknown role: $role"
         exit 1

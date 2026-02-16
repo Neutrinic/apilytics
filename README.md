@@ -44,7 +44,7 @@ docker run -it --rm ghcr.io/neutrinic/apilytics:latest "SELECT name FROM api.def
 # Interactive spark-sql shell
 docker run -it --rm ghcr.io/neutrinic/apilytics:latest
 # Interactive spark-sql shell with bundled Github
-docker run -it --rm ghcr.io/neutrinic/apilytics:latest --config /opt/apilytics/configs/github-public.conf
+docker run -it --rm ghcr.io/neutrinic/apilytics:latest --config /opt/apilytics/examples/github/github-config.conf
 # With your own config file
 docker run -it --rm -v /path/to/my.conf:/config.conf ghcr.io/neutrinic/apilytics:latest --config /config.conf
 
@@ -53,8 +53,8 @@ docker run --rm ghcr.io/neutrinic/apilytics --help
 ```
 
 Bundled configs:
-- `pokeapi.conf` (default) - PokeAPI, no auth
-- `github-public.conf` - GitHub public repos, no auth (60 req/hour limit)
+- `examples/pokeapi/pokeapi-config.conf` (default) - PokeAPI, no auth
+- `examples/github/github-config.conf` - GitHub public repos, no auth (60 req/hour limit)
 
 ### PySpark
 
