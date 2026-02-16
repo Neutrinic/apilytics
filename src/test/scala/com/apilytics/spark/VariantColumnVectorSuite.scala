@@ -36,6 +36,24 @@ class VariantColumnVectorSuite extends FunSuite {
     assert(vector.hasNull)
   }
 
+  test("VariantColumnVector.getVariant returns null for null rows") {
+    // Spark's ColumnVector.getVariant() checks isNullAt() before calling getChild().getBinary()
+    // This test verifies the contract works end-to-end
+    val records = Array(Json.Null, parse("""{"x": 1}""").toOption.get, Json.Null)
+    val vector = new VariantColumnVector(records)
+
+    // getVariant() should return null for null rows (Spark checks isNullAt first)
+    assert(vector.getVariant(0) == null)
+    assert(vector.getVariant(2) == null)
+
+    // Non-null row should return valid VariantVal
+    val variant = vector.getVariant(1)
+    assert(variant != null)
+    // VariantVal wraps the binary - reconstruct Variant to get JSON
+    val v = new org.apache.spark.types.variant.Variant(variant.getValue, variant.getMetadata)
+    assertEquals(v.toJson(java.time.ZoneOffset.UTC), """{"x":1}""")
+  }
+
   test("VariantColumnVector handles array values") {
     val json = parse("""[1, 2, 3]""").toOption.get
     val vector = new VariantColumnVector(Array(json))
