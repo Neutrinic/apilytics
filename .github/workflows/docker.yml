@@ -30,9 +30,6 @@ jobs:
       - name: Build JAR
         run: sbt assembly
 
-      - name: Copy JAR to Docker context
-        run: cp target/scala-2.13/apilytics.jar docker/dist/
-
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -55,7 +52,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: docker/dist
+          context: .
+          file: docker/dist/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
