@@ -19,7 +19,7 @@ if not os.environ.get("GITHUB_TOKEN"):
 spark = SparkSession.builder \
     .appName("GitHub Issues Example") \
     .config("spark.sql.catalog.api", "com.apilytics.spark.RESTCatalog") \
-    .config("spark.sql.catalog.api.config", "/opt/apilytics/configs/github-public.conf") \
+    .config("spark.sql.catalog.api.config", "/opt/apilytics/examples/github/github-config.conf") \
     .getOrCreate()
 
 # Query issues
