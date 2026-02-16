@@ -46,6 +46,14 @@ while [[ $# -gt 0 ]]; do
       echo "  /opt/apilytics/configs/pokeapi.conf       - PokeAPI (default)"
       echo "  /opt/apilytics/configs/github-public.conf - GitHub public repos"
       echo ""
+      echo "PySpark:"
+      echo "  # Run PySpark example"
+      echo "  docker run -it neutrinic/apilytics pyspark"
+      echo "  docker run -it neutrinic/apilytics python3 /opt/apilytics/examples/pyspark/basic.py"
+      echo ""
+      echo "  # Interactive PySpark shell"
+      echo "  docker run -it neutrinic/apilytics pyspark"
+      echo ""
       echo "Example Queries (PokeAPI - default):"
       echo "  -- List types"
       echo "  SELECT name FROM api.default.types;"
@@ -65,6 +73,25 @@ while [[ $# -gt 0 ]]; do
       echo "  -- Filter by date"
       echo "  SELECT count(*) FROM api.default.issues WHERE created_at >= '2026-01-01';"
       exit 0
+      ;;
+    pyspark)
+      # Launch PySpark interactive shell with catalog configured
+      exec pyspark \
+        --conf "spark.sql.catalog.$CATALOG_NAME=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.config=$CONFIG_FILE"
+      ;;
+    python3|python)
+      # Run Python script with PySpark
+      shift
+      exec python3 "$@"
+      ;;
+    spark-submit)
+      # Run spark-submit with catalog configured
+      shift
+      exec spark-submit \
+        --conf "spark.sql.catalog.$CATALOG_NAME=com.apilytics.spark.RESTCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.config=$CONFIG_FILE" \
+        "$@"
       ;;
     *)
       SQL_QUERY="$1"
