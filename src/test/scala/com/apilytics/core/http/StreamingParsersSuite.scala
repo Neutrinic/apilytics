@@ -255,4 +255,57 @@ data: {"value": 1}
     assertEquals(results(1).hcursor.get[Int]("id").toOption, Some(2))
     assertEquals(results(2).hcursor.get[Int]("id").toOption, Some(3))
   }
+
+  test("MessagePack handles values spanning chunk boundaries") {
+    // Create a large msgpack value that will span chunks when split
+    val packer = MessagePack.newDefaultBufferPacker()
+    packer.packMapHeader(2)
+    packer.packString("name")
+    packer.packString("Alice")
+    packer.packString("data")
+    // Pack a large string to ensure we have multiple chunks
+    packer.packString("x" * 100)
+    val bytes = packer.toByteArray
+    packer.close()
+
+    // Split the bytes into small chunks to simulate network chunking
+    val chunkSize = 5
+    val chunks = bytes.grouped(chunkSize).toList
+
+    // Stream with small chunks (simulates network chunking)
+    val results = Stream.emits(chunks)
+      .flatMap(chunk => Stream.emits(chunk))
+      .through(StreamingParsers.msgpack)
+      .compile.toList.unsafeRunSync()
+
+    assertEquals(results.size, 1)
+    assertEquals(results(0).hcursor.get[String]("name").toOption, Some("Alice"))
+    assertEquals(results(0).hcursor.get[String]("data").toOption, Some("x" * 100))
+  }
+
+  test("MessagePack handles multiple values with chunk boundaries") {
+    // Create multiple msgpack values
+    val packer = MessagePack.newDefaultBufferPacker()
+    for (i <- 1 to 5) {
+      packer.packMapHeader(1)
+      packer.packString("id")
+      packer.packInt(i)
+    }
+    val bytes = packer.toByteArray
+    packer.close()
+
+    // Split into chunks that don't align with value boundaries
+    val chunkSize = 3
+    val chunks = bytes.grouped(chunkSize).toList
+
+    val results = Stream.emits(chunks)
+      .flatMap(chunk => Stream.emits(chunk))
+      .through(StreamingParsers.msgpack)
+      .compile.toList.unsafeRunSync()
+
+    assertEquals(results.size, 5)
+    for (i <- 1 to 5) {
+      assertEquals(results(i - 1).hcursor.get[Int]("id").toOption, Some(i))
+    }
+  }
 }

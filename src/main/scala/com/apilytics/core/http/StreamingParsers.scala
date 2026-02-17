@@ -38,6 +38,11 @@ object StreamingParsers {
     * - "id: <id>" sets the event ID
     * - Empty line terminates an event
     *
+    * Multi-line data fields are joined with newlines per SSE spec.
+    * The combined data must be valid JSON - if a JSON object is split
+    * across multiple `data:` lines, each line should end with a valid
+    * continuation (e.g., trailing comma for object fields).
+    *
     * Only events with data are emitted. Data is parsed as JSON.
     */
   def sse: Pipe[IO, Byte, Json] =
@@ -98,25 +103,71 @@ object StreamingParsers {
     * MessagePack is a binary JSON-compatible format. Each value is decoded
     * and converted to Circe JSON for uniform downstream handling.
     *
-    * Note: MessagePack streams typically use length-prefixed framing or
-    * rely on self-delimiting nature of msgpack values. This parser handles
-    * concatenated msgpack values in a single byte stream.
+    * This parser accumulates bytes across chunk boundaries to handle values
+    * that span multiple chunks. It uses MessagePack's self-delimiting format
+    * to detect complete values.
     */
-  def msgpack: Pipe[IO, Byte, Json] = { input =>
-    input.chunks
-      .flatMap { chunk =>
-        Stream.evalSeq(IO {
-          val bytes = chunk.toArray
-          val unpacker = MessagePack.newDefaultUnpacker(bytes)
-          val results = scala.collection.mutable.ListBuffer[Json]()
-
-          while (unpacker.hasNext) {
-            results += unpackToJson(unpacker)
+  def msgpack: Pipe[IO, Byte, Json] = { (input: Stream[IO, Byte]) =>
+    def go(s: Stream[IO, Byte], carry: Array[Byte]): Pull[IO, Json, Unit] =
+      s.pull.uncons.flatMap {
+        case None =>
+          // End of stream - try to parse any remaining bytes
+          if (carry.nonEmpty) {
+            Pull.eval(IO {
+              val unpacker = MessagePack.newDefaultUnpacker(carry)
+              val results = scala.collection.mutable.ListBuffer[Json]()
+              while (unpacker.hasNext) {
+                results += unpackToJson(unpacker)
+              }
+              unpacker.close()
+              results.toList
+            }).flatMap(jsons => Pull.output(Chunk.from(jsons)))
+          } else {
+            Pull.done
           }
-          unpacker.close()
-          results.toList
-        })
+
+        case Some((chunk, rest)) =>
+          val bytes = if (carry.isEmpty) chunk.toArray else carry ++ chunk.toArray
+          Pull.eval(IO {
+            parseChunk(bytes)
+          }).flatMap { case (jsons, remaining) =>
+            Pull.output(Chunk.from(jsons)) >> go(rest, remaining)
+          }
       }
+
+    go(input, Array.empty).stream
+  }
+
+  /** Parse as many complete msgpack values from bytes as possible.
+    * Returns parsed values and any remaining bytes for the next chunk.
+    */
+  private def parseChunk(bytes: Array[Byte]): (List[Json], Array[Byte]) = {
+    val unpacker = MessagePack.newDefaultUnpacker(bytes)
+    val results = scala.collection.mutable.ListBuffer[Json]()
+    var lastPosition = 0L
+    var incomplete = false
+
+    while (unpacker.hasNext && !incomplete) {
+      val positionBefore = unpacker.getTotalReadBytes
+      try {
+        val json = unpackToJson(unpacker)
+        results += json
+        lastPosition = unpacker.getTotalReadBytes
+      } catch {
+        case _: org.msgpack.core.MessageInsufficientBufferException =>
+          // Incomplete value - carry remaining bytes to next chunk
+          incomplete = true
+      }
+    }
+    unpacker.close()
+
+    val remaining = if (incomplete || lastPosition < bytes.length) {
+      bytes.drop(lastPosition.toInt)
+    } else {
+      Array.empty[Byte]
+    }
+
+    (results.toList, remaining)
   }
 
   /** Convert a single MessagePack value to Circe JSON. */
@@ -168,9 +219,12 @@ object StreamingParsers {
         Json.fromFields(fields)
 
       case org.msgpack.value.ValueType.EXTENSION =>
-        // Skip extension types - not directly representable in JSON
+        // Extension types: read the payload bytes and skip
+        // unpackExtensionTypeHeader returns ExtensionTypeHeader with type and length
         val header = unpacker.unpackExtensionTypeHeader()
-        unpacker.skipValue()
+        val extBytes = new Array[Byte](header.getLength)
+        unpacker.readPayload(extBytes)
+        // Return null for extension types (not representable in JSON)
         Json.Null
     }
   }
