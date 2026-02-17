@@ -49,6 +49,9 @@ lazy val root = (project in file("."))
       // Streaming
       "co.fs2"           %% "fs2-core"            % "3.11.0",
 
+      // MessagePack binary format
+      "org.msgpack"       % "msgpack-core"        % "0.9.8",
+
       // Test
       "org.scalameta"    %% "munit"               % "1.0.3"  % Test,
       "org.typelevel"    %% "munit-cats-effect"   % "2.0.0"  % Test,

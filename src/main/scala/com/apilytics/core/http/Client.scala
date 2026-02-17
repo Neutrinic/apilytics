@@ -1,7 +1,8 @@
 package com.apilytics.core.http
 
 import cats.effect.{IO, Resource}
-import com.apilytics.core.config.{AuthConfig, HttpConfig}
+import com.apilytics.core.config.{AuthConfig, HttpConfig, ResponseFormat}
+import fs2.Stream
 import io.circe.Json
 import org.http4s.{Request, Uri}
 import org.http4s.circe._
@@ -117,6 +118,66 @@ object Client {
 
     /** Clear the response cache. */
     def clearCache: IO[Unit] = responseCache.clear()
+
+    /** Stream response body with format-specific parsing.
+      *
+      * Unlike `get`, this streams records incrementally without buffering the
+      * entire response. Use for streaming formats (NDJSON, SSE, MessagePack).
+      *
+      * Note: Streaming responses bypass caching and pagination since they
+      * represent continuous data streams.
+      */
+    def getStreaming(
+        uri: Uri,
+        params: Map[String, String] = Map.empty,
+        format: ResponseFormat
+    ): Stream[IO, Json] = {
+      val fullUri = params.foldLeft(uri) { case (u, (k, v)) =>
+        u.withQueryParam(k, v)
+      }
+      val baseReq = Request[IO](uri = fullUri)
+
+      format match {
+        case ResponseFormat.Json =>
+          // Full-body JSON - wrap in stream
+          Stream.eval(get(uri, params)).map(_.json)
+
+        case ResponseFormat.NDJSON =>
+          streamBody(baseReq).through(StreamingParsers.ndjson)
+
+        case ResponseFormat.SSE =>
+          streamBody(baseReq).through(StreamingParsers.sse)
+
+        case ResponseFormat.MessagePack =>
+          streamBody(baseReq).through(StreamingParsers.msgpack)
+      }
+    }
+
+    /** Stream raw response body bytes. */
+    private def streamBody(baseReq: Request[IO]): Stream[IO, Byte] = {
+      Stream.eval(rateLimiter.acquire) >>
+        Stream.eval(applyAuth(baseReq)).flatMap { req =>
+          Stream.resource(underlying.run(req)).flatMap { resp =>
+            if (resp.status.isSuccess) {
+              resp.body
+            } else {
+              Stream.eval(
+                resp.as[String].flatMap { body =>
+                  IO.raiseError(ApiError.httpError(
+                    endpoint = req.uri.path.renderString,
+                    method = req.method,
+                    params = Map.empty,
+                    statusCode = resp.status.code,
+                    responseBody = body,
+                    headers = resp.headers.headers.map(h => h.name.toString -> h.value).toMap,
+                    retryAttempt = 0
+                  ))
+                }
+              ).drain
+            }
+          }
+        }
+    }
 
     private def executeWithRetry(
         req: Request[IO],

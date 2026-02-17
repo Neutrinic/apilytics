@@ -1,7 +1,7 @@
 package com.apilytics.core.http
 
 import cats.effect.IO
-import com.apilytics.core.config.{PaginationConfig, PaginationStyle}
+import com.apilytics.core.config.{PaginationConfig, PaginationStyle, ResponseFormat}
 import fs2.Stream
 import io.circe.Json
 import io.circe.pointer.Pointer
@@ -9,23 +9,39 @@ import org.http4s.Uri
 
 object Paginator {
 
-  /** Stream of JSON pages from a paginated API endpoint. */
+  /** Stream of JSON pages from a paginated API endpoint.
+    *
+    * For standard JSON format, pages are fetched according to the pagination style.
+    * For streaming formats (NDJSON, SSE, MessagePack), records stream directly
+    * without pagination since these represent continuous data streams.
+    */
   def pages(
       client: Client.RestClient,
       baseUri: Uri,
       params: Map[String, String],
       pagination: PaginationConfig,
-      limit: Option[Int] = None
+      limit: Option[Int] = None,
+      format: ResponseFormat = ResponseFormat.Json
   ): Stream[IO, Json] = {
-    pagination.style match {
-      case PaginationStyle.Cursor =>
-        cursorPages(client, baseUri, params, pagination, limit)
-      case PaginationStyle.Offset =>
-        offsetPages(client, baseUri, params, pagination, limit)
-      case PaginationStyle.LinkHeader =>
-        linkHeaderPages(client, baseUri, params, pagination, limit)
-      case PaginationStyle.None =>
-        singlePage(client, baseUri, params)
+    format match {
+      case ResponseFormat.Json =>
+        // Standard full-body JSON with pagination
+        pagination.style match {
+          case PaginationStyle.Cursor =>
+            cursorPages(client, baseUri, params, pagination, limit)
+          case PaginationStyle.Offset =>
+            offsetPages(client, baseUri, params, pagination, limit)
+          case PaginationStyle.LinkHeader =>
+            linkHeaderPages(client, baseUri, params, pagination, limit)
+          case PaginationStyle.None =>
+            singlePage(client, baseUri, params)
+        }
+
+      case streaming =>
+        // Streaming formats bypass pagination - records stream directly
+        // Apply limit if specified (take N records from stream)
+        val stream = client.getStreaming(baseUri, params, streaming)
+        limit.fold(stream)(n => stream.take(n.toLong))
     }
   }
 

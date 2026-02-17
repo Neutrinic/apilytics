@@ -105,7 +105,16 @@ object Loader {
                 else 30.seconds,
       rateLimit = if (config.hasPath("rate-limit")) Some(config.getInt("rate-limit")) else None,
       responseCache = if (config.hasPath("response-cache")) readResponseCache(config.getConfig("response-cache"))
-                      else ResponseCacheConfig()
+                      else ResponseCacheConfig(),
+      responseFormat = if (config.hasPath("response-format")) config.getString("response-format") match {
+        case "json"                       => ResponseFormat.Json
+        case "ndjson" | "jsonl"           => ResponseFormat.NDJSON
+        case "sse"                        => ResponseFormat.SSE
+        case "msgpack" | "messagepack"    => ResponseFormat.MessagePack
+        case other => throw new IllegalArgumentException(
+          s"Unknown response format: $other. Valid formats: json, ndjson, sse, msgpack"
+        )
+      } else ResponseFormat.Json
     )
   }
 

@@ -40,6 +40,26 @@ object SchemaMode {
   case object Variant extends SchemaMode
 }
 
+/** Response format for HTTP responses.
+  *
+  * Controls how response bodies are parsed:
+  * - json: Full-body JSON (default) - entire response parsed as single JSON
+  * - ndjson: Newline-delimited JSON - one JSON object per line
+  * - sse: Server-Sent Events - event stream with data fields as JSON
+  * - msgpack: MessagePack binary format - binary JSON-compatible
+  */
+sealed trait ResponseFormat extends Serializable
+object ResponseFormat {
+  /** Full-body JSON response (default). */
+  case object Json extends ResponseFormat
+  /** Newline-delimited JSON (JSON Lines). One JSON object per line. */
+  case object NDJSON extends ResponseFormat
+  /** Server-Sent Events. Event stream format with JSON data fields. */
+  case object SSE extends ResponseFormat
+  /** MessagePack binary format. */
+  case object MessagePack extends ResponseFormat
+}
+
 final case class AuthConfig(
     authType: AuthType,
     token: Option[String] = None,
@@ -114,7 +134,14 @@ final case class HttpConfig(
       * may exceed the configured limit. */
     rateLimit: Option[Int] = None,
     /** Response caching configuration. */
-    responseCache: ResponseCacheConfig = ResponseCacheConfig()
+    responseCache: ResponseCacheConfig = ResponseCacheConfig(),
+    /** Response format. Controls how HTTP response bodies are parsed.
+      *
+      * - json (default): Full-body JSON
+      * - ndjson: Newline-delimited JSON (one object per line)
+      * - sse: Server-Sent Events
+      * - msgpack: MessagePack binary format */
+    responseFormat: ResponseFormat = ResponseFormat.Json
 )
 
 final case class FilterConfig(

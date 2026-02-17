@@ -1,6 +1,6 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{SchemaMode, SourceConfig, TableConfig}
+import com.apilytics.core.config.{ResponseFormat, SchemaMode, SourceConfig, TableConfig}
 import com.apilytics.core.openapi.Endpoint
 import org.apache.spark.sql.connector.read.InputPartition
 
@@ -16,5 +16,7 @@ case class RESTInputPartition(
       * Automatically distributed by RESTScan to prevent exceeding API limits. */
     effectiveRateLimit: Option[Int] = None,
     /** Schema mode - determines whether to use Arrow path or native Variant. */
-    schemaMode: SchemaMode = SchemaMode.Strict
+    schemaMode: SchemaMode = SchemaMode.Strict,
+    /** Response format for HTTP responses (json, ndjson, sse, msgpack). */
+    responseFormat: ResponseFormat = ResponseFormat.Json
 ) extends InputPartition

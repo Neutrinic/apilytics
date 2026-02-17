@@ -289,6 +289,7 @@ http {
   timeout = "30s"
   max-retries = 3
   max-backoff = "30s"
+  response-format = "json"  # json | ndjson | sse | msgpack
 }
 
 schema {
@@ -346,6 +347,30 @@ FROM api.default.users;
 ```
 
 > **Note**: The colon syntax (`value:name::string`) shown in Databricks documentation is Databricks-specific. Open source Spark 4.0 uses `variant_get()` function.
+
+### Streaming Response Formats
+
+By default, APIlytics expects full-body JSON responses. For APIs that stream data, configure `response-format`:
+
+| Format | Content-Type | Description |
+|--------|--------------|-------------|
+| `json` | `application/json` | (Default) Full-body JSON response |
+| `ndjson` | `application/x-ndjson` | Newline-delimited JSON (JSON Lines). One record per line. |
+| `sse` | `text/event-stream` | Server-Sent Events. Parses `data:` fields as JSON. |
+| `msgpack` | `application/msgpack` | MessagePack binary format. Smaller payloads, faster parsing. |
+
+```hocon
+http {
+  response-format = "ndjson"  # For BigQuery exports, Elasticsearch scroll, etc.
+}
+```
+
+**When to use streaming formats:**
+- **NDJSON**: BigQuery export, Elasticsearch scroll API, CouchDB changes feed
+- **SSE**: Real-time feeds, change data capture streams
+- **MessagePack**: Binary APIs (Fluentd, Tarantool, some game APIs)
+
+Streaming formats bypass pagination since they represent continuous data streams. Apply `LIMIT` in SQL to cap the number of records read.
 
 ## Building
 

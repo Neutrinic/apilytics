@@ -42,7 +42,7 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
 
     Paginator
-      .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
+      .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit, partition.responseFormat)
       .flatMap { pageJson =>
         val records = Converter.extractRecords(pageJson, dataPath)
         if (records.isEmpty) Stream.empty

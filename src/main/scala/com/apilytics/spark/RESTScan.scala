@@ -95,7 +95,8 @@ class RESTScan(
           pushedParams = pushedParams,
           pushedLimit = pushedLimit,
           effectiveRateLimit = effectiveRateLimit,
-          schemaMode = table.sourceConfig.schema.mode
+          schemaMode = table.sourceConfig.schema.mode,
+          responseFormat = table.sourceConfig.http.responseFormat
         ))
     }
   }
@@ -126,7 +127,8 @@ class RESTScan(
         pushedParams = partitionParams,
         pushedLimit = pushedLimit,
         effectiveRateLimit = effectiveRateLimit,
-        schemaMode = table.sourceConfig.schema.mode
+        schemaMode = table.sourceConfig.schema.mode,
+        responseFormat = table.sourceConfig.http.responseFormat
       )
     }.toArray
   }
@@ -199,7 +201,8 @@ class RESTScan(
             pushedParams = partitionParams,
             pushedLimit = pushedLimit,
             effectiveRateLimit = effectiveRateLimit,
-            schemaMode = table.sourceConfig.schema.mode
+            schemaMode = table.sourceConfig.schema.mode,
+            responseFormat = table.sourceConfig.http.responseFormat
           )
         }.toArray)
       }
@@ -224,7 +227,8 @@ class RESTScan(
       pushedParams = pushedParams,
       pushedLimit = pushedLimit,
       effectiveRateLimit = effectiveRateLimit,
-      schemaMode = table.sourceConfig.schema.mode
+      schemaMode = table.sourceConfig.schema.mode,
+      responseFormat = table.sourceConfig.http.responseFormat
     ))
   }
 
