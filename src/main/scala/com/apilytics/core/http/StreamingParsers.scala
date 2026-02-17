@@ -114,13 +114,13 @@ object StreamingParsers {
           // End of stream - try to parse any remaining bytes
           if (carry.nonEmpty) {
             Pull.eval(IO {
-              val unpacker = MessagePack.newDefaultUnpacker(carry)
-              val results = scala.collection.mutable.ListBuffer[Json]()
-              while (unpacker.hasNext) {
-                results += unpackToJson(unpacker)
+              // Use parseChunk to handle potential incomplete trailing data gracefully
+              val (jsons, remaining) = parseChunk(carry)
+              if (remaining.nonEmpty) {
+                // Log warning about discarded incomplete data at end of stream
+                System.err.println(s"Warning: MessagePack stream ended with ${remaining.length} incomplete bytes, discarding")
               }
-              unpacker.close()
-              results.toList
+              jsons
             }).flatMap(jsons => Pull.output(Chunk.from(jsons)))
           } else {
             Pull.done
