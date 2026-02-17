@@ -62,12 +62,33 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
 
   private def loadBaseTable(ident: Identifier, tableName: String): Table = {
     val tableConfig = config.tables.get(tableName)
-    val specEndpoint = findEndpointForTable(tableName).getOrElse(throw new NoSuchTableException(ident))
 
-    // If table has explicit config endpoint (potentially with concrete path params),
-    // use that path instead of the spec's parameterized path.
-    // e.g., config has "/repos/octocat/Hello-World/issues", spec has "/repos/{owner}/{repo}/issues"
-    val endpoint = tableConfig.map(tc => specEndpoint.copy(path = tc.endpoint)).getOrElse(specEndpoint)
+    // Try to find endpoint in spec, or create synthetic endpoint for config-only tables
+    // Config-only tables are useful for streaming formats (ndjson, sse, msgpack) where
+    // the OpenAPI spec may not define the endpoint or uses external $refs
+    val endpoint = findEndpointForTable(tableName) match {
+      case Some(specEndpoint) =>
+        // If table has explicit config endpoint (potentially with concrete path params),
+        // use that path instead of the spec's parameterized path.
+        // e.g., config has "/repos/octocat/Hello-World/issues", spec has "/repos/{owner}/{repo}/issues"
+        tableConfig.map(tc => specEndpoint.copy(path = tc.endpoint)).getOrElse(specEndpoint)
+
+      case None =>
+        // No spec endpoint - create synthetic endpoint from config
+        tableConfig match {
+          case Some(tc) =>
+            // Create synthetic endpoint with empty/variant schema
+            // Schema will be inferred at runtime for variant mode
+            Endpoint(
+              path = tc.endpoint,
+              operationId = Some(tableName),
+              responseSchema = OpenAPISchema.ObjectType(Map.empty),
+              queryParams = Nil
+            )
+          case None =>
+            throw new NoSuchTableException(ident)
+        }
+    }
 
     // If data-path is configured, extract the schema at that path
     // e.g., data-path = "/results" means get the item schema from the results array
