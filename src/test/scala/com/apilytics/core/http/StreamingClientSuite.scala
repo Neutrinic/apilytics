@@ -79,4 +79,66 @@ class StreamingClientSuite extends FunSuite {
     assertEquals(result.hcursor.get[Boolean]("testing").toOption, Some(true))
     assertEquals(result.hcursor.get[String]("msg").toOption, Some("It works!"))
   }
+
+  // Test NDJSON against Lichess public API
+  // https://lichess.org/api/tv/feed streams live chess moves as NDJSON
+  test("NDJSON streaming from Lichess API".ignore) {
+    val httpConfig = HttpConfig(
+      maxRetries = 3,
+      maxBackoff = 30.seconds,
+      timeout = 30.seconds,
+      responseFormat = ResponseFormat.NDJSON
+    )
+    val authConfig = AuthConfig(authType = AuthType.None)
+
+    println("Starting NDJSON test against Lichess...")
+
+    val result = Client.resource(httpConfig, authConfig).use { client =>
+      val uri = Uri.unsafeFromString("https://lichess.org/api/tv/feed")
+
+      println(s"Connecting to $uri")
+
+      client.getStreaming(uri, Map.empty, ResponseFormat.NDJSON)
+        .evalTap(json => IO(println(s"Received: ${json.noSpaces.take(100)}...")))
+        .take(3)  // Take 3 events
+        .compile
+        .toList
+    }.timeout(15.seconds).unsafeRunSync()
+
+    println(s"Got ${result.size} NDJSON records")
+    assertEquals(result.size, 3)
+    // Lichess returns objects with "t" (type) and "d" (data) fields
+    result.foreach { json =>
+      assert(json.isObject, s"Expected JSON object, got: $json")
+      assert(json.hcursor.get[String]("t").isRight, s"Expected 't' field in: $json")
+    }
+  }
+
+  // MessagePack test - no known public endpoint
+  // Most MessagePack APIs are internal (Fluentd, Tarantool, game servers)
+  // MessagePack parser is tested extensively in StreamingParsersSuite with synthetic data
+  test("MessagePack streaming (no public endpoint available)".ignore) {
+    // To test MessagePack against a real endpoint, you would need to:
+    // 1. Set up a local msgpack server (e.g., using msgpack-rpc)
+    // 2. Or find an API that supports application/msgpack content negotiation
+    //
+    // Example test structure (if endpoint existed):
+    //
+    // val httpConfig = HttpConfig(
+    //   maxRetries = 3,
+    //   maxBackoff = 30.seconds,
+    //   timeout = 30.seconds,
+    //   responseFormat = ResponseFormat.MessagePack
+    // )
+    // val authConfig = AuthConfig(authType = AuthType.None)
+    //
+    // Client.resource(httpConfig, authConfig).use { client =>
+    //   val uri = Uri.unsafeFromString("http://localhost:8080/msgpack/stream")
+    //   client.getStreaming(uri, Map.empty, ResponseFormat.MessagePack)
+    //     .take(3)
+    //     .compile
+    //     .toList
+    // }
+    assert(true, "MessagePack parser tested in StreamingParsersSuite")
+  }
 }
