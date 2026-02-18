@@ -46,7 +46,6 @@ object SchemaMode {
   * - json: Full-body JSON (default) - entire response parsed as single JSON
   * - ndjson: Newline-delimited JSON - one JSON object per line
   * - sse: Server-Sent Events - event stream with data fields as JSON
-  * - msgpack: MessagePack binary format - binary JSON-compatible
   */
 sealed trait ResponseFormat extends Serializable
 object ResponseFormat {
@@ -56,8 +55,6 @@ object ResponseFormat {
   case object NDJSON extends ResponseFormat
   /** Server-Sent Events. Event stream format with JSON data fields. */
   case object SSE extends ResponseFormat
-  /** MessagePack binary format. */
-  case object MessagePack extends ResponseFormat
 }
 
 final case class AuthConfig(
@@ -139,8 +136,7 @@ final case class HttpConfig(
       *
       * - json (default): Full-body JSON
       * - ndjson: Newline-delimited JSON (one object per line)
-      * - sse: Server-Sent Events
-      * - msgpack: MessagePack binary format */
+      * - sse: Server-Sent Events */
     responseFormat: ResponseFormat = ResponseFormat.Json
 )
 

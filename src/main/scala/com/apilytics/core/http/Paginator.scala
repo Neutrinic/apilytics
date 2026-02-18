@@ -12,8 +12,8 @@ object Paginator {
   /** Stream of JSON pages from a paginated API endpoint.
     *
     * For standard JSON format, pages are fetched according to the pagination style.
-    * For streaming formats (NDJSON, SSE, MessagePack), records stream directly
-    * without pagination since these represent continuous data streams.
+    * For streaming formats (NDJSON, SSE), records stream directly without pagination
+    * since these represent continuous data streams.
     */
   def pages(
       client: Client.RestClient,

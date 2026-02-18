@@ -123,7 +123,7 @@ object Client {
     /** Stream response body with format-specific parsing.
       *
       * Unlike `get`, this streams records incrementally without buffering the
-      * entire response. Use for streaming formats (NDJSON, SSE, MessagePack).
+      * entire response. Use for streaming formats (NDJSON, SSE).
       *
       * Note: Streaming responses bypass caching and pagination since they
       * represent continuous data streams. Retries are attempted on connection
@@ -140,10 +140,9 @@ object Client {
 
       // Set appropriate Accept header for the format
       val acceptHeader = format match {
-        case ResponseFormat.Json        => Accept(MediaType.application.json)
-        case ResponseFormat.NDJSON      => Accept(new MediaType("application", "x-ndjson"))
-        case ResponseFormat.SSE         => Accept(new MediaType("text", "event-stream"))
-        case ResponseFormat.MessagePack => Accept(new MediaType("application", "msgpack"))
+        case ResponseFormat.Json   => Accept(MediaType.application.json)
+        case ResponseFormat.NDJSON => Accept(new MediaType("application", "x-ndjson"))
+        case ResponseFormat.SSE    => Accept(new MediaType("text", "event-stream"))
       }
 
       val baseReq = Request[IO](uri = fullUri).putHeaders(acceptHeader)
@@ -158,9 +157,6 @@ object Client {
 
         case ResponseFormat.SSE =>
           streamBodyWithRetry(baseReq, format).through(StreamingParsers.sse)
-
-        case ResponseFormat.MessagePack =>
-          streamBodyWithRetry(baseReq, format).through(StreamingParsers.msgpack)
       }
     }
 

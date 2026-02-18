@@ -1,14 +1,11 @@
 package com.apilytics.core.http
 
 import cats.effect.IO
-import fs2.{Chunk, Pipe, Pull, Stream}
+import fs2.{Pipe, Pull, Stream}
 import io.circe.Json
 import io.circe.parser.parse
-import org.msgpack.core.{MessagePack, MessageUnpacker}
 
-import java.io.ByteArrayInputStream
-
-/** Parsers for streaming response formats (NDJSON, SSE, MessagePack). */
+/** Parsers for streaming response formats (NDJSON, SSE). */
 object StreamingParsers {
 
   /** Parse newline-delimited JSON (JSON Lines / NDJSON).
@@ -96,136 +93,5 @@ object StreamingParsers {
       }
 
     in => go(in, None, Nil, None).stream
-  }
-
-  /** Parse MessagePack binary format.
-    *
-    * MessagePack is a binary JSON-compatible format. Each value is decoded
-    * and converted to Circe JSON for uniform downstream handling.
-    *
-    * This parser accumulates bytes across chunk boundaries to handle values
-    * that span multiple chunks. It uses MessagePack's self-delimiting format
-    * to detect complete values.
-    */
-  def msgpack: Pipe[IO, Byte, Json] = { (input: Stream[IO, Byte]) =>
-    def go(s: Stream[IO, Byte], carry: Array[Byte]): Pull[IO, Json, Unit] =
-      s.pull.uncons.flatMap {
-        case None =>
-          // End of stream - try to parse any remaining bytes
-          if (carry.nonEmpty) {
-            Pull.eval(IO {
-              // Use parseChunk to handle potential incomplete trailing data gracefully
-              val (jsons, remaining) = parseChunk(carry)
-              if (remaining.nonEmpty) {
-                // Log warning about discarded incomplete data at end of stream
-                System.err.println(s"Warning: MessagePack stream ended with ${remaining.length} incomplete bytes, discarding")
-              }
-              jsons
-            }).flatMap(jsons => Pull.output(Chunk.from(jsons)))
-          } else {
-            Pull.done
-          }
-
-        case Some((chunk, rest)) =>
-          val bytes = if (carry.isEmpty) chunk.toArray else carry ++ chunk.toArray
-          Pull.eval(IO {
-            parseChunk(bytes)
-          }).flatMap { case (jsons, remaining) =>
-            Pull.output(Chunk.from(jsons)) >> go(rest, remaining)
-          }
-      }
-
-    go(input, Array.empty).stream
-  }
-
-  /** Parse as many complete msgpack values from bytes as possible.
-    * Returns parsed values and any remaining bytes for the next chunk.
-    */
-  private def parseChunk(bytes: Array[Byte]): (List[Json], Array[Byte]) = {
-    val unpacker = MessagePack.newDefaultUnpacker(bytes)
-    val results = scala.collection.mutable.ListBuffer[Json]()
-    var lastPosition = 0L
-    var incomplete = false
-
-    while (unpacker.hasNext && !incomplete) {
-      val positionBefore = unpacker.getTotalReadBytes
-      try {
-        val json = unpackToJson(unpacker)
-        results += json
-        lastPosition = unpacker.getTotalReadBytes
-      } catch {
-        case _: org.msgpack.core.MessageInsufficientBufferException =>
-          // Incomplete value - carry remaining bytes to next chunk
-          incomplete = true
-      }
-    }
-    unpacker.close()
-
-    val remaining = if (incomplete || lastPosition < bytes.length) {
-      bytes.drop(lastPosition.toInt)
-    } else {
-      Array.empty[Byte]
-    }
-
-    (results.toList, remaining)
-  }
-
-  /** Convert a single MessagePack value to Circe JSON. */
-  private def unpackToJson(unpacker: MessageUnpacker): Json = {
-    import org.msgpack.core.MessageFormat
-
-    val format = unpacker.getNextFormat
-    format.getValueType match {
-      case org.msgpack.value.ValueType.NIL =>
-        unpacker.unpackNil()
-        Json.Null
-
-      case org.msgpack.value.ValueType.BOOLEAN =>
-        Json.fromBoolean(unpacker.unpackBoolean())
-
-      case org.msgpack.value.ValueType.INTEGER =>
-        if (format == MessageFormat.UINT64) {
-          // Handle unsigned 64-bit as BigInt
-          Json.fromBigInt(unpacker.unpackBigInteger())
-        } else {
-          Json.fromLong(unpacker.unpackLong())
-        }
-
-      case org.msgpack.value.ValueType.FLOAT =>
-        Json.fromDoubleOrNull(unpacker.unpackDouble())
-
-      case org.msgpack.value.ValueType.STRING =>
-        Json.fromString(unpacker.unpackString())
-
-      case org.msgpack.value.ValueType.BINARY =>
-        // Encode binary as base64 string
-        val len = unpacker.unpackBinaryHeader()
-        val bytes = new Array[Byte](len)
-        unpacker.readPayload(bytes)
-        Json.fromString(java.util.Base64.getEncoder.encodeToString(bytes))
-
-      case org.msgpack.value.ValueType.ARRAY =>
-        val size = unpacker.unpackArrayHeader()
-        val elements = (0 until size).map(_ => unpackToJson(unpacker)).toVector
-        Json.fromValues(elements)
-
-      case org.msgpack.value.ValueType.MAP =>
-        val size = unpacker.unpackMapHeader()
-        val fields = (0 until size).map { _ =>
-          val key = unpacker.unpackString()
-          val value = unpackToJson(unpacker)
-          (key, value)
-        }.toVector
-        Json.fromFields(fields)
-
-      case org.msgpack.value.ValueType.EXTENSION =>
-        // Extension types: read the payload bytes and skip
-        // unpackExtensionTypeHeader returns ExtensionTypeHeader with type and length
-        val header = unpacker.unpackExtensionTypeHeader()
-        val extBytes = new Array[Byte](header.getLength)
-        unpacker.readPayload(extBytes)
-        // Return null for extension types (not representable in JSON)
-        Json.Null
-    }
   }
 }

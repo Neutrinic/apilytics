@@ -289,7 +289,7 @@ http {
   timeout = "30s"
   max-retries = 3
   max-backoff = "30s"
-  response-format = "json"  # json | ndjson | sse | msgpack
+  response-format = "json"  # json | ndjson | sse
 }
 
 schema {
@@ -357,7 +357,6 @@ By default, APIlytics expects full-body JSON responses. For APIs that stream dat
 | `json` | `application/json` | (Default) Full-body JSON response |
 | `ndjson` | `application/x-ndjson` | Newline-delimited JSON (JSON Lines). One record per line. |
 | `sse` | `text/event-stream` | Server-Sent Events. Parses `data:` fields as JSON. |
-| `msgpack` | `application/msgpack` | MessagePack binary format. Smaller payloads, faster parsing. |
 
 ```hocon
 http {
@@ -368,7 +367,6 @@ http {
 **When to use streaming formats:**
 - **NDJSON**: BigQuery export, Elasticsearch scroll API, CouchDB changes feed
 - **SSE**: Real-time feeds, change data capture streams
-- **MessagePack**: Binary APIs (Fluentd, Tarantool, some game APIs)
 
 Streaming formats bypass pagination since they represent continuous data streams. Apply `LIMIT` in SQL to cap the number of records read.
 

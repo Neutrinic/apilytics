@@ -40,10 +40,10 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
     val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
 
-    // For streaming formats (NDJSON, SSE, MessagePack), each record from the stream
-    // is already an individual JSON object - data-path extraction doesn't apply.
-    // data-path is only used for standard JSON responses where records are nested
-    // in a wrapper (e.g., {"results": [...], "pagination": {...}}).
+    // For streaming formats (NDJSON, SSE), each record from the stream is already
+    // an individual JSON object - data-path extraction doesn't apply. data-path is
+    // only used for standard JSON responses where records are nested in a wrapper
+    // (e.g., {"results": [...], "pagination": {...}}).
     val isStreamingFormat = partition.responseFormat != ResponseFormat.Json
     val dataPath = if (isStreamingFormat) None else partition.tableConfig.flatMap(_.dataPath)
 

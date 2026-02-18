@@ -113,32 +113,4 @@ class StreamingClientSuite extends FunSuite {
       assert(json.hcursor.get[String]("t").isRight, s"Expected 't' field in: $json")
     }
   }
-
-  // MessagePack test - no known public endpoint
-  // Most MessagePack APIs are internal (Fluentd, Tarantool, game servers)
-  // MessagePack parser is tested extensively in StreamingParsersSuite with synthetic data
-  test("MessagePack streaming (no public endpoint available)".ignore) {
-    // To test MessagePack against a real endpoint, you would need to:
-    // 1. Set up a local msgpack server (e.g., using msgpack-rpc)
-    // 2. Or find an API that supports application/msgpack content negotiation
-    //
-    // Example test structure (if endpoint existed):
-    //
-    // val httpConfig = HttpConfig(
-    //   maxRetries = 3,
-    //   maxBackoff = 30.seconds,
-    //   timeout = 30.seconds,
-    //   responseFormat = ResponseFormat.MessagePack
-    // )
-    // val authConfig = AuthConfig(authType = AuthType.None)
-    //
-    // Client.resource(httpConfig, authConfig).use { client =>
-    //   val uri = Uri.unsafeFromString("http://localhost:8080/msgpack/stream")
-    //   client.getStreaming(uri, Map.empty, ResponseFormat.MessagePack)
-    //     .take(3)
-    //     .compile
-    //     .toList
-    // }
-    assert(true, "MessagePack parser tested in StreamingParsersSuite")
-  }
 }
