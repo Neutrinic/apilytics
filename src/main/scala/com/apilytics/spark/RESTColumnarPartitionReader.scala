@@ -2,7 +2,7 @@ package com.apilytics.spark
 
 import cats.effect.{IO, Resource}
 import com.apilytics.core.arrow.Converter
-import com.apilytics.core.config.SchemaMode
+import com.apilytics.core.config.{ResponseFormat, SchemaMode}
 import com.apilytics.core.http.{Client, Paginator, ResponseCache}
 import fs2.Stream
 import org.apache.arrow.memory.RootAllocator
@@ -38,11 +38,17 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
       client: Client.RestClient
   ): Stream[IO, (org.apache.spark.sql.vectorized.ColumnarBatch, VectorSchemaRoot)] = {
     val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
-    val dataPath = partition.tableConfig.flatMap(_.dataPath)
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
 
+    // For streaming formats (NDJSON, SSE), each record from the stream is already
+    // an individual JSON object - data-path extraction doesn't apply. data-path is
+    // only used for standard JSON responses where records are nested in a wrapper
+    // (e.g., {"results": [...], "pagination": {...}}).
+    val isStreamingFormat = partition.responseFormat != ResponseFormat.Json
+    val dataPath = if (isStreamingFormat) None else partition.tableConfig.flatMap(_.dataPath)
+
     Paginator
-      .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
+      .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit, partition.responseFormat)
       .flatMap { pageJson =>
         val records = Converter.extractRecords(pageJson, dataPath)
         if (records.isEmpty) Stream.empty

@@ -1,12 +1,14 @@
 package com.apilytics.core.http
 
 import cats.effect.{IO, Resource}
-import com.apilytics.core.config.{AuthConfig, HttpConfig}
+import com.apilytics.core.config.{AuthConfig, HttpConfig, ResponseFormat}
+import fs2.Stream
 import io.circe.Json
-import org.http4s.{Request, Uri}
+import org.http4s.{Header, MediaType, Request, Uri}
 import org.http4s.circe._
 import org.http4s.client.{Client => Http4sClient}
 import org.http4s.ember.client.EmberClientBuilder
+import org.http4s.headers.Accept
 import org.http4s.Status
 
 import org.typelevel.ci.CIString
@@ -117,6 +119,112 @@ object Client {
 
     /** Clear the response cache. */
     def clearCache: IO[Unit] = responseCache.clear()
+
+    /** Stream response body with format-specific parsing.
+      *
+      * Unlike `get`, this streams records incrementally without buffering the
+      * entire response. Use for streaming formats (NDJSON, SSE).
+      *
+      * Note: Streaming responses bypass caching and pagination since they
+      * represent continuous data streams. Retries are attempted on connection
+      * errors before streaming begins.
+      */
+    def getStreaming(
+        uri: Uri,
+        params: Map[String, String] = Map.empty,
+        format: ResponseFormat
+    ): Stream[IO, Json] = {
+      val fullUri = params.foldLeft(uri) { case (u, (k, v)) =>
+        u.withQueryParam(k, v)
+      }
+
+      // Set appropriate Accept header for the format
+      val acceptHeader = format match {
+        case ResponseFormat.Json   => Accept(MediaType.application.json)
+        case ResponseFormat.NDJSON => Accept(new MediaType("application", "x-ndjson"))
+        case ResponseFormat.SSE    => Accept(new MediaType("text", "event-stream"))
+      }
+
+      val baseReq = Request[IO](uri = fullUri).putHeaders(acceptHeader)
+
+      format match {
+        case ResponseFormat.Json =>
+          // Full-body JSON - wrap in stream
+          Stream.eval(get(uri, params)).map(_.json)
+
+        case ResponseFormat.NDJSON =>
+          streamBodyWithRetry(baseReq, format).through(StreamingParsers.ndjson)
+
+        case ResponseFormat.SSE =>
+          streamBodyWithRetry(baseReq, format).through(StreamingParsers.sse)
+      }
+    }
+
+    /** Stream raw response body bytes with retry on connection errors.
+      *
+      * Retries are only attempted before streaming begins (on connection/initial response).
+      * Once streaming starts, errors propagate immediately since we can't resume.
+      *
+      * Connection scoping: Each retry attempt is properly scoped so the connection
+      * is released before the backoff sleep. Only the successful streaming response
+      * keeps the connection open for the duration of the stream.
+      */
+    private def streamBodyWithRetry(
+        baseReq: Request[IO],
+        format: ResponseFormat,
+        attempt: Int = 0
+    ): Stream[IO, Byte] = {
+      Stream.eval(rateLimiter.acquire) >>
+        Stream.eval(applyAuth(baseReq)).flatMap { req =>
+          // First, check the response status to decide if we should retry
+          // Use .use for retry cases to properly scope the connection
+          Stream.eval(underlying.run(req).allocated).flatMap { case (resp, release) =>
+            resp.status.code match {
+              case code if code >= 200 && code < 300 =>
+                // Success - stream body and release connection when done
+                resp.body.onFinalize(release)
+
+              case 429 if attempt < httpConfig.maxRetries =>
+                // Rate limited - release connection, sleep, then retry
+                val retryAfter = resp.headers.get(CIString("Retry-After")).map { nel =>
+                  val v = nel.head.value
+                  v.toLongOption.map(_.seconds).getOrElse(exponentialBackoff(attempt))
+                }
+                val delay = retryAfter.getOrElse(exponentialBackoff(attempt))
+                Stream.exec(resp.body.compile.drain *> release *> IO.sleep(delay)) ++
+                  streamBodyWithRetry(baseReq, format, attempt + 1)
+
+              case code if code >= 500 && attempt < httpConfig.maxRetries =>
+                // Server error - release connection, sleep, then retry
+                val delay = exponentialBackoff(attempt)
+                Stream.exec(resp.body.compile.drain *> release *> IO.sleep(delay)) ++
+                  streamBodyWithRetry(baseReq, format, attempt + 1)
+
+              case code =>
+                // Non-retryable error - release connection and raise error
+                Stream.eval(
+                  resp.as[String].flatMap { body =>
+                    release *> IO.raiseError(ApiError.httpError(
+                      endpoint = req.uri.path.renderString,
+                      method = req.method,
+                      params = Map.empty,
+                      statusCode = code,
+                      responseBody = body,
+                      headers = resp.headers.headers.map(h => h.name.toString -> h.value).toMap,
+                      retryAttempt = attempt
+                    ))
+                  }
+                ).drain
+            }
+          }
+        }.handleErrorWith {
+          // Retry on network-level transient failures before streaming starts
+          case e if isTransientNetworkError(e) && attempt < httpConfig.maxRetries =>
+            val delay = exponentialBackoff(attempt)
+            Stream.exec(IO.sleep(delay)) ++ streamBodyWithRetry(baseReq, format, attempt + 1)
+          case e => Stream.raiseError[IO](e)
+        }
+    }
 
     private def executeWithRetry(
         req: Request[IO],
