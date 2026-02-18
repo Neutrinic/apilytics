@@ -17,6 +17,6 @@ case class RESTInputPartition(
     effectiveRateLimit: Option[Int] = None,
     /** Schema mode - determines whether to use Arrow path or native Variant. */
     schemaMode: SchemaMode = SchemaMode.Strict,
-    /** Response format for HTTP responses (json, ndjson, sse, msgpack). */
+    /** Response format for HTTP responses (json, ndjson, sse). */
     responseFormat: ResponseFormat = ResponseFormat.Json
 ) extends InputPartition

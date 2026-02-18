@@ -8,47 +8,16 @@ import org.http4s.Uri
 
 import scala.concurrent.duration._
 
-/** Integration tests for streaming HTTP client against public endpoints. */
+/** Integration tests for streaming HTTP client against public endpoints.
+  *
+  * These tests are marked .ignore for CI since they depend on external services.
+  * Run manually: sbt "testOnly com.apilytics.core.http.StreamingClientSuite"
+  * Then remove .ignore temporarily to run.
+  */
 class StreamingClientSuite extends FunSuite {
 
-  // sse.dev is a public SSE test endpoint
-  // https://sse.dev/test sends a JSON message every 2 seconds by default
+  // SSE test against sse.dev - sends JSON events every 2 seconds
   test("SSE streaming from sse.dev".ignore) {
-    val httpConfig = HttpConfig(
-      maxRetries = 3,
-      maxBackoff = 30.seconds,
-      timeout = 30.seconds,
-      responseFormat = ResponseFormat.SSE
-    )
-    val authConfig = AuthConfig(authType = AuthType.None)
-
-    Client.resource(httpConfig, authConfig).use { client =>
-      val uri = Uri.unsafeFromString("https://sse.dev/test")
-
-      // Take 3 events (6 seconds at default 2s interval)
-      client.getStreaming(uri, Map.empty, ResponseFormat.SSE)
-        .take(3)
-        .compile
-        .toList
-        .flatMap { results =>
-          IO {
-            println(s"Received ${results.size} SSE events:")
-            results.foreach(json => println(s"  $json"))
-
-            assertEquals(results.size, 3)
-            // sse.dev returns JSON with at least a timestamp
-            results.foreach { json =>
-              assert(json.isObject, s"Expected JSON object, got: $json")
-            }
-          }
-        }
-    }.unsafeRunSync()
-  }
-
-  // Test SSE against public endpoint
-  // Run manually: sbt "testOnly com.apilytics.core.http.StreamingClientSuite"
-  // Then remove .ignore temporarily to run
-  test("SSE streaming from sse.dev public endpoint".ignore) {
     val httpConfig = HttpConfig(
       maxRetries = 3,
       maxBackoff = 30.seconds,

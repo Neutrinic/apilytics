@@ -164,6 +164,10 @@ object Client {
       *
       * Retries are only attempted before streaming begins (on connection/initial response).
       * Once streaming starts, errors propagate immediately since we can't resume.
+      *
+      * Connection scoping: Each retry attempt is properly scoped so the connection
+      * is released before the backoff sleep. Only the successful streaming response
+      * keeps the connection open for the duration of the stream.
       */
     private def streamBodyWithRetry(
         baseReq: Request[IO],
@@ -172,32 +176,35 @@ object Client {
     ): Stream[IO, Byte] = {
       Stream.eval(rateLimiter.acquire) >>
         Stream.eval(applyAuth(baseReq)).flatMap { req =>
-          Stream.resource(underlying.run(req)).flatMap { resp =>
+          // First, check the response status to decide if we should retry
+          // Use .use for retry cases to properly scope the connection
+          Stream.eval(underlying.run(req).allocated).flatMap { case (resp, release) =>
             resp.status.code match {
               case code if code >= 200 && code < 300 =>
-                resp.body
+                // Success - stream body and release connection when done
+                resp.body.onFinalize(release)
 
               case 429 if attempt < httpConfig.maxRetries =>
-                // Rate limited - retry with backoff
+                // Rate limited - release connection, sleep, then retry
                 val retryAfter = resp.headers.get(CIString("Retry-After")).map { nel =>
                   val v = nel.head.value
                   v.toLongOption.map(_.seconds).getOrElse(exponentialBackoff(attempt))
                 }
                 val delay = retryAfter.getOrElse(exponentialBackoff(attempt))
-                Stream.exec(resp.body.compile.drain *> IO.sleep(delay)) ++
+                Stream.exec(resp.body.compile.drain *> release *> IO.sleep(delay)) ++
                   streamBodyWithRetry(baseReq, format, attempt + 1)
 
               case code if code >= 500 && attempt < httpConfig.maxRetries =>
-                // Server error - retry with backoff
+                // Server error - release connection, sleep, then retry
                 val delay = exponentialBackoff(attempt)
-                Stream.exec(resp.body.compile.drain *> IO.sleep(delay)) ++
+                Stream.exec(resp.body.compile.drain *> release *> IO.sleep(delay)) ++
                   streamBodyWithRetry(baseReq, format, attempt + 1)
 
               case code =>
-                // Non-retryable error
+                // Non-retryable error - release connection and raise error
                 Stream.eval(
                   resp.as[String].flatMap { body =>
-                    IO.raiseError(ApiError.httpError(
+                    release *> IO.raiseError(ApiError.httpError(
                       endpoint = req.uri.path.renderString,
                       method = req.method,
                       params = Map.empty,
