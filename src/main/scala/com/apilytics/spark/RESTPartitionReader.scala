@@ -52,6 +52,7 @@ class RESTPartitionReader(partition: RESTInputPartition) extends PartitionReader
       .use { client =>
         Paginator
           .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
+          .map(_._1)
           .flatMap { pageJson =>
             val records = Converter.extractRecords(pageJson, dataPath)
             if (records.isEmpty) Stream.empty

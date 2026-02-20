@@ -35,6 +35,7 @@ class ExplodedArrayColumnarPartitionReader(partition: ExplodedArrayInputPartitio
 
     Paginator
       .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
+      .map(_._1)
       .flatMap { pageJson =>
         val records = Converter.extractRecords(pageJson, dataPath)
         val exploded = records.flatMap(r =>

@@ -3,12 +3,15 @@ package com.apilytics.core.http
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
+import com.apilytics.core.checkpoint.{CheckpointState, CheckpointStore}
 import com.apilytics.core.config._
 import com.apilytics.core.openapi.{Endpoint, OpenAPISchema}
 import com.apilytics.core.schema.SchemaMapper
 import com.apilytics.spark._
 import com.github.tomakehurst.wiremock.WireMockServer
 import org.apache.arrow.vector.types.pojo.{Field, FieldType, Schema => ArrowSchema, ArrowType}
+import org.apache.hadoop.conf.Configuration
+import java.nio.file.Files
 import java.util.{ArrayList => JArrayList}
 import com.github.tomakehurst.wiremock.client.WireMock._
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
@@ -67,7 +70,7 @@ class WireMockSuite extends FunSuite {
 
     val pages = Client.resource(defaultHttp, noAuth).use { client =>
       Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
-        .compile.toList
+        .map(_._1).compile.toList
     }.unsafeRunSync()
 
     assertEquals(pages.size, 2)
@@ -96,7 +99,7 @@ class WireMockSuite extends FunSuite {
 
     val pages = Client.resource(defaultHttp, noAuth).use { client =>
       Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination, limit = Some(7))
-        .compile.toList
+        .map(_._1).compile.toList
     }.unsafeRunSync()
 
     assertEquals(pages.size, 2)
@@ -131,7 +134,7 @@ class WireMockSuite extends FunSuite {
 
     val pages = Client.resource(defaultHttp, noAuth).use { client =>
       Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
-        .compile.toList
+        .map(_._1).compile.toList
     }.unsafeRunSync()
 
     assertEquals(pages.size, 2)
@@ -169,7 +172,7 @@ class WireMockSuite extends FunSuite {
 
     val pages = Client.resource(defaultHttp, noAuth).use { client =>
       Paginator.pages(client, baseUri.addPath("api"), Map.empty, pagination)
-        .compile.toList
+        .map(_._1).compile.toList
     }.unsafeRunSync()
 
     assertEquals(pages.size, 2)
@@ -193,7 +196,7 @@ class WireMockSuite extends FunSuite {
 
     val pages = Client.resource(defaultHttp, noAuth).use { client =>
       Paginator.pages(client, baseUri.addPath("infinite"), Map.empty, pagination)
-        .compile.toList
+        .map(_._1).compile.toList
     }.unsafeRunSync()
 
     assertEquals(pages.size, 3)
@@ -223,7 +226,7 @@ class WireMockSuite extends FunSuite {
 
     val pages = Client.resource(defaultHttp, noAuth).use { client =>
       Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
-        .compile.toList
+        .map(_._1).compile.toList
     }.unsafeRunSync()
 
     assertEquals(pages.size, 2)
@@ -239,7 +242,7 @@ class WireMockSuite extends FunSuite {
 
     val pages = Client.resource(defaultHttp, noAuth).use { client =>
       Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
-        .compile.toList
+        .map(_._1).compile.toList
     }.unsafeRunSync()
 
     assertEquals(pages.size, 1)
@@ -702,7 +705,7 @@ class WireMockSuite extends FunSuite {
     // The first page fetch gets token-1, then we sleep to ensure expiry
     val pages = Client.resourceWithOAuth2(defaultHttp, authConfig).use { client =>
       Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
-        .evalTap(_ => IO.sleep(100.millis)) // Small delay between pages
+        .map(_._1).evalTap(_ => IO.sleep(100.millis)) // Small delay between pages
         .compile.toList
     }.unsafeRunSync()
 
@@ -747,7 +750,7 @@ class WireMockSuite extends FunSuite {
       import cats.implicits._
       partitionParams.traverse { params =>
         Paginator.pages(client, baseUri.addPath("events"), params, pagination)
-          .compile.toList
+          .map(_._1).compile.toList
       }
     }.unsafeRunSync()
 
@@ -812,7 +815,7 @@ class WireMockSuite extends FunSuite {
       import cats.implicits._
       partitionParams.traverse { params =>
         Paginator.pages(client, baseUri.addPath("events"), params, pagination)
-          .compile.toList
+          .map(_._1).compile.toList
       }
     }.unsafeRunSync()
 
@@ -880,7 +883,7 @@ class WireMockSuite extends FunSuite {
 
     val pages = Client.resourceWithOAuth2(defaultHttp, authConfig).use { client =>
       Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
-        .compile.toList
+        .map(_._1).compile.toList
     }.unsafeRunSync()
 
     assertEquals(pages.size, 2)
@@ -1512,5 +1515,202 @@ class WireMockSuite extends FunSuite {
 
     assert(!reader.next())
     reader.close()
+  }
+
+  // ============== CHECKPOINT INTEGRATION TESTS ===============
+
+  test("cursor checkpoint: first run saves cursor, second run resumes from it") {
+    // First run: 2 pages with cursor
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("limit", equalTo("10"))
+        .willReturn(okJson("""{"items": [{"id": 1}], "next_cursor": "page2"}"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("cursor", equalTo("page2"))
+        .withQueryParam("limit", equalTo("10"))
+        .willReturn(okJson("""{"items": [{"id": 2}], "next_cursor": ""}"""))
+    )
+
+    val pagination = PaginationConfig(
+      style = PaginationStyle.Cursor,
+      cursorPath = Some("/next_cursor"),
+      cursorParam = Some("cursor"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 10
+    )
+
+    val tmpDir = Files.createTempDirectory("checkpoint-integration")
+    val checkpointConfig = CheckpointConfig(enabled = true, path = tmpDir.toString, mode = CheckpointMode.Cursor)
+    val store = CheckpointStore.fromConfig(Some(checkpointConfig), new Configuration())
+
+    // First run: fetch all pages, track final state
+    var lastState: Option[CheckpointState] = None
+    Client.resource(defaultHttp, noAuth).use { client =>
+      Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
+        .evalTap { case (_, state) => IO { state.foreach(s => lastState = Some(s)) } }
+        .map(_._1)
+        .compile.toList
+    }.unsafeRunSync()
+
+    // Save checkpoint
+    lastState.foreach(s => store.write("items", s).unsafeRunSync())
+
+    // Verify checkpoint was saved
+    val saved = store.read("items").unsafeRunSync()
+    assert(saved.isDefined, "Checkpoint should be saved after first run")
+    assert(saved.get.isInstanceOf[CheckpointState.CursorValue])
+
+    // Second run: add a stub for resuming from cursor "page2"
+    server.resetAll()
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("cursor", equalTo("page2"))
+        .withQueryParam("limit", equalTo("10"))
+        .willReturn(okJson("""{"items": [{"id": 3}], "next_cursor": ""}"""))
+    )
+
+    val pages2 = Client.resource(defaultHttp, noAuth).use { client =>
+      Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination, startState = saved)
+        .map(_._1).compile.toList
+    }.unsafeRunSync()
+
+    assertEquals(pages2.size, 1)
+    // Verify the second run used the cursor from checkpoint (no initial request without cursor)
+    server.verify(1, getRequestedFor(urlPathEqualTo("/items"))
+      .withQueryParam("cursor", equalTo("page2")))
+
+    // Cleanup
+    Files.deleteIfExists(tmpDir.resolve("items.checkpoint.json"))
+    Files.deleteIfExists(tmpDir)
+  }
+
+  test("offset checkpoint: first run saves offset, second run resumes from it") {
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("offset", equalTo("0"))
+        .withQueryParam("limit", equalTo("2"))
+        .willReturn(okJson("""[{"id": 1}, {"id": 2}]"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("offset", equalTo("2"))
+        .withQueryParam("limit", equalTo("2"))
+        .willReturn(okJson("""[]"""))
+    )
+
+    val pagination = PaginationConfig(
+      style = PaginationStyle.Offset,
+      offsetParam = Some("offset"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 2
+    )
+
+    val tmpDir = Files.createTempDirectory("checkpoint-offset")
+    val checkpointConfig = CheckpointConfig(enabled = true, path = tmpDir.toString, mode = CheckpointMode.Offset)
+    val store = CheckpointStore.fromConfig(Some(checkpointConfig), new Configuration())
+
+    // First run: fetch pages
+    var lastState: Option[CheckpointState] = None
+    Client.resource(defaultHttp, noAuth).use { client =>
+      Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination)
+        .evalTap { case (_, state) => IO { state.foreach(s => lastState = Some(s)) } }
+        .map(_._1)
+        .compile.toList
+    }.unsafeRunSync()
+
+    lastState.foreach(s => store.write("items", s).unsafeRunSync())
+
+    val saved = store.read("items").unsafeRunSync()
+    assert(saved.contains(CheckpointState.OffsetValue(2L)), s"Expected OffsetValue(2), got $saved")
+
+    // Second run: resume from offset 2
+    server.resetAll()
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("offset", equalTo("2"))
+        .withQueryParam("limit", equalTo("2"))
+        .willReturn(okJson("""[{"id": 3}]"""))
+    )
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("offset", equalTo("4"))
+        .withQueryParam("limit", equalTo("2"))
+        .willReturn(okJson("""[]"""))
+    )
+
+    val pages2 = Client.resource(defaultHttp, noAuth).use { client =>
+      Paginator.pages(client, baseUri.addPath("items"), Map.empty, pagination, startState = saved)
+        .map(_._1).compile.toList
+    }.unsafeRunSync()
+
+    assertEquals(pages2.size, 1)
+    // Verify it started from offset 2 (not 0)
+    server.verify(0, getRequestedFor(urlPathEqualTo("/items"))
+      .withQueryParam("offset", equalTo("0")))
+    server.verify(1, getRequestedFor(urlPathEqualTo("/items"))
+      .withQueryParam("offset", equalTo("2")))
+
+    // Cleanup
+    Files.deleteIfExists(tmpDir.resolve("items.checkpoint.json"))
+    Files.deleteIfExists(tmpDir)
+  }
+
+  test("timestamp checkpoint: saved timestamp injected as query param on resume") {
+    // First run: API returns records with timestamps
+    server.stubFor(
+      get(urlPathEqualTo("/events"))
+        .willReturn(okJson("""[
+          {"id": 1, "updated_at": "2024-01-10T00:00:00Z"},
+          {"id": 2, "updated_at": "2024-01-15T00:00:00Z"}
+        ]"""))
+    )
+
+    val pagination = PaginationConfig(style = PaginationStyle.None, maxPageSize = 100)
+
+    val tmpDir = Files.createTempDirectory("checkpoint-ts")
+    val checkpointConfig = CheckpointConfig(
+      enabled = true,
+      path = tmpDir.toString,
+      mode = CheckpointMode.Timestamp,
+      timestampPath = Some("/updated_at"),
+      timestampParam = Some("since")
+    )
+    val store = CheckpointStore.fromConfig(Some(checkpointConfig), new Configuration())
+
+    // Simulate saving a timestamp checkpoint
+    store.write("events", CheckpointState.TimestampValue("2024-01-15T00:00:00Z")).unsafeRunSync()
+
+    // Second run: resume with saved timestamp injected as query param
+    server.resetAll()
+    server.stubFor(
+      get(urlPathEqualTo("/events"))
+        .withQueryParam("since", equalTo("2024-01-15T00:00:00Z"))
+        .willReturn(okJson("""[
+          {"id": 3, "updated_at": "2024-01-20T00:00:00Z"}
+        ]"""))
+    )
+
+    val saved = store.read("events").unsafeRunSync()
+    val resumeParams: Map[String, String] = saved match {
+      case Some(CheckpointState.TimestampValue(ts)) =>
+        checkpointConfig.timestampParam.map(p => Map(p -> ts)).getOrElse(Map.empty)
+      case _ => Map.empty
+    }
+
+    val pages = Client.resource(defaultHttp, noAuth).use { client =>
+      Paginator.pages(client, baseUri.addPath("events"), resumeParams, pagination)
+        .map(_._1).compile.toList
+    }.unsafeRunSync()
+
+    assertEquals(pages.size, 1)
+    // Verify the timestamp param was sent
+    server.verify(1, getRequestedFor(urlPathEqualTo("/events"))
+      .withQueryParam("since", equalTo("2024-01-15T00:00:00Z")))
+
+    // Cleanup
+    Files.deleteIfExists(tmpDir.resolve("events.checkpoint.json"))
+    Files.deleteIfExists(tmpDir)
   }
 }

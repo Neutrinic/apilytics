@@ -70,7 +70,7 @@ class GitHubE2ESuite extends FunSuite {
       val params = Map("state" -> "open")
       val rows = Client.resource(httpConfig, githubAuth).use { client =>
         Paginator.pages(client, baseUri, params, pagination, limit = Some(5))
-          .compile.toList.map { pages =>
+          .map(_._1).compile.toList.map { pages =>
             assert(pages.nonEmpty, "Expected at least one page")
             pages.flatMap { pageJson =>
               val records = Converter.extractRecords(pageJson, None)
@@ -106,7 +106,7 @@ class GitHubE2ESuite extends FunSuite {
 
     val pages = Client.resource(httpConfig, githubAuth).use { client =>
       Paginator.pages(client, baseUri, Map("state" -> "all"), smallPage, limit = Some(4))
-        .compile.toList
+        .map(_._1).compile.toList
     }.unsafeRunSync()
 
     assert(pages.size >= 2, s"Expected at least 2 pages but got ${pages.size}")

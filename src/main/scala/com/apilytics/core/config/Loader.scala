@@ -161,7 +161,8 @@ object Loader {
         childKeyField = optional(tc, "child-key-field"),
         count = if (tc.hasPath("count")) Some(readCount(tc.getConfig("count"))) else None,
         aggregations = if (tc.hasPath("aggregations")) readAggregations(tc.getConfig("aggregations"))
-                       else Map.empty
+                       else Map.empty,
+        checkpoint = if (tc.hasPath("checkpoint")) Some(readCheckpoint(tc.getConfig("checkpoint"))) else None
       )
       
       // Validate batch join configuration
@@ -301,6 +302,49 @@ object Loader {
 
       name -> aggConfig
     }.toMap
+  }
+
+  private def readCheckpoint(config: Config): CheckpointConfig = {
+    val mode = if (config.hasPath("mode")) config.getString("mode") match {
+      case "cursor"    => CheckpointMode.Cursor
+      case "timestamp" => CheckpointMode.Timestamp
+      case "offset"    => CheckpointMode.Offset
+      case other       => throw new IllegalArgumentException(
+        s"Unknown checkpoint mode: $other. Valid modes: cursor, timestamp, offset"
+      )
+    } else CheckpointMode.Cursor
+
+    val cc = CheckpointConfig(
+      enabled = if (config.hasPath("enabled")) config.getBoolean("enabled") else false,
+      path = if (config.hasPath("path")) config.getString("path") else "",
+      mode = mode,
+      timestampPath = optional(config, "timestamp-path"),
+      timestampParam = optional(config, "timestamp-param")
+    )
+
+    // Validate: enabled checkpoint requires path
+    if (cc.enabled && cc.path.isEmpty) {
+      throw new IllegalArgumentException(
+        "Checkpoint is enabled but 'path' is not configured. " +
+        "Specify a directory for checkpoint files (e.g., path = \"/tmp/apilytics/checkpoints\")"
+      )
+    }
+
+    // Validate: timestamp mode requires timestamp-path and timestamp-param
+    if (cc.enabled && cc.mode == CheckpointMode.Timestamp) {
+      if (cc.timestampPath.isEmpty) {
+        throw new IllegalArgumentException(
+          "Checkpoint mode 'timestamp' requires 'timestamp-path' (JSON pointer to timestamp field, e.g., \"/updated_at\")"
+        )
+      }
+      if (cc.timestampParam.isEmpty) {
+        throw new IllegalArgumentException(
+          "Checkpoint mode 'timestamp' requires 'timestamp-param' (query parameter for filtering, e.g., \"since\")"
+        )
+      }
+    }
+
+    cc
   }
 
   private def optional(config: Config, path: String): Option[String] =
