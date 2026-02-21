@@ -55,4 +55,27 @@ class ErrorHandlerSuite extends FunSuite {
     val ex = ApiException("Test error")
     assertEquals(ex.toString, "ApiException: Test error")
   }
+
+  test("ApiError with sensitive params is redacted in clean error") {
+    val apiError = ApiError(
+      message = "Authentication failed",
+      endpoint = "/v1/users",
+      method = Method.GET,
+      params = Map("api_key" -> "sk-secret", "limit" -> "10"),
+      statusCode = 401,
+      responseBody = """{"error": "invalid_token"}""",
+      requestId = Some("req-123"),
+      retryAttempt = 0
+    )
+
+    val ex = intercept[ApiException] {
+      ErrorHandler.withCleanErrors {
+        throw apiError
+      }
+    }
+
+    assert(ex.getMessage.contains("api_key=[REDACTED]"))
+    assert(ex.getMessage.contains("limit=10"))
+    assert(!ex.getMessage.contains("sk-secret"))
+  }
 }

@@ -60,7 +60,7 @@ object ErrorHandler {
       case s if s >= 500 => s"Server error ($s)"
       case s => s"HTTP error ($s)"
     }
-    val paramsStr = if (e.params.isEmpty) "" else "?" + e.params.map { case (k, v) => s"$k=$v" }.mkString("&")
+    val paramsStr = ApiError.renderParams(e.params)
     s"""$status
        |  ${e.method.name} ${e.endpoint}$paramsStr
        |  ${e.message}""".stripMargin.trim
