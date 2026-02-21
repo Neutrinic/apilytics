@@ -15,11 +15,25 @@ object Paginator {
     * For standard JSON format, pages are fetched according to the pagination style.
     * For streaming formats (NDJSON, SSE), records stream directly without pagination
     * since these represent continuous data streams.
-    *
-    * @param startState Optional checkpoint state to resume from (incremental reads).
-    * @return Stream of (page JSON, current checkpoint state) tuples.
     */
   def pages(
+      client: Client.RestClient,
+      baseUri: Uri,
+      params: Map[String, String],
+      pagination: PaginationConfig,
+      limit: Option[Int] = None,
+      format: ResponseFormat = ResponseFormat.Json
+  ): Stream[IO, Json] =
+    pagesWithState(client, baseUri, params, pagination, limit, format).map(_._1)
+
+  /** Stream of (page JSON, checkpoint state) tuples for checkpoint-aware readers.
+    *
+    * Checkpoint state is emitted per page for cursor/offset pagination.
+    * Link-header, single-page, and streaming formats emit None state.
+    *
+    * @param startState Optional checkpoint state to resume from (incremental reads).
+    */
+  def pagesWithState(
       client: Client.RestClient,
       baseUri: Uri,
       params: Map[String, String],

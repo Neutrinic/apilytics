@@ -64,8 +64,7 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
           Map.empty,
           partition.sourceConfig.pagination,
           None
-        ).map(_._1)
-
+        )
         val parentRecords: fs2.Stream[IO, Json] = parentPages.flatMap { pageJson =>
           val records = Converter.extractRecords(pageJson, None)
           fs2.Stream.emits(records)
@@ -108,7 +107,7 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
             partition.pushedParams,
             partition.sourceConfig.pagination,
             partition.pushedLimit
-          ).map(_._1).flatMap { pageJson =>
+          ).flatMap { pageJson =>
             val childRecords = Converter.extractRecords(pageJson, dataPath)
             if (childRecords.isEmpty) fs2.Stream.empty
             else {
@@ -168,7 +167,7 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
           batchParams,
           partition.sourceConfig.pagination,
           partition.pushedLimit
-        ).map(_._1).flatMap { pageJson =>
+        ).flatMap { pageJson =>
           val childRecords = Converter.extractRecords(pageJson, dataPath)
           if (childRecords.isEmpty) fs2.Stream.empty
           else {

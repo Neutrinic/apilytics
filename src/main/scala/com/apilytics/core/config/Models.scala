@@ -51,7 +51,11 @@ sealed trait CheckpointMode extends Serializable
 object CheckpointMode {
   /** Use pagination cursor value from API responses. */
   case object Cursor extends CheckpointMode
-  /** Use timestamp from records for time-based incremental reads. */
+  /** Use timestamp from records for time-based incremental reads.
+    * The field referenced by `timestamp-path` must contain ISO-8601 formatted strings
+    * (e.g., "2024-01-15T10:30:00Z") so that lexicographic comparison yields correct
+    * temporal ordering. Non-ISO formats (Unix epochs, non-zero-padded dates, or
+    * timestamps with varying timezone offsets) will produce incorrect results. */
   case object Timestamp extends CheckpointMode
   /** Use numeric offset position. */
   case object Offset extends CheckpointMode
@@ -171,7 +175,12 @@ final case class CheckpointConfig(
     /** How to track progress through the data. */
     mode: CheckpointMode = CheckpointMode.Cursor,
     /** JSON pointer to extract timestamp from records (for timestamp mode).
-      * e.g., "/updated_at" or "/created_at" */
+      * e.g., "/updated_at" or "/created_at".
+      *
+      * The referenced field must contain ISO-8601 formatted strings
+      * (e.g., "2024-01-15T10:30:00Z"). The max timestamp per page is determined
+      * by lexicographic comparison, which only yields correct temporal ordering
+      * for ISO-8601 with fixed-width components and consistent timezone (UTC). */
     timestampPath: Option[String] = None,
     /** Query parameter to filter by timestamp (for timestamp mode).
       * e.g., "since" or "updated_after" */

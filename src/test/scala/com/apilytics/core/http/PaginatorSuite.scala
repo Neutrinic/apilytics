@@ -32,7 +32,6 @@ class PaginatorSuite extends CatsEffectSuite {
     val config = PaginationConfig(style = PaginationStyle.None)
 
     Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
-      .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 1)
         assertEquals(pages.head, json)
@@ -52,7 +51,6 @@ class PaginatorSuite extends CatsEffectSuite {
     )
 
     Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
-      .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 2)
       }
@@ -69,7 +67,6 @@ class PaginatorSuite extends CatsEffectSuite {
     val config = PaginationConfig(style = PaginationStyle.LinkHeader, maxPageSize = 100)
 
     Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
-      .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 2)
       }
@@ -87,7 +84,6 @@ class PaginatorSuite extends CatsEffectSuite {
     )
 
     Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config, limit = Some(5))
-      .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 1)
       }
@@ -107,7 +103,6 @@ class PaginatorSuite extends CatsEffectSuite {
     )
 
     Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
-      .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 2)
       }
@@ -127,7 +122,6 @@ class PaginatorSuite extends CatsEffectSuite {
     )
 
     Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
-      .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 1)
       }
@@ -146,7 +140,6 @@ class PaginatorSuite extends CatsEffectSuite {
     )
 
     Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
-      .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 3)
       }
@@ -165,7 +158,6 @@ class PaginatorSuite extends CatsEffectSuite {
     )
 
     Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
-      .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 2)
       }
@@ -184,7 +176,6 @@ class PaginatorSuite extends CatsEffectSuite {
     )
 
     Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
-      .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 2)
       }
@@ -204,7 +195,7 @@ class PaginatorSuite extends CatsEffectSuite {
       maxPageSize = 100
     )
 
-    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
+    Paginator.pagesWithState(client, Uri.unsafeFromString("http://test"), Map.empty, config)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 2)
         // First page has cursor "abc" -> checkpoint state should capture it
@@ -234,7 +225,7 @@ class PaginatorSuite extends CatsEffectSuite {
 
     val startState = Some(CheckpointState.CursorValue("abc"))
 
-    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config, startState = startState)
+    Paginator.pagesWithState(client, Uri.unsafeFromString("http://test"), Map.empty, config, startState = startState)
       .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 1)
@@ -256,7 +247,7 @@ class PaginatorSuite extends CatsEffectSuite {
       maxPageSize = 10
     )
 
-    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
+    Paginator.pagesWithState(client, Uri.unsafeFromString("http://test"), Map.empty, config)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 2)
         assertEquals(pages(0)._2, Some(CheckpointState.OffsetValue(10L)))
@@ -288,7 +279,7 @@ class PaginatorSuite extends CatsEffectSuite {
 
     val startState = Some(CheckpointState.OffsetValue(20L))
 
-    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config, startState = startState)
+    Paginator.pagesWithState(client, Uri.unsafeFromString("http://test"), Map.empty, config, startState = startState)
       .map(_._1)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 1)
@@ -302,7 +293,7 @@ class PaginatorSuite extends CatsEffectSuite {
     val client = mockClient(List((json, Map.empty)))
     val config = PaginationConfig(style = PaginationStyle.None)
 
-    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map.empty, config)
+    Paginator.pagesWithState(client, Uri.unsafeFromString("http://test"), Map.empty, config)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 1)
         assertEquals(pages.head._2, None)

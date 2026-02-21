@@ -74,12 +74,12 @@ object CheckpointStore {
       FileSystem.get(path.toUri, hadoopConf)
     }
 
-    private def offsetPath(tableName: String): Path =
+    private def checkpointFile(tableName: String): Path =
       new Path(basePath, s"$tableName.checkpoint.json")
 
     override def read(tableName: String): IO[Option[CheckpointState]] = IO {
       val fs = getFs
-      val path = offsetPath(tableName)
+      val path = checkpointFile(tableName)
       if (fs.exists(path)) {
         val stream = fs.open(path)
         val content = try {
@@ -96,7 +96,7 @@ object CheckpointStore {
 
     override def write(tableName: String, state: CheckpointState): IO[Unit] = IO {
       val fs = getFs
-      val path = offsetPath(tableName)
+      val path = checkpointFile(tableName)
       val parent = path.getParent
       if (!fs.exists(parent)) fs.mkdirs(parent)
 

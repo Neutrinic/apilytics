@@ -17,7 +17,7 @@ object Loader {
   }
 
   private def readSourceConfig(config: Config): SourceConfig = {
-    SourceConfig(
+    val sc = SourceConfig(
       openapi = config.getString("openapi"),
       auth = readAuth(config.getConfig("auth")),
       pagination = if (config.hasPath("pagination")) readPagination(config.getConfig("pagination"))
@@ -32,6 +32,23 @@ object Loader {
       cache = if (config.hasPath("cache")) readCache(config.getConfig("cache"))
               else CacheConfig()
     )
+
+    // Validate: checkpoint with link-header pagination is not supported
+    if (sc.pagination.style == PaginationStyle.LinkHeader) {
+      sc.tables.foreach { case (name, tc) =>
+        tc.checkpoint.foreach { cc =>
+          if (cc.enabled && cc.mode != CheckpointMode.Timestamp) {
+            throw new IllegalArgumentException(
+              s"Table '$name' uses checkpoint mode '${cc.mode}' with link-header pagination. " +
+              "Link-header pagination does not emit cursor or offset state for checkpoint. " +
+              "Use mode 'timestamp' instead, which tracks record timestamps independently of pagination."
+            )
+          }
+        }
+      }
+    }
+
+    sc
   }
 
   private def readAuth(config: Config): AuthConfig = {

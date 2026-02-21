@@ -5,7 +5,7 @@ import com.apilytics.core.config.{CheckpointConfig, CheckpointMode}
 import munit.FunSuite
 import org.apache.hadoop.conf.Configuration
 
-import java.nio.file.Files
+import java.nio.file.{Files, Path}
 
 class CheckpointStoreSuite extends FunSuite {
 
@@ -16,6 +16,18 @@ class CheckpointStoreSuite extends FunSuite {
     conf.setBoolean("fs.file.impl.disable.cache", true)
     conf
   }
+
+  /** Fixture that creates a temp directory and cleans it up after the test. */
+  private val tmpDirFixture = FunFixture[Path](
+    setup = _ => Files.createTempDirectory("checkpoint-test"),
+    teardown = tmpDir => {
+      // Delete all files in the temp dir, then the dir itself
+      if (Files.exists(tmpDir)) {
+        Files.list(tmpDir).forEach(f => Files.deleteIfExists(f))
+        Files.deleteIfExists(tmpDir)
+      }
+    }
+  )
 
   test("disabled store returns None on read") {
     val result = CheckpointStore.disabled.read("test_table").unsafeRunSync()
@@ -40,8 +52,7 @@ class CheckpointStoreSuite extends FunSuite {
     assertEquals(result, None)
   }
 
-  test("write and read cursor checkpoint") {
-    val tmpDir = Files.createTempDirectory("checkpoint-test")
+  tmpDirFixture.test("write and read cursor checkpoint") { tmpDir =>
     val config = CheckpointConfig(enabled = true, path = tmpDir.toString, mode = CheckpointMode.Cursor)
     val store = CheckpointStore.fromConfig(Some(config), testHadoopConf)
 
@@ -50,14 +61,9 @@ class CheckpointStoreSuite extends FunSuite {
 
     val result = store.read("my_table").unsafeRunSync()
     assertEquals(result, Some(state))
-
-    // Cleanup
-    Files.deleteIfExists(tmpDir.resolve("my_table.checkpoint.json"))
-    Files.deleteIfExists(tmpDir)
   }
 
-  test("write and read offset checkpoint") {
-    val tmpDir = Files.createTempDirectory("checkpoint-test")
+  tmpDirFixture.test("write and read offset checkpoint") { tmpDir =>
     val config = CheckpointConfig(enabled = true, path = tmpDir.toString, mode = CheckpointMode.Offset)
     val store = CheckpointStore.fromConfig(Some(config), testHadoopConf)
 
@@ -66,14 +72,9 @@ class CheckpointStoreSuite extends FunSuite {
 
     val result = store.read("events").unsafeRunSync()
     assertEquals(result, Some(state))
-
-    // Cleanup
-    Files.deleteIfExists(tmpDir.resolve("events.checkpoint.json"))
-    Files.deleteIfExists(tmpDir)
   }
 
-  test("write and read timestamp checkpoint") {
-    val tmpDir = Files.createTempDirectory("checkpoint-test")
+  tmpDirFixture.test("write and read timestamp checkpoint") { tmpDir =>
     val config = CheckpointConfig(enabled = true, path = tmpDir.toString, mode = CheckpointMode.Timestamp)
     val store = CheckpointStore.fromConfig(Some(config), testHadoopConf)
 
@@ -82,26 +83,17 @@ class CheckpointStoreSuite extends FunSuite {
 
     val result = store.read("orders").unsafeRunSync()
     assertEquals(result, Some(state))
-
-    // Cleanup
-    Files.deleteIfExists(tmpDir.resolve("orders.checkpoint.json"))
-    Files.deleteIfExists(tmpDir)
   }
 
-  test("read returns None for non-existent table") {
-    val tmpDir = Files.createTempDirectory("checkpoint-test")
+  tmpDirFixture.test("read returns None for non-existent table") { tmpDir =>
     val config = CheckpointConfig(enabled = true, path = tmpDir.toString)
     val store = CheckpointStore.fromConfig(Some(config), testHadoopConf)
 
     val result = store.read("non_existent").unsafeRunSync()
     assertEquals(result, None)
-
-    // Cleanup
-    Files.deleteIfExists(tmpDir)
   }
 
-  test("write overwrites previous checkpoint") {
-    val tmpDir = Files.createTempDirectory("checkpoint-test")
+  tmpDirFixture.test("write overwrites previous checkpoint") { tmpDir =>
     val config = CheckpointConfig(enabled = true, path = tmpDir.toString)
     val store = CheckpointStore.fromConfig(Some(config), testHadoopConf)
 
@@ -110,14 +102,9 @@ class CheckpointStoreSuite extends FunSuite {
 
     val result = store.read("table1").unsafeRunSync()
     assertEquals(result, Some(CheckpointState.CursorValue("second")))
-
-    // Cleanup
-    Files.deleteIfExists(tmpDir.resolve("table1.checkpoint.json"))
-    Files.deleteIfExists(tmpDir)
   }
 
-  test("multiple tables have independent checkpoints") {
-    val tmpDir = Files.createTempDirectory("checkpoint-test")
+  tmpDirFixture.test("multiple tables have independent checkpoints") { tmpDir =>
     val config = CheckpointConfig(enabled = true, path = tmpDir.toString)
     val store = CheckpointStore.fromConfig(Some(config), testHadoopConf)
 
@@ -126,10 +113,5 @@ class CheckpointStoreSuite extends FunSuite {
 
     assertEquals(store.read("table_a").unsafeRunSync(), Some(CheckpointState.CursorValue("cursor-a")))
     assertEquals(store.read("table_b").unsafeRunSync(), Some(CheckpointState.OffsetValue(100L)))
-
-    // Cleanup
-    Files.deleteIfExists(tmpDir.resolve("table_a.checkpoint.json"))
-    Files.deleteIfExists(tmpDir.resolve("table_b.checkpoint.json"))
-    Files.deleteIfExists(tmpDir)
   }
 }

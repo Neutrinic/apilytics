@@ -598,6 +598,54 @@ class LoaderSuite extends FunSuite {
     assert(ex.getMessage.contains("Unknown checkpoint mode"))
   }
 
+  test("checkpoint cursor mode with link-header pagination throws") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |pagination { style = link_header }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |      mode = "cursor"
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException] {
+      Loader.load(config)
+    }
+    assert(ex.getMessage.contains("link-header pagination"), ex.getMessage)
+  }
+
+  test("checkpoint timestamp mode with link-header pagination is allowed") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |pagination { style = link_header }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |      mode = "timestamp"
+        |      timestamp-path = "/updated_at"
+        |      timestamp-param = "since"
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.tables("events").checkpoint.get.mode, CheckpointMode.Timestamp)
+  }
+
   test("table without checkpoint has None") {
     val config = ConfigFactory.parseString(
       """
