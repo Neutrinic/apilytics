@@ -98,4 +98,9 @@ lazy val root = (project in file("."))
     assembly / test := {},
   )
 
+// OWASP dependency check
+dependencyCheckFailBuildOnCVSS := 9  // only fail on critical (9+)
+dependencyCheckOutputDirectory := Some(target.value / "dependency-check")
+dependencyCheckFormats := Seq("HTML", "JSON")
+
 addCommandAlias("build", "assembly")
