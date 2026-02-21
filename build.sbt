@@ -108,7 +108,7 @@ dependencyCheckFormats := {
 }
 dependencyCheckNvdApi := {
   val key = sys.env.getOrElse("NVD_API_KEY", "")
-  if (key.nonEmpty) NvdApiSettings(apiKey = key)
+  if (key.nonEmpty) NvdApiSettings(apiKey = key, requestDelay = Some(java.time.Duration.ofSeconds(4)))
   else NvdApiSettings()
 }
 
