@@ -22,6 +22,8 @@ jobs:
       - uses: sbt/setup-sbt@v1
 
       - name: OWASP Dependency Check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: sbt dependencyCheck
 
       - name: Upload report
