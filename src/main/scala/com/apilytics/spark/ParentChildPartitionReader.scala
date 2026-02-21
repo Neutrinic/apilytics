@@ -65,7 +65,6 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
           partition.sourceConfig.pagination,
           None
         )
-
         val parentRecords: fs2.Stream[IO, Json] = parentPages.flatMap { pageJson =>
           val records = Converter.extractRecords(pageJson, None)
           fs2.Stream.emits(records)

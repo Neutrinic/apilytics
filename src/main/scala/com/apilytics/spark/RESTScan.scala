@@ -86,18 +86,7 @@ class RESTScan(
       case None =>
         // No partitioning configured - single partition gets full rate limit
         val effectiveRateLimit = table.sourceConfig.http.rateLimit
-        Array(RESTInputPartition(
-          endpoint = table.endpoint,
-          tableConfig = table.tableConfig,
-          sourceConfig = table.sourceConfig,
-          baseUrl = table.baseUrl,
-          arrowSchemaJson = arrowSchema.toJson,
-          pushedParams = pushedParams,
-          pushedLimit = pushedLimit,
-          effectiveRateLimit = effectiveRateLimit,
-          schemaMode = table.sourceConfig.schema.mode,
-          responseFormat = table.sourceConfig.http.responseFormat
-        ))
+        Array(makePartition(pushedParams, effectiveRateLimit))
     }
   }
 
@@ -118,18 +107,7 @@ class RESTScan(
 
     values.map { value =>
       val partitionParams = pushedParams.updated(paramName, value)
-      RESTInputPartition(
-        endpoint = table.endpoint,
-        tableConfig = table.tableConfig,
-        sourceConfig = table.sourceConfig,
-        baseUrl = table.baseUrl,
-        arrowSchemaJson = arrowSchema.toJson,
-        pushedParams = partitionParams,
-        pushedLimit = pushedLimit,
-        effectiveRateLimit = effectiveRateLimit,
-        schemaMode = table.sourceConfig.schema.mode,
-        responseFormat = table.sourceConfig.http.responseFormat
-      )
+      makePartition(partitionParams, effectiveRateLimit)
     }.toArray
   }
 
@@ -192,18 +170,7 @@ class RESTScan(
             .updated(config.startParam, startStr)
             .updated(config.endParam, endStr)
 
-          RESTInputPartition(
-            endpoint = table.endpoint,
-            tableConfig = table.tableConfig,
-            sourceConfig = table.sourceConfig,
-            baseUrl = table.baseUrl,
-            arrowSchemaJson = arrowSchema.toJson,
-            pushedParams = partitionParams,
-            pushedLimit = pushedLimit,
-            effectiveRateLimit = effectiveRateLimit,
-            schemaMode = table.sourceConfig.schema.mode,
-            responseFormat = table.sourceConfig.http.responseFormat
-          )
+          makePartition(partitionParams, effectiveRateLimit)
         }.toArray)
       }
     } catch {
@@ -218,18 +185,28 @@ class RESTScan(
   private def singlePartitionFallback(): Array[InputPartition] = {
     // Single partition gets full rate limit
     val effectiveRateLimit = table.sourceConfig.http.rateLimit
-    Array(RESTInputPartition(
+    Array(makePartition(pushedParams, effectiveRateLimit))
+  }
+
+  /** Create a RESTInputPartition with all common fields from this scan. */
+  private def makePartition(
+      params: Map[String, String],
+      effectiveRateLimit: Option[Int]
+  ): RESTInputPartition = {
+    RESTInputPartition(
       endpoint = table.endpoint,
       tableConfig = table.tableConfig,
       sourceConfig = table.sourceConfig,
       baseUrl = table.baseUrl,
       arrowSchemaJson = arrowSchema.toJson,
-      pushedParams = pushedParams,
+      pushedParams = params,
       pushedLimit = pushedLimit,
       effectiveRateLimit = effectiveRateLimit,
       schemaMode = table.sourceConfig.schema.mode,
-      responseFormat = table.sourceConfig.http.responseFormat
-    ))
+      responseFormat = table.sourceConfig.http.responseFormat,
+      tableName = table.tableName,
+      checkpointConfig = table.tableConfig.flatMap(_.checkpoint)
+    )
   }
 
   /** Generate non-overlapping ranges covering [start, end).

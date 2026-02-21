@@ -241,6 +241,7 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI specs (Swag
 - **Parallel partitioning** - date-range or enum partitioning for concurrent reads
 - **Rate limiting** - configurable requests per second with automatic distribution across partitions
 - **Retry with backoff** - exponential backoff for transient failures (429, 5xx)
+- **Checkpoint support** - incremental reads via cursor, offset, or timestamp tracking
 
 ## Logging & Debugging
 
@@ -369,6 +370,45 @@ http {
 - **SSE**: Real-time feeds, change data capture streams
 
 Streaming formats bypass pagination since they represent continuous data streams. Apply `LIMIT` in SQL to cap the number of records read.
+
+### Checkpoint / Incremental Reads
+
+Enable checkpoint support to track pagination state across queries. On the first run, all data is fetched and the final pagination state (cursor, offset, or timestamp) is saved to disk. Subsequent runs resume from the saved state, fetching only new data.
+
+```hocon
+tables {
+  events {
+    endpoint = "/events"
+    checkpoint {
+      enabled = true
+      path = "/tmp/apilytics/checkpoints"  # local path or s3://bucket/path
+      mode = "cursor"                       # cursor | offset | timestamp
+    }
+  }
+}
+```
+
+**Checkpoint modes:**
+
+| Mode | Description | Saves |
+|------|-------------|-------|
+| `cursor` | Resumes from the last pagination cursor | Last cursor value |
+| `offset` | Resumes from the last numeric offset | Next offset position |
+| `timestamp` | Filters by a record timestamp field | Latest record timestamp |
+
+Timestamp mode requires additional config to specify which field to track and which query parameter to inject:
+
+```hocon
+checkpoint {
+  enabled = true
+  path = "s3a://my-bucket/checkpoints"
+  mode = "timestamp"
+  timestamp-path = "/updated_at"    # JSON pointer to timestamp in records
+  timestamp-param = "since"         # query param for filtering
+}
+```
+
+Checkpoint files are stored as `<table-name>.checkpoint.json` in the configured path. Local paths use Java NIO; remote paths (hdfs://, s3://, s3a://, gs://) use Hadoop FileSystem.
 
 ## Building
 

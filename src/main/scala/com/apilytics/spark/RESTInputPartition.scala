@@ -1,6 +1,6 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{ResponseFormat, SchemaMode, SourceConfig, TableConfig}
+import com.apilytics.core.config.{CheckpointConfig, ResponseFormat, SchemaMode, SourceConfig, TableConfig}
 import com.apilytics.core.openapi.Endpoint
 import org.apache.spark.sql.connector.read.InputPartition
 
@@ -18,5 +18,9 @@ case class RESTInputPartition(
     /** Schema mode - determines whether to use Arrow path or native Variant. */
     schemaMode: SchemaMode = SchemaMode.Strict,
     /** Response format for HTTP responses (json, ndjson, sse). */
-    responseFormat: ResponseFormat = ResponseFormat.Json
+    responseFormat: ResponseFormat = ResponseFormat.Json,
+    /** Table name for checkpoint file naming. */
+    tableName: String = "",
+    /** Checkpoint configuration for incremental reads. */
+    checkpointConfig: Option[CheckpointConfig] = None
 ) extends InputPartition

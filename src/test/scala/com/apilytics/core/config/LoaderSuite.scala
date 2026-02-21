@@ -408,4 +408,257 @@ class LoaderSuite extends FunSuite {
     }
     assert(ex.getMessage.contains("Unknown schema mode"))
   }
+
+  // ==========================================================================
+  // Checkpoint config tests (#49)
+  // ==========================================================================
+
+  test("checkpoint config parses cursor mode") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |      mode = cursor
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val cp = result.tables("events").checkpoint.get
+    assert(cp.enabled)
+    assertEquals(cp.path, "/tmp/checkpoints")
+    assertEquals(cp.mode, CheckpointMode.Cursor)
+  }
+
+  test("checkpoint config parses timestamp mode") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |      mode = timestamp
+        |      timestamp-path = "/updated_at"
+        |      timestamp-param = "since"
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val cp = result.tables("events").checkpoint.get
+    assertEquals(cp.mode, CheckpointMode.Timestamp)
+    assertEquals(cp.timestampPath, Some("/updated_at"))
+    assertEquals(cp.timestampParam, Some("since"))
+  }
+
+  test("checkpoint config parses offset mode") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |      mode = offset
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val cp = result.tables("events").checkpoint.get
+    assertEquals(cp.mode, CheckpointMode.Offset)
+  }
+
+  test("checkpoint defaults to cursor mode") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val cp = result.tables("events").checkpoint.get
+    assertEquals(cp.mode, CheckpointMode.Cursor)
+  }
+
+  test("checkpoint requires path when enabled") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException] {
+      Loader.load(config)
+    }
+    assert(ex.getMessage.contains("path"))
+  }
+
+  test("checkpoint timestamp mode requires timestamp-path") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |      mode = timestamp
+        |      timestamp-param = "since"
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException] {
+      Loader.load(config)
+    }
+    assert(ex.getMessage.contains("timestamp-path"))
+  }
+
+  test("checkpoint timestamp mode requires timestamp-param") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |      mode = timestamp
+        |      timestamp-path = "/updated_at"
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException] {
+      Loader.load(config)
+    }
+    assert(ex.getMessage.contains("timestamp-param"))
+  }
+
+  test("unknown checkpoint mode throws") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |      mode = unknown
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException] {
+      Loader.load(config)
+    }
+    assert(ex.getMessage.contains("Unknown checkpoint mode"))
+  }
+
+  test("checkpoint cursor mode with link-header pagination throws") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |pagination { style = link_header }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |      mode = "cursor"
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException] {
+      Loader.load(config)
+    }
+    assert(ex.getMessage.contains("link-header pagination"), ex.getMessage)
+  }
+
+  test("checkpoint timestamp mode with link-header pagination is allowed") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |pagination { style = link_header }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |    checkpoint {
+        |      enabled = true
+        |      path = "/tmp/checkpoints"
+        |      mode = "timestamp"
+        |      timestamp-path = "/updated_at"
+        |      timestamp-param = "since"
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.tables("events").checkpoint.get.mode, CheckpointMode.Timestamp)
+  }
+
+  test("table without checkpoint has None") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |tables {
+        |  events {
+        |    endpoint = "/events"
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.tables("events").checkpoint, None)
+  }
 }

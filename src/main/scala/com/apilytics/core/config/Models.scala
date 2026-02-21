@@ -40,6 +40,27 @@ object SchemaMode {
   case object Variant extends SchemaMode
 }
 
+/** Checkpoint mode for incremental reads.
+  *
+  * Controls how progress is tracked across queries:
+  * - cursor: Store the last pagination cursor value
+  * - timestamp: Store the last record's timestamp
+  * - offset: Store the numeric offset position
+  */
+sealed trait CheckpointMode extends Serializable
+object CheckpointMode {
+  /** Use pagination cursor value from API responses. */
+  case object Cursor extends CheckpointMode
+  /** Use timestamp from records for time-based incremental reads.
+    * The field referenced by `timestamp-path` must contain ISO-8601 formatted strings
+    * (e.g., "2024-01-15T10:30:00Z") so that lexicographic comparison yields correct
+    * temporal ordering. Non-ISO formats (Unix epochs, non-zero-padded dates, or
+    * timestamps with varying timezone offsets) will produce incorrect results. */
+  case object Timestamp extends CheckpointMode
+  /** Use numeric offset position. */
+  case object Offset extends CheckpointMode
+}
+
 /** Response format for HTTP responses.
   *
   * Controls how response bodies are parsed:
@@ -138,6 +159,32 @@ final case class HttpConfig(
       * - ndjson: Newline-delimited JSON (one object per line)
       * - sse: Server-Sent Events */
     responseFormat: ResponseFormat = ResponseFormat.Json
+)
+
+/** Configuration for incremental/checkpoint reads.
+  *
+  * When enabled, the last pagination state (cursor, timestamp, or offset) is persisted
+  * to disk after each query. Subsequent queries resume from where the previous one stopped,
+  * enabling incremental data loads without re-fetching.
+  */
+final case class CheckpointConfig(
+    /** Enable checkpoint persistence. */
+    enabled: Boolean = false,
+    /** Directory for checkpoint files. Supports local paths, HDFS, and S3. */
+    path: String = "",
+    /** How to track progress through the data. */
+    mode: CheckpointMode = CheckpointMode.Cursor,
+    /** JSON pointer to extract timestamp from records (for timestamp mode).
+      * e.g., "/updated_at" or "/created_at".
+      *
+      * The referenced field must contain ISO-8601 formatted strings
+      * (e.g., "2024-01-15T10:30:00Z"). The max timestamp per page is determined
+      * by lexicographic comparison, which only yields correct temporal ordering
+      * for ISO-8601 with fixed-width components and consistent timezone (UTC). */
+    timestampPath: Option[String] = None,
+    /** Query parameter to filter by timestamp (for timestamp mode).
+      * e.g., "since" or "updated_after" */
+    timestampParam: Option[String] = None
 )
 
 final case class FilterConfig(
@@ -282,7 +329,9 @@ final case class TableConfig(
       * @deprecated Use aggregations with function="count" instead. */
     count: Option[CountConfig] = None,
     /** Configurable aggregation pushdown. Maps aggregation name to config. */
-    aggregations: Map[String, AggregationConfig] = Map.empty
+    aggregations: Map[String, AggregationConfig] = Map.empty,
+    /** Checkpoint configuration for incremental reads. */
+    checkpoint: Option[CheckpointConfig] = None
 )
 
 final case class CacheConfig(
