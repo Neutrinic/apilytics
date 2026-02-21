@@ -41,8 +41,8 @@ class ApiErrorSuite extends FunSuite {
     assert(msg.contains("after 3 retries"))
   }
 
-  test("getMessage truncates long response body") {
-    val longBody = "x" * 600
+  test("getMessage truncates long response body at 200 chars") {
+    val longBody = "x" * 300
     val error = ApiError(
       message = "Bad Request",
       endpoint = "/api",
@@ -56,7 +56,9 @@ class ApiErrorSuite extends FunSuite {
 
     val msg = error.getMessage
     assert(msg.contains("..."))
-    assert(msg.length < longBody.length + 200) // significantly truncated
+    val bodyLine = msg.split("\n").find(_.contains("Response:")).get
+    // "  Response: " (12 chars) + 200 truncated + "..." (3 chars) = 215
+    assert(bodyLine.length <= 215, s"Body line too long: ${bodyLine.length}")
   }
 
   test("getMessage omits Request-ID when not present") {
@@ -134,5 +136,84 @@ class ApiErrorSuite extends FunSuite {
     assertEquals(error.message, "Authentication failed")
     assertEquals(error.statusCode, 401)
     assertEquals(error.requestId, Some("auth-req-1"))
+  }
+
+  test("redactParams redacts sensitive keys") {
+    val params = Map(
+      "api_key" -> "sk-12345",
+      "limit" -> "10",
+      "access_token" -> "ghp_abc123",
+      "offset" -> "0"
+    )
+    val redacted = ApiError.redactParams(params)
+    assertEquals(redacted("api_key"), "[REDACTED]")
+    assertEquals(redacted("access_token"), "[REDACTED]")
+    assertEquals(redacted("limit"), "10")
+    assertEquals(redacted("offset"), "0")
+  }
+
+  test("redactParams is case-insensitive") {
+    val params = Map(
+      "API_KEY" -> "secret",
+      "X-Auth-Token" -> "secret",
+      "Password" -> "secret",
+      "CLIENT_SECRET" -> "secret"
+    )
+    val redacted = ApiError.redactParams(params)
+    assert(redacted.values.forall(_ == "[REDACTED]"))
+  }
+
+  test("redactParams leaves non-sensitive keys unchanged") {
+    val params = Map("limit" -> "10", "offset" -> "0", "page" -> "1", "sort" -> "name")
+    val redacted = ApiError.redactParams(params)
+    assertEquals(redacted, params)
+  }
+
+  test("renderParams returns empty string for empty params") {
+    assertEquals(ApiError.renderParams(Map.empty), "")
+  }
+
+  test("renderParams redacts sensitive values in query string") {
+    val params = Map("api_key" -> "secret123", "limit" -> "10")
+    val result = ApiError.renderParams(params)
+    assert(result.contains("api_key=[REDACTED]"))
+    assert(result.contains("limit=10"))
+    assert(!result.contains("secret123"))
+  }
+
+  test("getMessage redacts sensitive params") {
+    val error = ApiError(
+      message = "Unauthorized",
+      endpoint = "/api/data",
+      method = Method.GET,
+      params = Map("api_key" -> "sk-secret-key", "limit" -> "10"),
+      statusCode = 401,
+      responseBody = "Unauthorized",
+      requestId = None,
+      retryAttempt = 0
+    )
+
+    val msg = error.getMessage
+    assert(msg.contains("api_key=[REDACTED]"))
+    assert(msg.contains("limit=10"))
+    assert(!msg.contains("sk-secret-key"))
+  }
+
+  test("original params remain accessible for programmatic use") {
+    val error = ApiError(
+      message = "Error",
+      endpoint = "/api",
+      method = Method.GET,
+      params = Map("api_key" -> "sk-secret-key"),
+      statusCode = 401,
+      responseBody = "",
+      requestId = None,
+      retryAttempt = 0
+    )
+
+    // Case class field retains original value
+    assertEquals(error.params("api_key"), "sk-secret-key")
+    // But getMessage is redacted
+    assert(!error.getMessage.contains("sk-secret-key"))
   }
 }

@@ -28,10 +28,10 @@ final case class ApiError(
 ) extends RuntimeException(message, cause.orNull) {
 
   override def getMessage: String = {
-    val paramsStr = if (params.isEmpty) "" else s"?${params.toSeq.sortBy(_._1).map { case (k, v) => s"$k=$v" }.mkString("&")}"
+    val paramsStr = ApiError.renderParams(params)
     val requestIdStr = requestId.map(id => s"\n  Request-ID: $id").getOrElse("")
     val retryStr = if (retryAttempt > 0) s" (after $retryAttempt retries)" else ""
-    val bodyPreview = if (responseBody.length > 500) responseBody.take(500) + "..." else responseBody
+    val bodyPreview = if (responseBody.length > 200) responseBody.take(200) + "..." else responseBody
 
     s"""API Error: $message$retryStr
        |  ${method.name} $endpoint$paramsStr
@@ -80,6 +80,31 @@ object ApiError {
     requestId = extractRequestId(headers),
     retryAttempt = retryAttempt
   )
+
+  /** Regex for sensitive parameter names. Matches common credential-bearing keys
+    * such as api_key, access_token, password, client_secret, authorization, etc.
+    */
+  private val sensitiveKeyPattern = "(?i).*(key|token|pass|secret|auth|credential).*".r
+
+  /** Redact values for params whose keys match sensitive patterns.
+    * Returns a copy with sensitive values replaced by `[REDACTED]`.
+    */
+  def redactParams(params: Map[String, String]): Map[String, String] =
+    params.map {
+      case (k, _) if sensitiveKeyPattern.matches(k) => k -> "[REDACTED]"
+      case kv => kv
+    }
+
+  /** Render params as a query string with sensitive values redacted.
+    * Returns empty string if params is empty, otherwise `?k1=v1&k2=v2`.
+    */
+  def renderParams(params: Map[String, String]): String = {
+    if (params.isEmpty) ""
+    else {
+      val safe = redactParams(params)
+      "?" + safe.toSeq.sortBy(_._1).map { case (k, v) => s"$k=$v" }.mkString("&")
+    }
+  }
 
   /** Create a generic HTTP error. */
   def httpError(
