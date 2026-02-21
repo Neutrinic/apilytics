@@ -99,8 +99,17 @@ lazy val root = (project in file("."))
   )
 
 // OWASP dependency check
+import net.nmoncho.sbt.dependencycheck.settings._
 dependencyCheckFailBuildOnCVSS := 9  // only fail on critical (9+)
-dependencyCheckOutputDirectory := Some(target.value / "dependency-check")
-dependencyCheckFormats := Seq("HTML", "JSON")
+dependencyCheckOutputDirectory := target.value / "dependency-check"
+dependencyCheckFormats := {
+  import org.owasp.dependencycheck.reporting.ReportGenerator.Format
+  Seq(Format.HTML, Format.JSON)
+}
+dependencyCheckNvdApi := {
+  val key = sys.env.getOrElse("NVD_API_KEY", "")
+  if (key.nonEmpty) NvdApiSettings(apiKey = key)
+  else NvdApiSettings()
+}
 
 addCommandAlias("build", "assembly")
