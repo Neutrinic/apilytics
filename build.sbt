@@ -100,7 +100,10 @@ lazy val root = (project in file("."))
 
 // OWASP dependency check
 import net.nmoncho.sbt.dependencycheck.settings._
-dependencyCheckFailBuildOnCVSS := 9  // only fail on critical (9+)
+dependencyCheckFailBuildOnCVSS := 7  // fail on high + critical (7+)
+dependencyCheckSuppressions := SuppressionSettings(
+  files = SuppressionFilesSettings.files()(file("dependency-check-suppression.xml"))
+)
 dependencyCheckOutputDirectory := target.value / "dependency-check"
 dependencyCheckFormats := {
   import org.owasp.dependencycheck.reporting.ReportGenerator.Format
