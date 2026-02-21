@@ -1701,4 +1701,24 @@ class WireMockSuite extends FunSuite {
       Files.deleteIfExists(tmpDir)
     }
   }
+
+  // ============== ERROR BODY SIZE LIMIT TESTS ==============
+
+  test("large error response body is truncated to prevent OOM") {
+    // Simulate a server returning a massive error body (10 KB)
+    val largeBody = "x" * 10000
+    server.stubFor(
+      get(urlPathEqualTo("/large-error"))
+        .willReturn(aResponse().withStatus(400).withBody(largeBody))
+    )
+
+    val error = intercept[ApiError] {
+      Client.resource(defaultHttp.copy(maxRetries = 0), noAuth).use { client =>
+        client.get(baseUri.addPath("large-error"))
+      }.unsafeRunSync()
+    }
+
+    // Error body should be capped at 4096 bytes, not the full 10000
+    assert(error.responseBody.length <= 4096, s"Response body too large: ${error.responseBody.length}")
+  }
 }

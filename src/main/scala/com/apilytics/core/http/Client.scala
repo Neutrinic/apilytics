@@ -203,7 +203,7 @@ object Client {
               case code =>
                 // Non-retryable error - release connection and raise error
                 Stream.eval(
-                  resp.as[String].flatMap { body =>
+                  readErrorBody(resp).flatMap { body =>
                     release *> IO.raiseError(ApiError.httpError(
                       endpoint = req.uri.path.renderString,
                       method = req.method,
@@ -271,7 +271,7 @@ object Client {
               }
 
           case 401 | 403 =>
-            resp.as[String].flatMap { body =>
+            readErrorBody(resp).flatMap { body =>
               IO.raiseError(ApiError.authFailed(
                 endpoint = endpoint,
                 method = req.method,
@@ -284,7 +284,7 @@ object Client {
             }
 
           case code =>
-            resp.as[String].flatMap { body =>
+            readErrorBody(resp).flatMap { body =>
               IO.raiseError(ApiError.httpError(
                 endpoint = endpoint,
                 method = req.method,
@@ -305,6 +305,15 @@ object Client {
         case e => IO.raiseError(e)
       }
     }
+
+    /** Read at most `maxBytes` from an error response body to prevent OOM.
+      * A malicious or misconfigured server could return a multi-GB error page;
+      * we cap it at 4 KB which is plenty for diagnostic messages.
+      */
+    private val MaxErrorBodyBytes: Long = 4096
+
+    private def readErrorBody(resp: org.http4s.Response[IO]): IO[String] =
+      resp.body.take(MaxErrorBodyBytes).through(fs2.text.utf8.decode).compile.string
 
     /** Check if an exception is a transient network error worth retrying. */
     private def isTransientNetworkError(e: Throwable): Boolean = {
