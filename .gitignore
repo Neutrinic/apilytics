@@ -19,3 +19,6 @@ tmpclaude-*
 
 # Claude
 CLAUDE.md
+
+# User config files (may contain credentials)
+*.local.conf

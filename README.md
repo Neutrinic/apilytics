@@ -434,6 +434,34 @@ docker compose -f compose.spark.yaml up -d
 
 This starts a Spark master, two workers, and a history server. The assembled JAR is mounted automatically.
 
+## Security: Credential Management
+
+API tokens, passwords, and client secrets should **never** be hardcoded in config files that are committed to version control. Apilytics uses [Typesafe Config](https://github.com/lightbend/config), which supports environment variable substitution natively.
+
+**Do** -- use environment variables:
+```hocon
+auth {
+  type = "bearer"
+  token = ${API_TOKEN}         # resolved at load time from $API_TOKEN
+}
+```
+
+**Don't** -- hardcode secrets:
+```hocon
+auth {
+  type = "bearer"
+  token = "ghp_abc123secret"   # NEVER do this -- secrets leak to git history
+}
+```
+
+Use `${VAR}` for required variables (fails if unset) or `${?VAR}` for optional ones (resolves to absent if unset).
+
+**Best practices:**
+- Export credentials in your shell: `export API_TOKEN=ghp_xxxxx`
+- Keep local config files with credentials out of git (add `*.local.conf` to `.gitignore`)
+- For CI/CD, use your platform's secret management (GitHub Actions secrets, Vault, etc.)
+- For OAuth2 client credentials, store both `client-id` and `client-secret` as environment variables
+
 ## Architecture
 
 ```
