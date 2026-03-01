@@ -199,6 +199,100 @@ class ApiErrorSuite extends FunSuite {
     assert(!msg.contains("sk-secret-key"))
   }
 
+  // ── Token scrubbing tests ──────────────────────────────────────────────
+
+  test("scrubTokens replaces GitHub tokens") {
+    val body = """{"message": "Bad credentials", "token": "ghp_ABCDEFghijklmnop1234567890abcdefghijkl"}"""
+    val scrubbed = ApiError.scrubTokens(body)
+    assert(!scrubbed.contains("ghp_"))
+    assert(scrubbed.contains("[SCRUBBED]"))
+  }
+
+  test("scrubTokens replaces GitHub PAT tokens") {
+    val body = """token: github_pat_11ABCDEFGH0123456789_abcdefghijklmnopqrstuvwxyz"""
+    val scrubbed = ApiError.scrubTokens(body)
+    assert(!scrubbed.contains("github_pat_"))
+    assert(scrubbed.contains("[SCRUBBED]"))
+  }
+
+  test("scrubTokens replaces Slack tokens") {
+    val body = """{"ok": false, "error": "invalid_auth", "token": "xoxb-123456-789012-abcdefghij"}"""
+    val scrubbed = ApiError.scrubTokens(body)
+    assert(!scrubbed.contains("xoxb-"))
+    assert(scrubbed.contains("[SCRUBBED]"))
+  }
+
+  test("scrubTokens replaces sk- keys") {
+    val body = """{"error": "invalid_api_key", "key": "sk-1234567890abcdefghijklmnopqr"}"""
+    val scrubbed = ApiError.scrubTokens(body)
+    assert(!scrubbed.contains("sk-1234567890"))
+    assert(scrubbed.contains("[SCRUBBED]"))
+  }
+
+  test("scrubTokens replaces AWS access keys") {
+    val body = """AccessKeyId: AKIAIOSFODNN7EXAMPLE"""
+    val scrubbed = ApiError.scrubTokens(body)
+    assert(!scrubbed.contains("AKIAIOSFODNN7EXAMPLE"))
+    assert(scrubbed.contains("[SCRUBBED]"))
+  }
+
+  test("scrubTokens replaces Bearer tokens") {
+    val body = """Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"""
+    val scrubbed = ApiError.scrubTokens(body)
+    assert(!scrubbed.contains("eyJhbGci"))
+    assert(scrubbed.contains("[SCRUBBED]"))
+  }
+
+  test("scrubTokens replaces Basic auth") {
+    val body = """Authorization: Basic dXNlcm5hbWU6cGFzc3dvcmQ="""
+    val scrubbed = ApiError.scrubTokens(body)
+    assert(!scrubbed.contains("dXNlcm5hbWU6cGFzc3dvcmQ="))
+    assert(scrubbed.contains("[SCRUBBED]"))
+  }
+
+  test("scrubTokens replaces JWT tokens") {
+    val jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    val body = s"""{"jwt": "$jwt"}"""
+    val scrubbed = ApiError.scrubTokens(body)
+    assert(!scrubbed.contains("eyJhbGci"))
+    assert(scrubbed.contains("[SCRUBBED]"))
+  }
+
+  test("scrubTokens replaces JSON credential values") {
+    val body = """{"access_token": "some-long-secret-value-here", "expires_in": 3600}"""
+    val scrubbed = ApiError.scrubTokens(body)
+    assert(!scrubbed.contains("some-long-secret-value-here"))
+    assert(scrubbed.contains(""""access_token": "[SCRUBBED]""""))
+    assert(scrubbed.contains("3600"))
+  }
+
+  test("scrubTokens leaves non-sensitive content unchanged") {
+    val body = """{"error": "Not Found", "message": "Resource does not exist", "status": 404}"""
+    val scrubbed = ApiError.scrubTokens(body)
+    assertEquals(scrubbed, body)
+  }
+
+  test("scrubTokens handles multiple tokens in one body") {
+    val body = """token=ghp_ABCDEFghijklmnop1234567890abcdefghijkl&key=sk-abcdefghijklmnopqrstuvwxyz1234"""
+    val scrubbed = ApiError.scrubTokens(body)
+    assert(!scrubbed.contains("ghp_"))
+    assert(!scrubbed.contains("sk-abcdef"))
+  }
+
+  test("httpError scrubs tokens from responseBody") {
+    val body = """{"error": "invalid", "api_key": "ghp_ABCDEFghijklmnop1234567890abcdefghijkl"}"""
+    val error = ApiError.httpError("/api", Method.GET, Map.empty, 400, body, Map.empty, 0)
+    assert(!error.responseBody.contains("ghp_"))
+    assert(error.responseBody.contains("[SCRUBBED]"))
+  }
+
+  test("authFailed scrubs tokens from responseBody") {
+    val body = """{"token": "xoxb-123456-789012-abcdefghij", "ok": false}"""
+    val error = ApiError.authFailed("/api", Method.GET, Map.empty, 401, body, Map.empty, 0)
+    assert(!error.responseBody.contains("xoxb-"))
+    assert(error.responseBody.contains("[SCRUBBED]"))
+  }
+
   test("original params remain accessible for programmatic use") {
     val error = ApiError(
       message = "Error",
