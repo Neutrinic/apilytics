@@ -1,5 +1,5 @@
 ThisBuild / organization := "io.github.neutrinic"
-ThisBuild / version := "0.7.0"
+ThisBuild / version := "0.8.0"
 ThisBuild / scalaVersion := "2.13.16"
 
 // Publishing settings for Maven Central
