@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-02-28
+
+### Added
+- **OWASP dependency check** in CI - weekly scans with CVSS 7+ threshold (#143)
+- **Credential scrubbing** in error response bodies - strips GitHub, Slack, OpenAI, AWS, Bearer/Basic auth, and JWT tokens from `ApiError.responseBody` before logging (#161)
+- **Plaintext HTTP warning** - logs WARN when `base-url` or `token-url` uses `http://` with auth configured (#163)
+- **Security documentation** - credential management best practices in README, example configs annotated (#142)
+- **Dependabot** for GitHub Actions dependency updates
+
+### Security
+- Redact sensitive query parameters (api_key, token, password, etc.) in `ApiError.getMessage` (#140)
+- Limit error response body to 4 KB to prevent OOM from malicious servers (#141)
+- Skip provided-scope deps in OWASP scan instead of maintaining suppressions (#170)
+
+## [0.7.0] - 2026-02-20
+
+### Added
+- **Checkpoint support** for incremental reads - persist pagination state (cursor, timestamp, offset) across queries (#49)
+- **Streaming REST support** - NDJSON and Server-Sent Events response formats (#67)
+- **VARIANT schema mode** - single native VARIANT column for schema-free queries (#137)
+- **Swagger 2.0 (OpenAPI 2.x) support** (#138)
+
+### Fixed
+- Deduplicate aggregation endpoint calls when multiple aggregations share the same endpoint (#131)
+- Jupyter section in README updated to use dist image (#135)
+
+## [0.6.0] - 2026-02-17
+
+### Added
+- **Jupyter notebook support** with dual catalog configuration
+- **PySpark support** in Docker image (#127)
+
+## [0.5.0] - 2026-02-15
+
+### Added
+- **Configurable aggregation pushdown** - SUM, AVG, MIN, MAX, COUNT, and custom functions (#126)
+- **Query statistics reporting** via `SupportsReportStatistics` (#47)
+- **Spark Thrift Server** for JDBC access (#121)
+
+### Fixed
+- Exploded views ignoring `data-path` configuration (#122)
+
 ## [0.4.0] - 2026-02-14
 
 ### Added

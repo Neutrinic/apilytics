@@ -14,15 +14,15 @@ Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
 ```scala
 // build.sbt
-libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.7.0"
+libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.8.0"
 ```
 
 ```bash
 # spark-submit
-spark-submit --packages io.github.neutrinic:apilytics_2.13:0.7.0 your-app.jar
+spark-submit --packages io.github.neutrinic:apilytics_2.13:0.8.0 your-app.jar
 
 # spark-shell
-spark-shell --packages io.github.neutrinic:apilytics_2.13:0.7.0
+spark-shell --packages io.github.neutrinic:apilytics_2.13:0.8.0
 ```
 
 Then configure the catalog:
