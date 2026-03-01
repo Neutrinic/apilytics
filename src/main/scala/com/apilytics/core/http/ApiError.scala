@@ -76,10 +76,49 @@ object ApiError {
     method = method,
     params = params,
     statusCode = statusCode,
-    responseBody = responseBody,
+    responseBody = scrubTokens(responseBody),
     requestId = extractRequestId(headers),
     retryAttempt = retryAttempt
   )
+
+  /** Patterns that match common credential/token formats in response bodies.
+    * Each pattern is replaced with `[SCRUBBED]` to prevent credential leakage
+    * into logging infrastructure.
+    */
+  private val tokenPatterns: Seq[scala.util.matching.Regex] = Seq(
+    // GitHub tokens (ghp_, gho_, ghs_, ghu_, github_pat_)
+    """ghp_[A-Za-z0-9]{36,}""".r,
+    """gho_[A-Za-z0-9]{36,}""".r,
+    """ghs_[A-Za-z0-9]{36,}""".r,
+    """ghu_[A-Za-z0-9]{36,}""".r,
+    """github_pat_[A-Za-z0-9_]{22,}""".r,
+    // Slack tokens (xoxb-, xoxp-, xoxa-, xoxo-, xoxs-, xoxr-)
+    """xox[bpaosr]-[A-Za-z0-9\-]{10,}""".r,
+    // OpenAI / Anthropic / generic sk- keys
+    """sk-[A-Za-z0-9]{20,}""".r,
+    // AWS access keys
+    """AKIA[A-Z0-9]{16}""".r,
+    // Bearer tokens in JSON values (e.g. "access_token": "eyJ...")
+    """(?i)("(?:access_token|token|bearer|api_key|apikey|secret|password|credential|authorization)":\s*")[^"]{8,}(")""".r,
+    // Bearer token in plain text
+    """(?i)Bearer\s+[A-Za-z0-9\-._~+/]+=*""".r,
+    // Basic auth in plain text
+    """(?i)Basic\s+[A-Za-z0-9+/]{8,}=*""".r,
+    // JWT tokens (three base64url segments separated by dots)
+    """eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}""".r
+  )
+
+  /** Scrub common token/credential patterns from a response body string.
+    * Returns the body with any matched patterns replaced by `[SCRUBBED]`.
+    */
+  def scrubTokens(body: String): String =
+    tokenPatterns.foldLeft(body) { (text, pattern) =>
+      pattern.replaceAllIn(text, m => {
+        // For the JSON value pattern, preserve the key and quotes
+        if (m.groupCount >= 2) m.group(1) + "[SCRUBBED]" + m.group(2)
+        else "[SCRUBBED]"
+      })
+    }
 
   /** Regex for sensitive parameter names. Matches common credential-bearing keys
     * such as api_key, access_token, password, client_secret, authorization, etc.
@@ -139,7 +178,7 @@ object ApiError {
       method = method,
       params = params,
       statusCode = statusCode,
-      responseBody = responseBody,
+      responseBody = scrubTokens(responseBody),
       requestId = extractRequestId(headers),
       retryAttempt = retryAttempt
     )
