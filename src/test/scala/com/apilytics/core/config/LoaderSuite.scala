@@ -661,4 +661,98 @@ class LoaderSuite extends FunSuite {
     val result = Loader.load(config)
     assertEquals(result.tables("events").checkpoint, None)
   }
+
+  // ==========================================================================
+  // Plaintext HTTP credential warning tests (#163)
+  // ==========================================================================
+
+  test("warns when base-url uses plaintext HTTP with auth") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |base-url = "http://api.example.com"
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val warnings = Loader.warnPlaintextCredentials(result)
+    assertEquals(warnings.size, 1)
+    assert(warnings.head.contains("base-url"))
+    assert(warnings.head.contains("http://api.example.com"))
+  }
+
+  test("warns when token-url uses plaintext HTTP") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth {
+        |  type = oauth2_client
+        |  client-id = "id"
+        |  client-secret = "secret"
+        |  token-url = "http://auth.example.com/token"
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val warnings = Loader.warnPlaintextCredentials(result)
+    assertEquals(warnings.size, 1)
+    assert(warnings.head.contains("token-url"))
+    assert(warnings.head.contains("http://auth.example.com/token"))
+  }
+
+  test("warns for both base-url and token-url over HTTP") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth {
+        |  type = oauth2_client
+        |  client-id = "id"
+        |  client-secret = "secret"
+        |  token-url = "http://auth.example.com/token"
+        |}
+        |base-url = "http://api.example.com"
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val warnings = Loader.warnPlaintextCredentials(result)
+    assertEquals(warnings.size, 2)
+  }
+
+  test("no warning when URLs use HTTPS") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |base-url = "https://api.example.com"
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val warnings = Loader.warnPlaintextCredentials(result)
+    assertEquals(warnings.size, 0)
+  }
+
+  test("no warning when auth type is none") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = none }
+        |base-url = "http://api.example.com"
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val warnings = Loader.warnPlaintextCredentials(result)
+    assertEquals(warnings.size, 0)
+  }
+
+  test("no warning when base-url is not set") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    val warnings = Loader.warnPlaintextCredentials(result)
+    assertEquals(warnings.size, 0)
+  }
 }

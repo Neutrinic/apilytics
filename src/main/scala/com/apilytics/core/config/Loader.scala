@@ -1,11 +1,14 @@
 package com.apilytics.core.config
 
 import com.typesafe.config.{Config, ConfigFactory}
+import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
 import scala.jdk.CollectionConverters._
 
 object Loader {
+
+  private val log = LoggerFactory.getLogger(getClass)
 
   def load(path: String): SourceConfig = {
     val config = ConfigFactory.parseFile(new java.io.File(path)).resolve()
@@ -47,6 +50,9 @@ object Loader {
         }
       }
     }
+
+    // Warn when auth credentials are configured over plaintext HTTP
+    warnPlaintextCredentials(sc)
 
     sc
   }
@@ -362,6 +368,36 @@ object Loader {
     }
 
     cc
+  }
+
+  /** Check if auth credentials would be sent over plaintext HTTP and warn.
+    * This catches accidental `http://` typos that would leak Bearer tokens,
+    * Basic Auth credentials, or API keys in plaintext.
+    */
+  private[config] def warnPlaintextCredentials(sc: SourceConfig): List[String] = {
+    if (sc.auth.authType == AuthType.None) return Nil
+
+    val warnings = List.newBuilder[String]
+
+    sc.baseUrl.foreach { url =>
+      if (url.toLowerCase.startsWith("http://")) {
+        val msg = s"SECURITY: base-url uses plaintext HTTP ($url). " +
+          "Credentials will be sent unencrypted. Use https:// instead."
+        log.warn(msg)
+        warnings += msg
+      }
+    }
+
+    sc.auth.tokenUrl.foreach { url =>
+      if (url.toLowerCase.startsWith("http://")) {
+        val msg = s"SECURITY: token-url uses plaintext HTTP ($url). " +
+          "OAuth2 client credentials will be sent unencrypted. Use https:// instead."
+        log.warn(msg)
+        warnings += msg
+      }
+    }
+
+    warnings.result()
   }
 
   private def optional(config: Config, path: String): Option[String] =
