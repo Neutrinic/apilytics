@@ -101,6 +101,15 @@ lazy val root = (project in file("."))
 // OWASP dependency check
 import net.nmoncho.sbt.dependencycheck.settings._
 dependencyCheckFailBuildOnCVSS := 7  // fail on high + critical (7+)
+// Only scan compile + runtime scope — skip provided (Spark, Hadoop, and their
+// transitive deps) and test deps since we don't ship them in our assembly JAR.
+dependencyCheckScopes := ScopesSettings(
+  compile  = true,
+  optional = false,
+  provided = false,
+  runtime  = true,
+  test     = false
+)
 dependencyCheckSuppressions := SuppressionSettings(
   files = SuppressionFilesSettings.files()(file("dependency-check-suppression.xml"))
 )
