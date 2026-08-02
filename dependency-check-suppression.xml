@@ -33,4 +33,28 @@
     <cve>CVE-2025-48924</cve>
   </suppress>
 
+  <!--
+    False positive: CVE-2026-25087 is a use-after-free in Apache Arrow C++
+    (IPC file reader with pre-buffering). The Java implementation is a separate
+    codebase and is not affected; the match comes from the shared
+    cpe:2.3:a:apache:arrow CPE.
+  -->
+  <suppress>
+    <notes>Arrow Java flagged for an Arrow C++ CVE (shared CPE)</notes>
+    <filePath regex="true">.*arrow-(format|vector|memory-core|memory-netty|memory-netty-buffer-patch)-.*\.jar</filePath>
+    <cve>CVE-2026-25087</cve>
+  </suppress>
+
+  <!--
+    False positive: CVE-2025-15104 is an SSRF in the Nu Html Checker
+    (validator.nu), an unrelated project. Matched via the generic
+    cpe:2.3:a:validator:validator / json-schema CPEs on json-schema-validator,
+    a transitive dep of swagger-parser.
+  -->
+  <suppress>
+    <notes>json-schema-validator flagged for a validator.nu CVE (CPE mismatch)</notes>
+    <filePath regex="true">.*json-schema-validator-.*\.jar</filePath>
+    <cve>CVE-2025-15104</cve>
+  </suppress>
+
 </suppressions>
