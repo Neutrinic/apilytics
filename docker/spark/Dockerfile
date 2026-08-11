@@ -1,7 +1,7 @@
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.10
 LABEL maintainer="APIlytics"
 
-ARG SPARK_VERSION=4.0.0
+ARG SPARK_VERSION=4.1.3
 ARG SCALA_VERSION=2.13
 ARG JDK_VERSION=21
 
@@ -34,7 +34,7 @@ ENV SPARK_SUBMIT_OPTS="$JAVA_OPTS"
 # For Almond/Scala kernel
 ENV JAVA_TOOL_OPTIONS="$JAVA_OPTS"
 
-# Download and install Spark 4.0 with Scala 2.13
+# Download and install Spark 4.1 with Scala 2.13
 RUN curl -L https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz | \
     tar -xz -C /opt && \
     ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop3 ${SPARK_HOME}

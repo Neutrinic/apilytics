@@ -9,7 +9,7 @@ LABEL maintainer="Apilytics"
 LABEL org.opencontainers.image.source="https://github.com/Neutrinic/apilytics"
 LABEL org.opencontainers.image.description="Query REST APIs with Spark SQL"
 
-ARG SPARK_VERSION=4.0.0
+ARG SPARK_VERSION=4.1.3
 ARG JDK_VERSION=21
 
 # Install dependencies (including Python for PySpark)

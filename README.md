@@ -4,9 +4,13 @@
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics_2.13)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Scala](https://img.shields.io/badge/Scala-2.13-red.svg)](https://www.scala-lang.org/)
-[![Spark](https://img.shields.io/badge/Spark-4.0-orange.svg)](https://spark.apache.org/)
+[![Spark](https://img.shields.io/badge/Spark-4.1-orange.svg)](https://spark.apache.org/)
 
 Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
+
+Built and tested against **Spark 4.1** on Scala 2.13 / Java 17. Spark is a `provided`
+dependency, so the connector also runs on Spark 4.0 clusters — the Data Source V2 and
+Arrow columnar APIs it uses are unchanged between the two.
 
 ## Installation
 
@@ -322,7 +326,7 @@ Control how OpenAPI schemas are used with the `mode` setting:
 
 **Strict mode** (default) uses the OpenAPI schema to produce typed columns. Nested objects are flattened to `flatten-depth`, deeper nesting becomes JSON strings which you can parse with `parse_json()` if needed.
 
-**Variant mode** returns the entire response as a native Spark 4.0 VARIANT column with binary encoding:
+**Variant mode** returns the entire response as a native Spark VARIANT column with binary encoding:
 
 ```hocon
 schema {
@@ -347,7 +351,7 @@ SELECT
 FROM api.default.users;
 ```
 
-> **Note**: The colon syntax (`value:name::string`) shown in Databricks documentation is Databricks-specific. Open source Spark 4.0 uses `variant_get()` function.
+> **Note**: The colon syntax (`value:name::string`) shown in Databricks documentation is Databricks-specific. Open source Spark uses the `variant_get()` function.
 
 ### Streaming Response Formats
 
@@ -476,7 +480,7 @@ Spark Catalog ← Tables ← ScanBuilder (pushdown) → HTTP Client
 
 ## Stack
 
-- Scala 2.13 / Spark 4.0
+- Scala 2.13 / Spark 4.1
 - http4s-ember-client (HTTP)
 - circe (JSON) + circe-pointer (RFC 6901)
 - swagger-parser (OpenAPI)

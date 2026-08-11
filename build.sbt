@@ -25,8 +25,8 @@ lazy val root = (project in file("."))
     name := "apilytics",
     libraryDependencies ++= Seq(
       // Spark
-      "org.apache.spark" %% "spark-sql"          % "4.0.0" % "provided",
-      "org.apache.spark" %% "spark-catalyst"      % "4.0.0" % "provided",
+      "org.apache.spark" %% "spark-sql"          % "4.1.3" % "provided",
+      "org.apache.spark" %% "spark-catalyst"      % "4.1.3" % "provided",
 
       // HTTP + JSON
       "org.http4s"       %% "http4s-ember-client" % "0.23.30",
@@ -39,9 +39,10 @@ lazy val root = (project in file("."))
       // OpenAPI
       "io.swagger.parser.v3" % "swagger-parser"   % "2.1.22",
 
-      // Arrow
-      "org.apache.arrow"  % "arrow-vector"        % "18.1.0",
-      "org.apache.arrow"  % "arrow-memory-netty"  % "18.1.0",
+      // Arrow — keep in lockstep with the version Spark bundles, since
+      // ArrowColumnVector hands our buffers straight to Spark's own Arrow.
+      "org.apache.arrow"  % "arrow-vector"        % "18.3.0",
+      "org.apache.arrow"  % "arrow-memory-netty"  % "18.3.0",
 
       // Config
       "com.typesafe"      % "config"              % "1.4.3",
@@ -59,7 +60,7 @@ lazy val root = (project in file("."))
     dependencyOverrides ++= Seq(
       // CVE-2026-54512/54513/54514/54515 (polymorphic type validator bypasses,
       // eager DNS resolution). Fixed in 2.18.8 / 2.18.9 — stay on the 2.18 line
-      // to match the Jackson that Spark 4.0.0 provides at runtime.
+      // to match the Jackson that Spark 4.1 provides at runtime.
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.18.9",
       // CVE-2025-66453 (DoS via Number.toFixed on crafted floats), reached
       // through json-schema-validator's ECMA-262 regex format checker.
