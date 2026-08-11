@@ -142,6 +142,48 @@ class LoaderSuite extends FunSuite {
     assertEquals(result.schema.arrowBatchSize, 1024)
   }
 
+  test("prefetch-batches defaults to 2") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.schema.prefetchBatches, 2)
+  }
+
+  test("prefetch-batches can be configured") {
+    val config = ConfigFactory.parseString(
+      """
+        |openapi = "spec.json"
+        |auth { type = bearer, token = "t" }
+        |schema {
+        |  prefetch-batches = 8
+        |}
+        |""".stripMargin)
+
+    val result = Loader.load(config)
+    assertEquals(result.schema.prefetchBatches, 8)
+  }
+
+  test("prefetch-batches below 1 is rejected at load time") {
+    def withPrefetch(n: Int) = ConfigFactory.parseString(
+      s"""
+         |openapi = "spec.json"
+         |auth { type = bearer, token = "t" }
+         |schema {
+         |  prefetch-batches = $n
+         |}
+         |""".stripMargin)
+
+    // Queue.bounded would otherwise fail on an executor thread, far from the cause.
+    List(0, -1).foreach { n =>
+      val ex = intercept[IllegalArgumentException](Loader.load(withPrefetch(n)))
+      assert(ex.getMessage.contains("prefetch-batches must be >= 1"), ex.getMessage)
+    }
+  }
+
   test("results-path and max-pages default values") {
     val config = ConfigFactory.parseString(
       """

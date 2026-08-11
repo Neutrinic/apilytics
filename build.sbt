@@ -58,10 +58,13 @@ lazy val root = (project in file("."))
 
     // Security bumps for transitive deps pulled in by swagger-parser.
     dependencyOverrides ++= Seq(
-      // CVE-2026-54512/54513/54514/54515 (polymorphic type validator bypasses,
-      // eager DNS resolution). Fixed in 2.18.8 / 2.18.9 — stay on the 2.18 line
-      // to match the Jackson that Spark 4.1 provides at runtime.
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.18.9",
+      // CVE-2026-54512/54513/54514 (polymorphic type validator bypasses) are fixed
+      // in 2.21.4, CVE-2026-54515 in 2.21.5.
+      //
+      // Must stay on the 2.21 line: Spark 4.1 ships jackson-module-scala 2.21.x,
+      // which refuses to initialise against databind outside [2.21.0, 2.22.0) —
+      // pinning lower breaks Spark's own error machinery.
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.21.5",
       // CVE-2025-66453 (DoS via Number.toFixed on crafted floats), reached
       // through json-schema-validator's ECMA-262 regex format checker.
       // Fixed in 1.7.14.1 / 1.7.15.1 / 1.8.1.

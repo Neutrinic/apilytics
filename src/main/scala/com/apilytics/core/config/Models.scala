@@ -110,6 +110,13 @@ final case class SchemaConfig(
     flattenDepth: Int = 2,
     arrayHandling: ArrayHandling = ArrayHandling.KeepArray,
     arrowBatchSize: Int = 4096,
+    /** How many Arrow batches the reader may hold in flight ahead of Spark.
+      *
+      * Peak reader memory is roughly `prefetch-batches * arrow-batch-size` records,
+      * so this is the second half of the memory knob. Raising it trades memory for
+      * tolerance of slow/bursty APIs; 1 minimises memory at the cost of no overlap
+      * between fetching and consuming. Must be >= 1. */
+    prefetchBatches: Int = 2,
     /** When true, empty/null arrays emit one row with null element (OUTER semantics).
       * When false (default), empty arrays produce no rows (INNER semantics). */
     explodeOuter: Boolean = false,

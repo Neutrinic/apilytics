@@ -110,6 +110,13 @@ object Loader {
         case other           => throw new IllegalArgumentException(s"Unknown array handling: $other")
       } else ArrayHandling.KeepArray,
       arrowBatchSize = if (config.hasPath("arrow-batch-size")) config.getInt("arrow-batch-size") else 4096,
+      prefetchBatches = if (config.hasPath("prefetch-batches")) {
+        val n = config.getInt("prefetch-batches")
+        // Queue.bounded rejects a capacity below 1, and the failure would otherwise
+        // surface on an executor thread long after config load.
+        if (n < 1) throw new IllegalArgumentException(s"prefetch-batches must be >= 1, got: $n")
+        n
+      } else 2,
       explodeOuter = if (config.hasPath("explode-outer")) config.getBoolean("explode-outer") else false,
       mode = if (config.hasPath("mode")) config.getString("mode") match {
         case "strict"  => SchemaMode.Strict

@@ -19,6 +19,8 @@ class ExplodedArrayColumnarPartitionReader(partition: ExplodedArrayInputPartitio
   override protected val allocator: RootAllocator = new RootAllocator()
   override protected val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
 
+  override protected def prefetchSize: Int = partition.sourceConfig.schema.prefetchBatches
+
   // Use singleton cache that persists across queries on this executor
   private val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
 
@@ -42,11 +44,12 @@ class ExplodedArrayColumnarPartitionReader(partition: ExplodedArrayInputPartitio
         )
         if (exploded.isEmpty) fs2.Stream.empty
         else {
-          val chunks = exploded.grouped(batchSize).toList
-          fs2.Stream.emits(chunks.map { chunk =>
+          // Convert in `map`, not inside `emits`, so batches are allocated as the
+          // bounded queue pulls them rather than all at once per page.
+          fs2.Stream.emits(exploded.grouped(batchSize).toList).unchunk.map { chunk =>
             val root = Converter.toArrow(chunk, arrowSchema, allocator)
             (arrowToBatch(root), root)
-          })
+          }
         }
       }
   }

@@ -31,6 +31,8 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
   override protected val allocator: RootAllocator = new RootAllocator()
   override protected val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
 
+  override protected def prefetchSize: Int = partition.sourceConfig.schema.prefetchBatches
+
   // Use lazy vals to avoid initialization order issues with LazyColumnarReader's constructor
   // which starts a fiber that may access these before they're initialized
   private lazy val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
@@ -41,14 +43,18 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
     case None    => partition.sourceConfig.http
   }
 
-  // Use Spark's Hadoop config for S3/HDFS credential resolution via core-site.xml
+  // Use Spark's Hadoop config for S3/HDFS credential resolution via core-site.xml.
+  //
+  // Executors normally have no active session, so the fallback is the common path,
+  // not an edge case. Ask via getActiveSession/getDefaultSession rather than
+  // SparkSession.active: `active` throws when there is no session, and the type it
+  // throws changed in Spark 4.1 (IllegalStateException -> SparkException), which
+  // silently defeated the previous try/catch.
   private lazy val checkpointStore: CheckpointStore = {
-    val hadoopConf = try {
-      SparkSession.active.sparkContext.hadoopConfiguration
-    } catch {
-      case _: IllegalStateException =>
-        new org.apache.hadoop.conf.Configuration()
-    }
+    val hadoopConf = SparkSession.getActiveSession
+      .orElse(SparkSession.getDefaultSession)
+      .map(_.sparkContext.hadoopConfiguration)
+      .getOrElse(new org.apache.hadoop.conf.Configuration())
     CheckpointStore.fromConfig(partition.checkpointConfig, hadoopConf)
   }
 
@@ -107,18 +113,17 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
             if (records.isEmpty) Stream.eval(updateState).drain
             else {
               Stream.eval(updateState) >>
-              Stream.emits {
-                val chunks = records.grouped(batchSize).toList
+              // Emit the chunks first and convert in `map`, so each Arrow root is
+              // built only when the bounded queue pulls it. Converting inside
+              // `Stream.emits` would allocate every batch in the page up front and
+              // make peak memory track page size instead of arrow-batch-size.
+              Stream.emits(records.grouped(batchSize).toList).unchunk.map { chunk =>
                 partition.schemaMode match {
                   case SchemaMode.Variant =>
-                    chunks.map { chunk =>
-                      (VariantBatch.fromRecords(chunk), null: VectorSchemaRoot)
-                    }
+                    (VariantBatch.fromRecords(chunk), null: VectorSchemaRoot)
                   case _ =>
-                    chunks.map { chunk =>
-                      val root = Converter.toArrow(chunk, arrowSchema, allocator)
-                      (arrowToBatch(root), root)
-                    }
+                    val root = Converter.toArrow(chunk, arrowSchema, allocator)
+                    (arrowToBatch(root), root)
                 }
               }
             }

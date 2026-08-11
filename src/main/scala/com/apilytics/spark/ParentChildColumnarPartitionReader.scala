@@ -35,6 +35,8 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
   override protected lazy val allocator: RootAllocator = new RootAllocator()
   override protected lazy val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
 
+  override protected def prefetchSize: Int = partition.sourceConfig.schema.prefetchBatches
+
   // Use lazy vals to avoid initialization order issues with LazyColumnarReader's constructor
   // which starts a fiber that may access these before they're initialized
   private lazy val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
@@ -114,11 +116,12 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
               val enrichedRecords = childRecords.map { childRecord =>
                 ParentChildUtils.enrichChildRecord(childRecord, parentKeyJson.get, partition.parentKeyColumn)
               }
-              val chunks = enrichedRecords.grouped(batchSize).toList
-              fs2.Stream.emits(chunks.map { chunk =>
+              // Convert in `map`, not inside `emits`, so batches are allocated as the
+              // bounded queue pulls them rather than all at once per page.
+              fs2.Stream.emits(enrichedRecords.grouped(batchSize).toList).unchunk.map { chunk =>
                 val root = Converter.toArrow(chunk, arrowSchema, allocator)
                 (arrowToBatch(root), root)
-              })
+              }
             }
           }
       }
@@ -194,11 +197,12 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
 
             if (enrichedRecords.isEmpty) fs2.Stream.empty
             else {
-              val chunks = enrichedRecords.grouped(arrowBatchSize).toList
-              fs2.Stream.emits(chunks.map { chunk =>
+              // Convert in `map`, not inside `emits`, so batches are allocated as the
+              // bounded queue pulls them rather than all at once per batch-join round.
+              fs2.Stream.emits(enrichedRecords.grouped(arrowBatchSize).toList).unchunk.map { chunk =>
                 val root = Converter.toArrow(chunk, arrowSchema, allocator)
                 (arrowToBatch(root), root)
-              })
+              }
             }
           }
         }
