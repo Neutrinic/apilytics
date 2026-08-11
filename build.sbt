@@ -1,6 +1,8 @@
 ThisBuild / organization := "io.github.neutrinic"
 ThisBuild / version := "0.8.0"
-ThisBuild / scalaVersion := "2.13.16"
+// Must be >= the scala-library the dependency classpath pulls in (SIP-51):
+// the bumped deps bring 2.13.18, and the compiler cannot be older than that.
+ThisBuild / scalaVersion := "2.13.18"
 
 // Publishing settings for Maven Central
 ThisBuild / homepage := Some(url("https://github.com/Neutrinic/apilytics"))
@@ -29,15 +31,17 @@ lazy val root = (project in file("."))
       "org.apache.spark" %% "spark-catalyst"      % "4.1.3" % "provided",
 
       // HTTP + JSON
-      "org.http4s"       %% "http4s-ember-client" % "0.23.30",
-      "org.http4s"       %% "http4s-circe"        % "0.23.30",
-      "io.circe"         %% "circe-core"          % "0.14.10",
-      "io.circe"         %% "circe-generic"       % "0.14.10",
-      "io.circe"         %% "circe-parser"        % "0.14.10",
-      "io.circe"         %% "circe-pointer"       % "0.14.10",
+      "org.http4s"       %% "http4s-ember-client" % "0.23.36",
+      "org.http4s"       %% "http4s-circe"        % "0.23.36",
+      "io.circe"         %% "circe-core"          % "0.14.16",
+      "io.circe"         %% "circe-generic"       % "0.14.16",
+      "io.circe"         %% "circe-parser"        % "0.14.16",
+      "io.circe"         %% "circe-pointer"       % "0.14.16",
 
-      // OpenAPI
-      "io.swagger.parser.v3" % "swagger-parser"   % "2.1.22",
+      // OpenAPI. 2.1.45 is what fixes #188: its chain carries jackson-databind
+      // 2.22.0 and rhino 1.7.15.1, both free of the CVEs that forced the old pins,
+      // so consumers inherit safe versions without us publishing any constraint.
+      "io.swagger.parser.v3" % "swagger-parser"   % "2.1.45",
 
       // Arrow — keep in lockstep with the version Spark bundles, since
       // ArrowColumnVector hands our buffers straight to Spark's own Arrow.
@@ -45,31 +49,29 @@ lazy val root = (project in file("."))
       "org.apache.arrow"  % "arrow-memory-netty"  % "18.3.0",
 
       // Config
-      "com.typesafe"      % "config"              % "1.4.3",
+      "com.typesafe"      % "config"              % "1.4.9",
 
       // Streaming
-      "co.fs2"           %% "fs2-core"            % "3.11.0",
+      "co.fs2"           %% "fs2-core"            % "3.13.0",
 
       // Test
-      "org.scalameta"    %% "munit"               % "1.0.3"  % Test,
-      "org.typelevel"    %% "munit-cats-effect"   % "2.0.0"  % Test,
-      "org.wiremock"      % "wiremock"            % "3.10.0" % Test,
+      "org.scalameta"    %% "munit"               % "1.3.5"  % Test,
+      "org.typelevel"    %% "munit-cats-effect"   % "2.2.0"  % Test,
+      "org.wiremock"      % "wiremock"            % "3.13.2" % Test,
     ),
 
-    // Security bumps for transitive deps pulled in by swagger-parser.
-    dependencyOverrides ++= Seq(
-      // CVE-2026-54512/54513/54514 (polymorphic type validator bypasses) are fixed
-      // in 2.21.4, CVE-2026-54515 in 2.21.5.
-      //
-      // Must stay on the 2.21 line: Spark 4.1 ships jackson-module-scala 2.21.x,
-      // which refuses to initialise against databind outside [2.21.0, 2.22.0) —
-      // pinning lower breaks Spark's own error machinery.
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.21.5",
-      // CVE-2025-66453 (DoS via Number.toFixed on crafted floats), reached
-      // through json-schema-validator's ECMA-262 regex format checker.
-      // Fixed in 1.7.14.1 / 1.7.15.1 / 1.8.1.
-      "org.mozilla" % "rhino" % "1.7.15.1",
-    ),
+    // Build-scoped only, and deliberately not published.
+    //
+    // swagger-parser's chain wants jackson-databind 2.22.0, which is outside the
+    // [2.21.0, 2.22.0) window Spark's jackson-module-scala enforces (#185). Our
+    // assembly bundles jackson, so it has to sit inside that window.
+    //
+    // Consumers are a different case and need no constraint from us: 2.22.0 carries
+    // the CVE fixes, and on a cluster Spark's own jackson-databind takes precedence
+    // anyway. Forcing 2.21.5 on them is not achievable cleanly regardless — sbt
+    // resolves highest-wins, so a published lower bound would simply lose.
+    // JacksonCompatibilitySuite fails the build if this drifts out of range.
+    dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.21.5",
 
     scalacOptions ++= Seq(
       "-encoding", "UTF-8",
