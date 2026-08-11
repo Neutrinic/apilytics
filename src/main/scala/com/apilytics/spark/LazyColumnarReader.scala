@@ -25,6 +25,12 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
   protected def arrowSchema: ArrowSchema
   protected def clientResource: Resource[IO, Client.RestClient]
   protected def buildStream(client: Client.RestClient): fs2.Stream[IO, (ColumnarBatch, VectorSchemaRoot)]
+
+  /** Batches held in flight ahead of Spark. Must be >= 1.
+    *
+    * Overrides read this from the partition's config, so keep it a `def` reading only
+    * constructor params — subclass `val`s are still unset when this base constructor runs.
+    */
   protected def prefetchSize: Int = 2
 
   // --- Lifecycle managed by this base class ---
@@ -69,6 +75,13 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
   }
 
   override def get(): ColumnarBatch = currentBatch
+
+  /** High-water mark of Arrow memory held by this reader, in bytes.
+    *
+    * Exposed so tests can assert the bounded-queue contract: peak tracks
+    * `prefetch-batches * arrow-batch-size`, not the size of the partition.
+    */
+  private[apilytics] def peakAllocatedBytes: Long = allocator.getPeakMemoryAllocation
 
   override def close(): Unit = {
     // 1. Cancel producer fiber (stops pagination mid-stream if needed)
