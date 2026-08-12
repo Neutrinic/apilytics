@@ -71,7 +71,20 @@ lazy val root = (project in file("."))
     // anyway. Forcing 2.21.5 on them is not achievable cleanly regardless — sbt
     // resolves highest-wins, so a published lower bound would simply lose.
     // JacksonCompatibilitySuite fails the build if this drifts out of range.
-    dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.21.5",
+    dependencyOverrides ++= Seq(
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.21.5",
+
+      // Netty reaches compile scope through arrow-memory-netty-buffer-patch, which
+      // asks for a 4.1.x that carries a large pile of HIGH CVEs. Spark already puts
+      // 4.2.x on the runtime classpath and the suite passes against it, so Arrow is
+      // fine on the 4.2 line — pin it there for the compile graph too.
+      //
+      // This replaces a suppression that had been pinned to netty 4.1.114: bumping
+      // http4s moved netty to 4.1.119, the filePath regex silently stopped matching,
+      // and every one of those CVEs came back and failed the build.
+      "io.netty" % "netty-buffer" % "4.2.17.Final",
+      "io.netty" % "netty-common" % "4.2.17.Final",
+    ),
 
     scalacOptions ++= Seq(
       "-encoding", "UTF-8",
