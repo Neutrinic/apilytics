@@ -151,7 +151,11 @@ dependencyCheckFormats := {
 }
 dependencyCheckNvdApi := {
   val key = sys.env.getOrElse("NVD_API_KEY", "")
-  if (key.nonEmpty) NvdApiSettings(apiKey = key, requestDelay = Some(java.time.Duration.ofSeconds(4)))
+  // The delay throttles us against NVD's rate limit. With an API key NVD allows
+  // roughly 50 requests per 30s, so the previous 4s was ~6x slower than needed and
+  // was the main reason full scans ran for hours. Without a key the plugin default
+  // is the safe (much slower) unauthenticated rate.
+  if (key.nonEmpty) NvdApiSettings(apiKey = key, requestDelay = Some(java.time.Duration.ofSeconds(1)))
   else NvdApiSettings()
 }
 
