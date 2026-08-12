@@ -23,8 +23,8 @@ concurrency:
 jobs:
   dependency-check:
     runs-on: ubuntu-latest
-    # Runs have taken up to 5 hours against the 6h job ceiling. Fail visibly rather
-    # than silently burning the budget.
+    # Runs land in ~7 minutes on the bulk data feed. Generous headroom, but low
+    # enough that a hung NVD fetch fails quickly instead of burning the budget.
     timeout-minutes: 45
 
     steps:
@@ -38,38 +38,20 @@ jobs:
 
       - uses: sbt/setup-sbt@v1
 
-      # Key by ISO week so the NVD database refreshes weekly; restore-keys lets a
-      # stale copy seed the run so dependency-check does an incremental update
-      # instead of pulling the full ~300k-CVE feed again.
-      - name: Compute cache key
-        id: cachekey
-        run: echo "week=$(date -u +%Y-%V)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache NVD database
-        uses: actions/cache@v4
-        with:
-          # The data directory is not configurable from this plugin version, so cover
-          # the plausible locations; missing paths are ignored. The "Locate NVD
-          # database" step below reports the real one so this can be narrowed.
-          path: |
-            ~/.dependency-check
-            ~/.m2/repository/org/owasp
-            ~/.cache/dependency-check
-            ~/.local/share/dependency-check
-          key: nvd-${{ runner.os }}-${{ steps.cachekey.outputs.week }}
-          restore-keys: |
-            nvd-${{ runner.os }}-
-
+      # Advisory, never blocking — matching flare-spark. dependency-check identifies
+      # dependencies by guessing CPEs from jar evidence, which misfires often enough
+      # (log4cats as protonmail, Arrow Java as Arrow C++) that gating merges on it
+      # costs more than it catches. The report is still published below.
       - name: OWASP Dependency Check
+        continue-on-error: true
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: sbt dependencyCheck
 
-      # Temporary: confirms which path actually holds the database so the cache above
-      # can be narrowed to it. Remove once known.
-      - name: Locate NVD database
-        if: always()
-        run: find ~ -name 'odc.mv.db' -o -name '*.h2.db' 2>/dev/null | head -5 || true
+      # No NVD cache on purpose. The bulk data feed configured in build.sbt gets a
+      # cold run down to ~7 minutes, and the database lands inside the coursier cache
+      # (.../org/owasp/dependency-check-utils/<v>/data/<v>/odc.mv.db) rather than a
+      # home-directory path — awkward to cache and not worth it for the time saved.
 
       - name: Upload report
         if: always()

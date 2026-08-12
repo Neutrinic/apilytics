@@ -150,13 +150,26 @@ dependencyCheckFormats := {
   Seq(Format.HTML, Format.JSON)
 }
 dependencyCheckNvdApi := {
+  import net.nmoncho.sbt.dependencycheck.settings.NvdApiSettings.DataFeed
   val key = sys.env.getOrElse("NVD_API_KEY", "")
-  // The delay throttles us against NVD's rate limit. With an API key NVD allows
-  // roughly 50 requests per 30s, so the previous 4s was ~6x slower than needed and
-  // was the main reason full scans ran for hours. Without a key the plugin default
-  // is the safe (much slower) unauthenticated rate.
-  if (key.nonEmpty) NvdApiSettings(apiKey = key, requestDelay = Some(java.time.Duration.ofSeconds(1)))
-  else NvdApiSettings()
+
+  // Prefer the bulk data feed over the NVD API. Paging the API walks ~300k CVEs at
+  // 2000 per request and inserts each one into the embedded H2 database — that build,
+  // not the network, is what pushed scans past 3 hours and timed them out. The feed
+  // is prebuilt gzipped per-year archives over plain HTTP (~25MB/year), needs no API
+  // key and has no rate limit. {0} is substituted with the year.
+  //
+  // The API key still applies to incremental "modified" lookups; requestDelay only
+  // matters on that path now.
+  NvdApiSettings(
+    apiKey = key,
+    requestDelay = Some(java.time.Duration.ofSeconds(1)),
+    dataFeed = DataFeed(
+      // sbt's `url(...)` helper parses via URI and rejects the `{0}` placeholder,
+      // so construct the URL directly.
+      url = Some(new java.net.URL("https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{0}.json.gz"))
+    )
+  )
 }
 
 addCommandAlias("build", "assembly")
