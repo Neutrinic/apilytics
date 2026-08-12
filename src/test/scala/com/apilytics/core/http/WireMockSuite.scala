@@ -5,7 +5,8 @@ import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.checkpoint.{CheckpointState, CheckpointStore}
 import com.apilytics.core.config._
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema}
+import com.apilytics.core.openapi.Endpoint
+import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import com.apilytics.spark._
 import com.github.tomakehurst.wiremock.WireMockServer
@@ -927,11 +928,11 @@ class WireMockSuite extends FunSuite {
         ]"""))
     )
 
-    val parentSchema = OpenAPISchema.ObjectType(
-      Map("id" -> OpenAPISchema.StringType(), "name" -> OpenAPISchema.StringType())
+    val parentSchema = SourceSchema.ObjectType(
+      Map("id" -> SourceSchema.StringType(), "name" -> SourceSchema.StringType())
     )
-    val childSchema = OpenAPISchema.ObjectType(
-      Map("order_id" -> OpenAPISchema.IntegerType(), "customer_id" -> OpenAPISchema.StringType(), "total" -> OpenAPISchema.IntegerType())
+    val childSchema = SourceSchema.ObjectType(
+      Map("order_id" -> SourceSchema.IntegerType(), "customer_id" -> SourceSchema.StringType(), "total" -> SourceSchema.IntegerType())
     )
 
     val parentEndpoint = Endpoint(
@@ -1032,11 +1033,11 @@ class WireMockSuite extends FunSuite {
         ]"""))
     )
 
-    val parentSchema = OpenAPISchema.ObjectType(
-      Map("id" -> OpenAPISchema.IntegerType(), "name" -> OpenAPISchema.StringType())
+    val parentSchema = SourceSchema.ObjectType(
+      Map("id" -> SourceSchema.IntegerType(), "name" -> SourceSchema.StringType())
     )
-    val childSchema = OpenAPISchema.ObjectType(
-      Map("task_id" -> OpenAPISchema.IntegerType(), "proj_id" -> OpenAPISchema.IntegerType(), "title" -> OpenAPISchema.StringType())
+    val childSchema = SourceSchema.ObjectType(
+      Map("task_id" -> SourceSchema.IntegerType(), "proj_id" -> SourceSchema.IntegerType(), "title" -> SourceSchema.StringType())
     )
 
     val parentEndpoint = Endpoint(

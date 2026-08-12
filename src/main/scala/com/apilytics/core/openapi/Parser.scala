@@ -6,36 +6,23 @@ import io.swagger.v3.parser.OpenAPIV3Parser
 import io.swagger.v3.parser.converter.SwaggerConverter
 import io.swagger.v3.parser.core.models.ParseOptions
 
-import scala.jdk.CollectionConverters._
+import com.apilytics.core.schema.SourceSchema
 
-/** Parsed representation of an OpenAPI schema property. */
-@SerialVersionUID(1L)
-sealed trait OpenAPISchema extends Serializable
-object OpenAPISchema {
-  @SerialVersionUID(1L) final case class StringType(format: Option[String] = None) extends OpenAPISchema
-  @SerialVersionUID(1L) final case class IntegerType(format: Option[String] = None) extends OpenAPISchema
-  @SerialVersionUID(1L) final case class NumberType(format: Option[String] = None) extends OpenAPISchema
-  @SerialVersionUID(1L) case object BooleanType extends OpenAPISchema
-  @SerialVersionUID(1L) final case class ArrayType(items: OpenAPISchema) extends OpenAPISchema
-  @SerialVersionUID(1L) final case class ObjectType(properties: Map[String, OpenAPISchema], required: Set[String] = Set.empty) extends OpenAPISchema
-  /** VARIANT for ambiguous schemas: additionalProperties, empty object, missing type, anyOf, oneOf */
-  @SerialVersionUID(1L) case object VariantType extends OpenAPISchema
-  @SerialVersionUID(1L) case object UnknownType extends OpenAPISchema
-}
+import scala.jdk.CollectionConverters._
 
 /** A discovered GET endpoint that returns an array of objects. */
 @SerialVersionUID(1L)
 final case class Endpoint(
     path: String,
     operationId: Option[String],
-    responseSchema: OpenAPISchema.ObjectType,
+    responseSchema: SourceSchema.ObjectType,
     queryParams: List[QueryParam]
 ) extends Serializable
 
 @SerialVersionUID(1L)
 final case class QueryParam(
     name: String,
-    schema: OpenAPISchema,
+    schema: SourceSchema,
     required: Boolean
 ) extends Serializable
 
@@ -120,12 +107,12 @@ object Parser {
       val parsed = convertSchema(schema)
       // We want endpoints that return objects (possibly wrapping arrays)
       parsed match {
-        case obj: OpenAPISchema.ObjectType => Some(obj)
-        case OpenAPISchema.ArrayType(obj: OpenAPISchema.ObjectType) =>
+        case obj: SourceSchema.ObjectType => Some(obj)
+        case SourceSchema.ArrayType(obj: SourceSchema.ObjectType) =>
           // Top-level array response — wrap in a synthetic "data" key so the endpoint
           // has a consistent ObjectType schema. Callers should set data-path = "/data"
           // in table config to extract records from this wrapper.
-          Some(OpenAPISchema.ObjectType(Map("data" -> OpenAPISchema.ArrayType(obj))))
+          Some(SourceSchema.ObjectType(Map("data" -> SourceSchema.ArrayType(obj))))
         case _ => None
       }
     }.map { objSchema =>
@@ -134,7 +121,7 @@ object Parser {
         .map { p =>
           QueryParam(
             name = p.getName,
-            schema = Option(p.getSchema).map(convertSchema).getOrElse(OpenAPISchema.UnknownType),
+            schema = Option(p.getSchema).map(convertSchema).getOrElse(SourceSchema.UnknownType),
             required = Option(p.getRequired).map(_.booleanValue()).getOrElse(false)
           )
         }
@@ -148,12 +135,12 @@ object Parser {
     }
   }
 
-  private def convertSchema(schema: SwaggerSchema[_]): OpenAPISchema = {
-    if (schema == null) return OpenAPISchema.UnknownType
+  private def convertSchema(schema: SwaggerSchema[_]): SourceSchema = {
+    if (schema == null) return SourceSchema.UnknownType
 
     // Union types (anyOf/oneOf) are ambiguous — map to VARIANT
     if (Option(schema.getAnyOf).exists(!_.isEmpty) || Option(schema.getOneOf).exists(!_.isEmpty)) {
-      return OpenAPISchema.VariantType
+      return SourceSchema.VariantType
     }
 
     // Check for additionalProperties: true (free-form object)
@@ -181,34 +168,34 @@ object Parser {
     val hasProps = schema.getProperties != null && !schema.getProperties.isEmpty
 
     tpe match {
-      case Some("string")  => OpenAPISchema.StringType(Option(schema.getFormat))
-      case Some("integer") => OpenAPISchema.IntegerType(Option(schema.getFormat))
-      case Some("number")  => OpenAPISchema.NumberType(Option(schema.getFormat))
-      case Some("boolean") => OpenAPISchema.BooleanType
+      case Some("string")  => SourceSchema.StringType(Option(schema.getFormat))
+      case Some("integer") => SourceSchema.IntegerType(Option(schema.getFormat))
+      case Some("number")  => SourceSchema.NumberType(Option(schema.getFormat))
+      case Some("boolean") => SourceSchema.BooleanType
       case Some("array") =>
-        val items = Option(schema.getItems).map(convertSchema).getOrElse(OpenAPISchema.UnknownType)
-        OpenAPISchema.ArrayType(items)
+        val items = Option(schema.getItems).map(convertSchema).getOrElse(SourceSchema.UnknownType)
+        SourceSchema.ArrayType(items)
       case Some("object") if hasProps && !hasAdditionalProps =>
         // Object with defined properties - flatten to typed columns
         val props = schema.getProperties.asScala.map {
           case (name, propSchema) => name -> convertSchema(propSchema)
         }.toMap
         val required = Option(schema.getRequired).map(_.asScala.toSet).getOrElse(Set.empty)
-        OpenAPISchema.ObjectType(props, required)
+        SourceSchema.ObjectType(props, required)
       case Some("object") =>
         // Object with additionalProperties or no properties - VARIANT
-        OpenAPISchema.VariantType
+        SourceSchema.VariantType
       case None if hasProps =>
         // Missing type but has properties - treat as object
         val props = schema.getProperties.asScala.map {
           case (name, propSchema) => name -> convertSchema(propSchema)
         }.toMap
         val required = Option(schema.getRequired).map(_.asScala.toSet).getOrElse(Set.empty)
-        OpenAPISchema.ObjectType(props, required)
+        SourceSchema.ObjectType(props, required)
       case None =>
         // Empty schema {} or missing type entirely - VARIANT
-        OpenAPISchema.VariantType
-      case _ => OpenAPISchema.UnknownType
+        SourceSchema.VariantType
+      case _ => SourceSchema.UnknownType
     }
   }
 }

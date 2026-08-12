@@ -1,7 +1,7 @@
 package com.apilytics.core.schema
 
 import com.apilytics.core.config.SchemaMode
-import com.apilytics.core.openapi.OpenAPISchema
+import com.apilytics.core.schema.SourceSchema
 import munit.FunSuite
 import org.apache.arrow.vector.types.pojo.ArrowType
 
@@ -10,12 +10,12 @@ import scala.jdk.CollectionConverters._
 class SchemaMapperSuite extends FunSuite {
 
   test("flat object maps to correct Arrow types") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "name" -> OpenAPISchema.StringType(),
-        "age" -> OpenAPISchema.IntegerType(),
-        "score" -> OpenAPISchema.NumberType(),
-        "active" -> OpenAPISchema.BooleanType
+        "name" -> SourceSchema.StringType(),
+        "age" -> SourceSchema.IntegerType(),
+        "score" -> SourceSchema.NumberType(),
+        "active" -> SourceSchema.BooleanType
       ),
       required = Set("name")
     )
@@ -41,13 +41,13 @@ class SchemaMapperSuite extends FunSuite {
   }
 
   test("nested object flattens with underscore naming") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "address" -> OpenAPISchema.ObjectType(
+        "id" -> SourceSchema.IntegerType(),
+        "address" -> SourceSchema.ObjectType(
           Map(
-            "city" -> OpenAPISchema.StringType(),
-            "zip" -> OpenAPISchema.StringType()
+            "city" -> SourceSchema.StringType(),
+            "zip" -> SourceSchema.StringType()
           )
         )
       )
@@ -61,10 +61,10 @@ class SchemaMapperSuite extends FunSuite {
   }
 
   test("json path metadata is set correctly for nested fields") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "address" -> OpenAPISchema.ObjectType(
-          Map("city" -> OpenAPISchema.StringType())
+        "address" -> SourceSchema.ObjectType(
+          Map("city" -> SourceSchema.StringType())
         )
       )
     )
@@ -76,12 +76,12 @@ class SchemaMapperSuite extends FunSuite {
   }
 
   test("beyond maxDepth objects become VARCHAR") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "deep" -> OpenAPISchema.ObjectType(
+        "deep" -> SourceSchema.ObjectType(
           Map(
-            "nested" -> OpenAPISchema.ObjectType(
-              Map("value" -> OpenAPISchema.StringType())
+            "nested" -> SourceSchema.ObjectType(
+              Map("value" -> SourceSchema.StringType())
             )
           )
         )
@@ -96,8 +96,8 @@ class SchemaMapperSuite extends FunSuite {
   }
 
   test("array fields become VARCHAR") {
-    val schema = OpenAPISchema.ObjectType(
-      Map("tags" -> OpenAPISchema.ArrayType(OpenAPISchema.StringType()))
+    val schema = SourceSchema.ObjectType(
+      Map("tags" -> SourceSchema.ArrayType(SourceSchema.StringType()))
     )
 
     val arrow = SchemaMapper.toArrowSchema(schema)
@@ -107,10 +107,10 @@ class SchemaMapperSuite extends FunSuite {
   }
 
   test("date and datetime formats map correctly") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "birthday" -> OpenAPISchema.StringType(Some("date")),
-        "created_at" -> OpenAPISchema.StringType(Some("date-time"))
+        "birthday" -> SourceSchema.StringType(Some("date")),
+        "created_at" -> SourceSchema.StringType(Some("date-time"))
       )
     )
 
@@ -125,11 +125,11 @@ class SchemaMapperSuite extends FunSuite {
   }
 
   test("flattening collision throws IllegalArgumentException") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "user_name" -> OpenAPISchema.StringType(),
-        "user" -> OpenAPISchema.ObjectType(
-          Map("name" -> OpenAPISchema.StringType())
+        "user_name" -> SourceSchema.StringType(),
+        "user" -> SourceSchema.ObjectType(
+          Map("name" -> SourceSchema.StringType())
         )
       )
     )
@@ -140,8 +140,8 @@ class SchemaMapperSuite extends FunSuite {
   }
 
   test("int64 format maps to 64-bit int") {
-    val schema = OpenAPISchema.ObjectType(
-      Map("big_id" -> OpenAPISchema.IntegerType(Some("int64")))
+    val schema = SourceSchema.ObjectType(
+      Map("big_id" -> SourceSchema.IntegerType(Some("int64")))
     )
 
     val arrow = SchemaMapper.toArrowSchema(schema)
@@ -150,10 +150,10 @@ class SchemaMapperSuite extends FunSuite {
   }
 
   test("VariantType maps to VARCHAR") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "metadata" -> OpenAPISchema.VariantType
+        "id" -> SourceSchema.IntegerType(),
+        "metadata" -> SourceSchema.VariantType
       )
     )
 
@@ -163,10 +163,10 @@ class SchemaMapperSuite extends FunSuite {
   }
 
   test("empty object maps to VARCHAR") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "extra" -> OpenAPISchema.ObjectType(Map.empty)
+        "id" -> SourceSchema.IntegerType(),
+        "extra" -> SourceSchema.ObjectType(Map.empty)
       )
     )
 
@@ -180,11 +180,11 @@ class SchemaMapperSuite extends FunSuite {
   // ==========================================================================
 
   test("variant mode produces single 'value' column") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "name" -> OpenAPISchema.StringType(),
-        "nested" -> OpenAPISchema.ObjectType(Map("x" -> OpenAPISchema.IntegerType()))
+        "id" -> SourceSchema.IntegerType(),
+        "name" -> SourceSchema.StringType(),
+        "nested" -> SourceSchema.ObjectType(Map("x" -> SourceSchema.IntegerType()))
       )
     )
 
@@ -198,10 +198,10 @@ class SchemaMapperSuite extends FunSuite {
   }
 
   test("strict mode uses normal flattening") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "name" -> OpenAPISchema.StringType()
+        "id" -> SourceSchema.IntegerType(),
+        "name" -> SourceSchema.StringType()
       )
     )
 

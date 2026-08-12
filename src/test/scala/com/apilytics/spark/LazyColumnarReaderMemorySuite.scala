@@ -1,7 +1,8 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config._
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema}
+import com.apilytics.core.openapi.Endpoint
+import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.client.WireMock._
@@ -30,11 +31,11 @@ class LazyColumnarReaderMemorySuite extends FunSuite {
 
   override def afterEach(context: AfterEach): Unit = server.stop()
 
-  private val recordSchema = OpenAPISchema.ObjectType(
+  private val recordSchema = SourceSchema.ObjectType(
     Map(
-      "id"      -> OpenAPISchema.IntegerType(),
-      "name"    -> OpenAPISchema.StringType(),
-      "payload" -> OpenAPISchema.StringType()
+      "id"      -> SourceSchema.IntegerType(),
+      "name"    -> SourceSchema.StringType(),
+      "payload" -> SourceSchema.StringType()
     )
   )
 

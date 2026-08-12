@@ -1,7 +1,8 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config._
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema}
+import com.apilytics.core.openapi.Endpoint
+import com.apilytics.core.schema.SourceSchema
 import com.typesafe.config.ConfigFactory
 import munit.FunSuite
 import org.apache.arrow.vector.types.pojo.{ArrowType, Field, FieldType, Schema => ArrowSchema}
@@ -18,7 +19,7 @@ class DateRangePartitioningSuite extends FunSuite {
   private val dummyEndpoint = Endpoint(
     path = "/events",
     operationId = Some("getEvents"),
-    responseSchema = OpenAPISchema.ObjectType(Map("id" -> OpenAPISchema.IntegerType())),
+    responseSchema = SourceSchema.ObjectType(Map("id" -> SourceSchema.IntegerType())),
     queryParams = Nil
   )
 

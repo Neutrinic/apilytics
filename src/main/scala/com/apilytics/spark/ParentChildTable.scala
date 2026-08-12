@@ -1,7 +1,8 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config.{SchemaMode, SourceConfig, TableConfig}
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema}
+import com.apilytics.core.openapi.Endpoint
+import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.sql.connector.catalog.{SupportsRead, Table, TableCapability}
@@ -31,7 +32,7 @@ class ParentChildTable(
     val parentTableName: String,
     val parentKey: String,
     val parentEndpoint: Endpoint,
-    val childResponseSchema: OpenAPISchema.ObjectType,
+    val childResponseSchema: SourceSchema.ObjectType,
     val tableConfig: TableConfig,
     val sourceConfig: SourceConfig,
     val baseUrl: String

@@ -1,7 +1,8 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config._
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, ParsedSpec, QueryParam}
+import com.apilytics.core.openapi.{Endpoint, ParsedSpec, QueryParam}
+import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import io.circe.Json
 import io.circe.parser._
@@ -21,15 +22,15 @@ class ExplodedArraySuite extends FunSuite {
   private val defaultAuth = AuthConfig(authType = AuthType.Bearer, token = Some("test"))
 
   test("findArrayFields identifies top-level array fields") {
-    val schema = OpenAPISchema.ObjectType(
+    val schema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "name" -> OpenAPISchema.StringType(),
-        "tags" -> OpenAPISchema.ArrayType(OpenAPISchema.StringType()),
-        "addresses" -> OpenAPISchema.ArrayType(
-          OpenAPISchema.ObjectType(Map(
-            "city" -> OpenAPISchema.StringType(),
-            "zip" -> OpenAPISchema.StringType()
+        "id" -> SourceSchema.IntegerType(),
+        "name" -> SourceSchema.StringType(),
+        "tags" -> SourceSchema.ArrayType(SourceSchema.StringType()),
+        "addresses" -> SourceSchema.ArrayType(
+          SourceSchema.ObjectType(Map(
+            "city" -> SourceSchema.StringType(),
+            "zip" -> SourceSchema.StringType()
           ))
         )
       )
@@ -40,18 +41,18 @@ class ExplodedArraySuite extends FunSuite {
 
     val tagField = arrayFields.find(_.fieldName == "tags").get
     assertEquals(tagField.jsonPath, List("tags"))
-    assert(tagField.itemSchema.isInstanceOf[OpenAPISchema.StringType])
+    assert(tagField.itemSchema.isInstanceOf[SourceSchema.StringType])
 
     val addrField = arrayFields.find(_.fieldName == "addresses").get
-    assert(addrField.itemSchema.isInstanceOf[OpenAPISchema.ObjectType])
+    assert(addrField.itemSchema.isInstanceOf[SourceSchema.ObjectType])
   }
 
   test("ExplodedArrayTable builds schema with parent fields and exploded element") {
-    val responseSchema = OpenAPISchema.ObjectType(
+    val responseSchema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "name" -> OpenAPISchema.StringType(),
-        "tags" -> OpenAPISchema.ArrayType(OpenAPISchema.StringType())
+        "id" -> SourceSchema.IntegerType(),
+        "name" -> SourceSchema.StringType(),
+        "tags" -> SourceSchema.ArrayType(SourceSchema.StringType())
       )
     )
 
@@ -95,13 +96,13 @@ class ExplodedArraySuite extends FunSuite {
   }
 
   test("ExplodedArrayTable with object array includes flattened element fields") {
-    val responseSchema = OpenAPISchema.ObjectType(
+    val responseSchema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "addresses" -> OpenAPISchema.ArrayType(
-          OpenAPISchema.ObjectType(Map(
-            "city" -> OpenAPISchema.StringType(),
-            "zip" -> OpenAPISchema.StringType()
+        "id" -> SourceSchema.IntegerType(),
+        "addresses" -> SourceSchema.ArrayType(
+          SourceSchema.ObjectType(Map(
+            "city" -> SourceSchema.StringType(),
+            "zip" -> SourceSchema.StringType()
           ))
         )
       )
@@ -146,10 +147,10 @@ class ExplodedArraySuite extends FunSuite {
 
   test("tableNames includes exploded views when arrayHandling is ExplodeView") {
     // This test verifies the catalog logic for generating table names
-    val responseSchema = OpenAPISchema.ObjectType(
+    val responseSchema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "tags" -> OpenAPISchema.ArrayType(OpenAPISchema.StringType())
+        "id" -> SourceSchema.IntegerType(),
+        "tags" -> SourceSchema.ArrayType(SourceSchema.StringType())
       )
     )
 
@@ -159,11 +160,11 @@ class ExplodedArraySuite extends FunSuite {
   }
 
   test("tableNames includes both base and exploded views when arrayHandling is Both") {
-    val responseSchema = OpenAPISchema.ObjectType(
+    val responseSchema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "tags" -> OpenAPISchema.ArrayType(OpenAPISchema.StringType()),
-        "roles" -> OpenAPISchema.ArrayType(OpenAPISchema.StringType())
+        "id" -> SourceSchema.IntegerType(),
+        "tags" -> SourceSchema.ArrayType(SourceSchema.StringType()),
+        "roles" -> SourceSchema.ArrayType(SourceSchema.StringType())
       )
     )
 
@@ -202,7 +203,7 @@ class ExplodedArraySuite extends FunSuite {
       endpoint = Endpoint(
         path = "/items",
         operationId = None,
-        responseSchema = OpenAPISchema.ObjectType(Map("id" -> OpenAPISchema.IntegerType())),
+        responseSchema = SourceSchema.ObjectType(Map("id" -> SourceSchema.IntegerType())),
         queryParams = Nil
       ),
       tableConfig = None,
@@ -224,11 +225,11 @@ class ExplodedArraySuite extends FunSuite {
 
   /** Create an ExplodedArrayTable and its ScanBuilder with optional filter configs. */
   private def mkBuilder(filters: List[FilterConfig] = Nil): ExplodedArrayScanBuilder = {
-    val responseSchema = OpenAPISchema.ObjectType(
+    val responseSchema = SourceSchema.ObjectType(
       Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "name" -> OpenAPISchema.StringType(),
-        "tags" -> OpenAPISchema.ArrayType(OpenAPISchema.StringType())
+        "id" -> SourceSchema.IntegerType(),
+        "name" -> SourceSchema.StringType(),
+        "tags" -> SourceSchema.ArrayType(SourceSchema.StringType())
       )
     )
     val endpoint = Endpoint(
