@@ -1,7 +1,8 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config._
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, QueryParam}
+import com.apilytics.core.openapi.{Endpoint, QueryParam}
+import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import munit.FunSuite
 import org.apache.spark.sql.connector.expressions.{Expression, Expressions}
@@ -263,8 +264,8 @@ class ParentChildSuite extends FunSuite {
   // --- ParentChildTable tests ---
 
   test("ParentChildTable extracts path parameter name from endpoint template") {
-    val parentSchema = OpenAPISchema.ObjectType(
-      Map("id" -> OpenAPISchema.IntegerType(), "name" -> OpenAPISchema.StringType())
+    val parentSchema = SourceSchema.ObjectType(
+      Map("id" -> SourceSchema.IntegerType(), "name" -> SourceSchema.StringType())
     )
     val parentEndpoint = Endpoint(
       path = "/customers",
@@ -303,8 +304,8 @@ class ParentChildSuite extends FunSuite {
   }
 
   test("ParentChildTable throws if endpoint has no path parameter") {
-    val parentSchema = OpenAPISchema.ObjectType(
-      Map("id" -> OpenAPISchema.IntegerType())
+    val parentSchema = SourceSchema.ObjectType(
+      Map("id" -> SourceSchema.IntegerType())
     )
     val parentEndpoint = Endpoint(
       path = "/customers",
@@ -342,11 +343,11 @@ class ParentChildSuite extends FunSuite {
   }
 
   test("ParentChildTable schema includes parent key column") {
-    val parentSchema = OpenAPISchema.ObjectType(
-      Map("id" -> OpenAPISchema.IntegerType(), "name" -> OpenAPISchema.StringType())
+    val parentSchema = SourceSchema.ObjectType(
+      Map("id" -> SourceSchema.IntegerType(), "name" -> SourceSchema.StringType())
     )
-    val childSchema = OpenAPISchema.ObjectType(
-      Map("order_id" -> OpenAPISchema.IntegerType(), "total" -> OpenAPISchema.NumberType())
+    val childSchema = SourceSchema.ObjectType(
+      Map("order_id" -> SourceSchema.IntegerType(), "total" -> SourceSchema.NumberType())
     )
     val parentEndpoint = Endpoint(
       path = "/customers",
@@ -392,11 +393,11 @@ class ParentChildSuite extends FunSuite {
   // --- ScanBuilder tests ---
 
   private def mkBuilder(filters: List[FilterConfig] = Nil): ParentChildScanBuilder = {
-    val parentSchema = OpenAPISchema.ObjectType(
-      Map("id" -> OpenAPISchema.IntegerType(), "name" -> OpenAPISchema.StringType())
+    val parentSchema = SourceSchema.ObjectType(
+      Map("id" -> SourceSchema.IntegerType(), "name" -> SourceSchema.StringType())
     )
-    val childSchema = OpenAPISchema.ObjectType(
-      Map("order_id" -> OpenAPISchema.IntegerType(), "status" -> OpenAPISchema.StringType())
+    val childSchema = SourceSchema.ObjectType(
+      Map("order_id" -> SourceSchema.IntegerType(), "status" -> SourceSchema.StringType())
     )
     val parentEndpoint = Endpoint(
       path = "/customers",
@@ -479,7 +480,7 @@ class ParentChildSuite extends FunSuite {
 
   test("ParentChildPartitionReaderFactory supports columnar reads") {
     val factory = new ParentChildPartitionReaderFactory()
-    val parentSchema = OpenAPISchema.ObjectType(Map("id" -> OpenAPISchema.IntegerType()))
+    val parentSchema = SourceSchema.ObjectType(Map("id" -> SourceSchema.IntegerType()))
     val partition = ParentChildInputPartition(
       childEndpointTemplate = "/customers/{customer_id}/orders",
       parentEndpoint = Endpoint(

@@ -2,7 +2,8 @@ package com.apilytics.spark
 
 import com.apilytics.core.config.{SchemaMode, SourceConfig, TableConfig}
 import org.slf4j.LoggerFactory
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema}
+import com.apilytics.core.openapi.Endpoint
+import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import com.apilytics.core.schema.SchemaMapper.ArrayFieldInfo
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
@@ -48,14 +49,14 @@ class ExplodedArrayTable(
     // For object arrays, this produces prefixed fields (e.g., addresses_city)
     // For primitive arrays, this produces a single field (e.g., tags)
     val itemSchema = SchemaMapper.toArrowSchemaWithMode(
-      OpenAPISchema.ObjectType(Map(arrayFieldName -> arrayFieldInfo.itemSchema), Set.empty),
+      SourceSchema.ObjectType(Map(arrayFieldName -> arrayFieldInfo.itemSchema), Set.empty),
       sourceConfig.schema.flattenDepth,
       effectiveMode
     )
 
     // Parent scalar fields (exclude the array field itself)
     val parentSchema = SchemaMapper.toArrowSchemaWithMode(
-      OpenAPISchema.ObjectType(
+      SourceSchema.ObjectType(
         endpoint.responseSchema.properties.filterNot(_._1 == arrayFieldName),
         endpoint.responseSchema.required
       ),

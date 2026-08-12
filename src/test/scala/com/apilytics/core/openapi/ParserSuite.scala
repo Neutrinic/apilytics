@@ -1,5 +1,7 @@
 package com.apilytics.core.openapi
 
+import com.apilytics.core.schema.SourceSchema
+
 import munit.FunSuite
 
 class ParserSuite extends FunSuite {
@@ -57,7 +59,7 @@ class ParserSuite extends FunSuite {
 
     val emailParam = ep.queryParams.find(_.name == "email").get
     assert(emailParam.required)
-    assert(emailParam.schema.isInstanceOf[OpenAPISchema.StringType])
+    assert(emailParam.schema.isInstanceOf[SourceSchema.StringType])
 
     val pageParam = ep.queryParams.find(_.name == "page").get
     assert(!pageParam.required)
@@ -67,10 +69,10 @@ class ParserSuite extends FunSuite {
     val result = Parser.parseContent(simpleSpec)
     val props = result.endpoints.head.responseSchema.properties
 
-    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
-    assertEquals(props("id").asInstanceOf[OpenAPISchema.IntegerType].format, Some("int64"))
-    assert(props("name").isInstanceOf[OpenAPISchema.StringType])
-    assertEquals(props("active"), OpenAPISchema.BooleanType)
+    assert(props("id").isInstanceOf[SourceSchema.IntegerType])
+    assertEquals(props("id").asInstanceOf[SourceSchema.IntegerType].format, Some("int64"))
+    assert(props("name").isInstanceOf[SourceSchema.StringType])
+    assertEquals(props("active"), SourceSchema.BooleanType)
   }
 
   test("parse extracts required fields") {
@@ -115,7 +117,7 @@ class ParserSuite extends FunSuite {
     assertEquals(result.endpoints.size, 1)
     val schema = result.endpoints.head.responseSchema
     assert(schema.properties.contains("data"))
-    assert(schema.properties("data").isInstanceOf[OpenAPISchema.ArrayType])
+    assert(schema.properties("data").isInstanceOf[SourceSchema.ArrayType])
   }
 
   test("POST-only endpoint is skipped") {
@@ -180,7 +182,7 @@ class ParserSuite extends FunSuite {
 
     val result = Parser.parseContent(spec)
     val props = result.endpoints.head.responseSchema.properties
-    assertEquals(props("metadata"), OpenAPISchema.VariantType)
+    assertEquals(props("metadata"), SourceSchema.VariantType)
   }
 
   test("empty object (no properties) produces VariantType") {
@@ -213,7 +215,7 @@ class ParserSuite extends FunSuite {
 
     val result = Parser.parseContent(spec)
     val props = result.endpoints.head.responseSchema.properties
-    assertEquals(props("extra"), OpenAPISchema.VariantType)
+    assertEquals(props("extra"), SourceSchema.VariantType)
   }
 
   test("missing type produces VariantType") {
@@ -246,7 +248,7 @@ class ParserSuite extends FunSuite {
 
     val result = Parser.parseContent(spec)
     val props = result.endpoints.head.responseSchema.properties
-    assertEquals(props("blob"), OpenAPISchema.VariantType)
+    assertEquals(props("blob"), SourceSchema.VariantType)
   }
 
   test("oneOf produces VariantType") {
@@ -284,7 +286,7 @@ class ParserSuite extends FunSuite {
 
     val result = Parser.parseContent(spec)
     val props = result.endpoints.head.responseSchema.properties
-    assertEquals(props("value"), OpenAPISchema.VariantType)
+    assertEquals(props("value"), SourceSchema.VariantType)
   }
 
   test("anyOf produces VariantType") {
@@ -322,7 +324,7 @@ class ParserSuite extends FunSuite {
 
     val result = Parser.parseContent(spec)
     val props = result.endpoints.head.responseSchema.properties
-    assertEquals(props("payload"), OpenAPISchema.VariantType)
+    assertEquals(props("payload"), SourceSchema.VariantType)
   }
 
   // ==========================================================================
@@ -363,8 +365,8 @@ class ParserSuite extends FunSuite {
     // swagger-parser converts type array to the first non-null type
     // If it doesn't, we'd get UnknownType or VariantType
     assert(
-      props("nickname").isInstanceOf[OpenAPISchema.StringType] ||
-      props("nickname") == OpenAPISchema.VariantType,
+      props("nickname").isInstanceOf[SourceSchema.StringType] ||
+      props("nickname") == SourceSchema.VariantType,
       s"Expected StringType or VariantType for nullable string, got ${props("nickname")}"
     )
   }
@@ -401,8 +403,8 @@ class ParserSuite extends FunSuite {
     assertEquals(result.endpoints.size, 1)
     assertEquals(result.endpoints.head.path, "/users")
     val props = result.endpoints.head.responseSchema.properties
-    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
-    assert(props("name").isInstanceOf[OpenAPISchema.StringType])
+    assert(props("id").isInstanceOf[SourceSchema.IntegerType])
+    assert(props("name").isInstanceOf[SourceSchema.StringType])
   }
 
   test("OpenAPI 3.1: exclusiveMinimum as number (not boolean) parses") {
@@ -440,7 +442,7 @@ class ParserSuite extends FunSuite {
     val result = Parser.parseContent(spec)
     val props = result.endpoints.head.responseSchema.properties
     // Should still parse as integer, exclusiveMinimum is just validation metadata
-    assert(props("count").isInstanceOf[OpenAPISchema.IntegerType])
+    assert(props("count").isInstanceOf[SourceSchema.IntegerType])
   }
 
   test("OpenAPI 3.1: const value parses") {
@@ -475,8 +477,8 @@ class ParserSuite extends FunSuite {
     val result = Parser.parseContent(spec)
     val props = result.endpoints.head.responseSchema.properties
     // const is validation metadata, type should still be string
-    assert(props("version").isInstanceOf[OpenAPISchema.StringType])
-    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
+    assert(props("version").isInstanceOf[SourceSchema.StringType])
+    assert(props("id").isInstanceOf[SourceSchema.IntegerType])
   }
 
   test("OpenAPI 3.1: $defs at root level is NOT supported by swagger-parser".ignore) {
@@ -553,7 +555,7 @@ class ParserSuite extends FunSuite {
     val result = Parser.parseContent(spec)
     val props = result.endpoints.head.responseSchema.properties
     // Union of string|integer should be VariantType, not StringType
-    assertEquals(props("value"), OpenAPISchema.VariantType)
+    assertEquals(props("value"), SourceSchema.VariantType)
   }
 
   test("OpenAPI 3.1: components/schemas references work") {
@@ -594,8 +596,8 @@ class ParserSuite extends FunSuite {
     val result = Parser.parseContent(spec)
     assertEquals(result.endpoints.size, 1)
     val props = result.endpoints.head.responseSchema.properties
-    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
-    assert(props("name").isInstanceOf[OpenAPISchema.StringType])
+    assert(props("id").isInstanceOf[SourceSchema.IntegerType])
+    assert(props("name").isInstanceOf[SourceSchema.StringType])
   }
 
   // ==========================================================================
@@ -637,8 +639,8 @@ class ParserSuite extends FunSuite {
     assertEquals(result.endpoints.size, 1)
     assertEquals(result.endpoints.head.path, "/users")
     val props = result.endpoints.head.responseSchema.properties
-    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
-    assert(props("name").isInstanceOf[OpenAPISchema.StringType])
+    assert(props("id").isInstanceOf[SourceSchema.IntegerType])
+    assert(props("name").isInstanceOf[SourceSchema.StringType])
   }
 
   test("Swagger 2.0: array response parses") {
@@ -749,8 +751,8 @@ class ParserSuite extends FunSuite {
     val result = Parser.parseContent(spec)
     assertEquals(result.endpoints.size, 1)
     val props = result.endpoints.head.responseSchema.properties
-    assert(props("id").isInstanceOf[OpenAPISchema.IntegerType])
-    assert(props("email").isInstanceOf[OpenAPISchema.StringType])
+    assert(props("id").isInstanceOf[SourceSchema.IntegerType])
+    assert(props("email").isInstanceOf[SourceSchema.StringType])
   }
 
   test("Swagger 2.0: baseUrl is constructed from host/basePath/schemes") {

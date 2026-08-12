@@ -1,7 +1,8 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config.{ArrayHandling, Loader, SchemaMode, SourceConfig, TableConfig}
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, ParsedSpec, Parser, SpecCache}
+import com.apilytics.core.openapi.{Endpoint, ParsedSpec, Parser, SpecCache}
+import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.connector.catalog._
@@ -82,7 +83,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
             Endpoint(
               path = tc.endpoint,
               operationId = Some(tableName),
-              responseSchema = OpenAPISchema.ObjectType(Map.empty),
+              responseSchema = SourceSchema.ObjectType(Map.empty),
               queryParams = Nil
             )
           case None =>
@@ -124,26 +125,26 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
     * For array paths, returns the item schema.
     * E.g., "/results" on {results: array[Item]} returns Item schema.
     */
-  private def extractSchemaAtPath(schema: OpenAPISchema.ObjectType, path: String): Option[OpenAPISchema.ObjectType] = {
+  private def extractSchemaAtPath(schema: SourceSchema.ObjectType, path: String): Option[SourceSchema.ObjectType] = {
     val segments = path.stripPrefix("/").split("/").filter(_.nonEmpty).toList
 
-    def navigate(current: OpenAPISchema, remaining: List[String]): Option[OpenAPISchema.ObjectType] = {
+    def navigate(current: SourceSchema, remaining: List[String]): Option[SourceSchema.ObjectType] = {
       remaining match {
         case Nil =>
           current match {
-            case obj: OpenAPISchema.ObjectType => Some(obj)
-            case arr: OpenAPISchema.ArrayType =>
+            case obj: SourceSchema.ObjectType => Some(obj)
+            case arr: SourceSchema.ArrayType =>
               arr.items match {
-                case obj: OpenAPISchema.ObjectType => Some(obj)
+                case obj: SourceSchema.ObjectType => Some(obj)
                 case _ => None
               }
             case _ => None
           }
         case segment :: rest =>
           current match {
-            case obj: OpenAPISchema.ObjectType =>
+            case obj: SourceSchema.ObjectType =>
               obj.properties.get(segment).flatMap(navigate(_, rest))
-            case arr: OpenAPISchema.ArrayType =>
+            case arr: SourceSchema.ArrayType =>
               navigate(arr.items, segment :: rest)
             case _ => None
           }
@@ -307,7 +308,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
   /** Get the effective schema for a table, accounting for data-path extraction.
     * This is the schema used for exploded view generation.
     */
-  private def effectiveSchemaForTable(tableName: String): Option[OpenAPISchema.ObjectType] = {
+  private def effectiveSchemaForTable(tableName: String): Option[SourceSchema.ObjectType] = {
     findEndpointForTable(tableName).map { endpoint =>
       val tableConfig = config.tables.get(tableName)
       tableConfig.flatMap(_.dataPath) match {
@@ -323,9 +324,9 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
     * If the schema has a single "data" array property, return the item schema.
     * This handles APIs that return [{...}] which Parser wraps as {data: [{...}]}.
     */
-  private def unwrapSyntheticArrayWrapper(schema: OpenAPISchema.ObjectType): OpenAPISchema.ObjectType = {
+  private def unwrapSyntheticArrayWrapper(schema: SourceSchema.ObjectType): SourceSchema.ObjectType = {
     schema.properties.get("data") match {
-      case Some(OpenAPISchema.ArrayType(obj: OpenAPISchema.ObjectType))
+      case Some(SourceSchema.ArrayType(obj: SourceSchema.ObjectType))
           if schema.properties.size == 1 =>
         obj
       case _ =>

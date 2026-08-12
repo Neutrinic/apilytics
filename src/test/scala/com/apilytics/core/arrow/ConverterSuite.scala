@@ -1,6 +1,6 @@
 package com.apilytics.core.arrow
 
-import com.apilytics.core.openapi.OpenAPISchema
+import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import io.circe.Json
 import io.circe.parser._
@@ -49,7 +49,7 @@ class ConverterSuite extends FunSuite {
 
   test("toArrow converts string fields") {
     val schema = SchemaMapper.toArrowSchema(
-      OpenAPISchema.ObjectType(Map("name" -> OpenAPISchema.StringType()), Set("name"))
+      SourceSchema.ObjectType(Map("name" -> SourceSchema.StringType()), Set("name"))
     )
     val records = List(
       parse("""{"name": "Alice"}""").toOption.get,
@@ -67,7 +67,7 @@ class ConverterSuite extends FunSuite {
 
   test("toArrow converts integer fields") {
     val schema = SchemaMapper.toArrowSchema(
-      OpenAPISchema.ObjectType(Map("count" -> OpenAPISchema.IntegerType()))
+      SourceSchema.ObjectType(Map("count" -> SourceSchema.IntegerType()))
     )
     val records = List(parse("""{"count": 42}""").toOption.get)
 
@@ -80,7 +80,7 @@ class ConverterSuite extends FunSuite {
 
   test("toArrow converts boolean fields") {
     val schema = SchemaMapper.toArrowSchema(
-      OpenAPISchema.ObjectType(Map("active" -> OpenAPISchema.BooleanType))
+      SourceSchema.ObjectType(Map("active" -> SourceSchema.BooleanType))
     )
     val records = List(
       parse("""{"active": true}""").toOption.get,
@@ -97,7 +97,7 @@ class ConverterSuite extends FunSuite {
 
   test("toArrow handles null values") {
     val schema = SchemaMapper.toArrowSchema(
-      OpenAPISchema.ObjectType(Map("name" -> OpenAPISchema.StringType()))
+      SourceSchema.ObjectType(Map("name" -> SourceSchema.StringType()))
     )
     val records = List(parse("""{"name": null}""").toOption.get)
 
@@ -110,8 +110,8 @@ class ConverterSuite extends FunSuite {
 
   test("toArrow navigates nested fields via json path metadata") {
     val schema = SchemaMapper.toArrowSchema(
-      OpenAPISchema.ObjectType(Map(
-        "address" -> OpenAPISchema.ObjectType(Map("city" -> OpenAPISchema.StringType()))
+      SourceSchema.ObjectType(Map(
+        "address" -> SourceSchema.ObjectType(Map("city" -> SourceSchema.StringType()))
       ))
     )
     val records = List(parse("""{"address": {"city": "NYC"}}""").toOption.get)
@@ -125,7 +125,7 @@ class ConverterSuite extends FunSuite {
 
   test("toArrow converts float fields") {
     val schema = SchemaMapper.toArrowSchema(
-      OpenAPISchema.ObjectType(Map("score" -> OpenAPISchema.NumberType()))
+      SourceSchema.ObjectType(Map("score" -> SourceSchema.NumberType()))
     )
     val records = List(parse("""{"score": 3.14}""").toOption.get)
 
@@ -138,7 +138,7 @@ class ConverterSuite extends FunSuite {
 
   test("toArrow serializes arrays as JSON strings") {
     val schema = SchemaMapper.toArrowSchema(
-      OpenAPISchema.ObjectType(Map("tags" -> OpenAPISchema.ArrayType(OpenAPISchema.StringType())))
+      SourceSchema.ObjectType(Map("tags" -> SourceSchema.ArrayType(SourceSchema.StringType())))
     )
     val records = List(parse("""{"tags": ["a", "b"]}""").toOption.get)
 
@@ -152,9 +152,9 @@ class ConverterSuite extends FunSuite {
 
   test("toArrow serializes VARIANT fields as JSON strings") {
     val schema = SchemaMapper.toArrowSchema(
-      OpenAPISchema.ObjectType(Map(
-        "id" -> OpenAPISchema.IntegerType(),
-        "metadata" -> OpenAPISchema.VariantType
+      SourceSchema.ObjectType(Map(
+        "id" -> SourceSchema.IntegerType(),
+        "metadata" -> SourceSchema.VariantType
       ))
     )
     val records = List(

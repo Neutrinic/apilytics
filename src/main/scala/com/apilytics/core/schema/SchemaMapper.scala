@@ -1,7 +1,7 @@
 package com.apilytics.core.schema
 
 import com.apilytics.core.config.SchemaMode
-import com.apilytics.core.openapi.OpenAPISchema
+import com.apilytics.core.schema.SourceSchema
 import org.apache.arrow.vector.types.pojo.{ArrowType, Field, FieldType, Schema}
 
 import scala.jdk.CollectionConverters._
@@ -24,19 +24,19 @@ object SchemaMapper {
   final case class ArrayFieldInfo(
       fieldName: String,
       jsonPath: List[String],
-      itemSchema: OpenAPISchema
+      itemSchema: SourceSchema
   )
 
   /** Find all top-level array fields in an object schema. */
-  def findArrayFields(obj: OpenAPISchema.ObjectType): List[ArrayFieldInfo] = {
+  def findArrayFields(obj: SourceSchema.ObjectType): List[ArrayFieldInfo] = {
     obj.properties.toList.collect {
-      case (name, OpenAPISchema.ArrayType(itemSchema)) =>
+      case (name, SourceSchema.ArrayType(itemSchema)) =>
         ArrayFieldInfo(name, List(name), itemSchema)
     }
   }
 
   /** Convert an OpenAPI object schema to an Arrow Schema, flattening nested objects up to `maxDepth`. */
-  def toArrowSchema(obj: OpenAPISchema.ObjectType, maxDepth: Int = 2): Schema = {
+  def toArrowSchema(obj: SourceSchema.ObjectType, maxDepth: Int = 2): Schema = {
     val fields = flattenFields(obj.properties, obj.required, prefix = "", pathSegments = Nil, depth = 0, maxDepth = maxDepth)
     val duplicates = fields.groupBy(_.getName).collect { case (name, fs) if fs.size > 1 => name }
     if (duplicates.nonEmpty) {
@@ -53,7 +53,7 @@ object SchemaMapper {
     * - Strict: use OpenAPI schema with flattening, nested objects become STRING
     * - Variant: single "value" column as native VARIANT type
     */
-  def toArrowSchemaWithMode(obj: OpenAPISchema.ObjectType, maxDepth: Int, mode: SchemaMode): Schema = {
+  def toArrowSchemaWithMode(obj: SourceSchema.ObjectType, maxDepth: Int, mode: SchemaMode): Schema = {
     mode match {
       case SchemaMode.Variant => variantSchema()
       case SchemaMode.Strict  => toArrowSchema(obj, maxDepth)
@@ -70,7 +70,7 @@ object SchemaMapper {
   }
 
   private def flattenFields(
-      properties: Map[String, OpenAPISchema],
+      properties: Map[String, SourceSchema],
       required: Set[String],
       prefix: String,
       pathSegments: List[String],
@@ -83,42 +83,42 @@ object SchemaMapper {
       val nullable = !required.contains(name)
 
       schema match {
-        case OpenAPISchema.ObjectType(props, req) if props.nonEmpty && depth < maxDepth =>
+        case SourceSchema.ObjectType(props, req) if props.nonEmpty && depth < maxDepth =>
           flattenFields(props, req, fullName, segments, depth + 1, maxDepth)
 
-        case OpenAPISchema.ObjectType(props, _) if props.nonEmpty =>
+        case SourceSchema.ObjectType(props, _) if props.nonEmpty =>
           // Beyond maxDepth - serialize as JSON string
           List(field(fullName, new ArrowType.Utf8(), nullable, segments))
 
-        case OpenAPISchema.ObjectType(_, _) | OpenAPISchema.VariantType =>
+        case SourceSchema.ObjectType(_, _) | SourceSchema.VariantType =>
           // Empty object or VARIANT (additionalProperties, anyOf, oneOf, missing type)
           List(field(fullName, new ArrowType.Utf8(), nullable, segments))
 
-        case OpenAPISchema.ArrayType(_) =>
+        case SourceSchema.ArrayType(_) =>
           List(field(fullName, new ArrowType.Utf8(), nullable, segments))
 
-        case OpenAPISchema.StringType(Some("date")) =>
+        case SourceSchema.StringType(Some("date")) =>
           List(field(fullName, new ArrowType.Date(org.apache.arrow.vector.types.DateUnit.DAY), nullable, segments))
 
-        case OpenAPISchema.StringType(Some("date-time")) =>
+        case SourceSchema.StringType(Some("date-time")) =>
           List(field(fullName, new ArrowType.Timestamp(org.apache.arrow.vector.types.TimeUnit.MICROSECOND, "UTC"), nullable, segments))
 
-        case OpenAPISchema.StringType(_) =>
+        case SourceSchema.StringType(_) =>
           List(field(fullName, new ArrowType.Utf8(), nullable, segments))
 
-        case OpenAPISchema.IntegerType(Some("int64")) =>
+        case SourceSchema.IntegerType(Some("int64")) =>
           List(field(fullName, new ArrowType.Int(64, true), nullable, segments))
 
-        case OpenAPISchema.IntegerType(_) =>
+        case SourceSchema.IntegerType(_) =>
           List(field(fullName, new ArrowType.Int(32, true), nullable, segments))
 
-        case OpenAPISchema.NumberType(_) =>
+        case SourceSchema.NumberType(_) =>
           List(field(fullName, new ArrowType.FloatingPoint(org.apache.arrow.vector.types.FloatingPointPrecision.DOUBLE), nullable, segments))
 
-        case OpenAPISchema.BooleanType =>
+        case SourceSchema.BooleanType =>
           List(field(fullName, new ArrowType.Bool(), nullable, segments))
 
-        case OpenAPISchema.UnknownType =>
+        case SourceSchema.UnknownType =>
           List(field(fullName, new ArrowType.Utf8(), nullable, segments))
       }
     }

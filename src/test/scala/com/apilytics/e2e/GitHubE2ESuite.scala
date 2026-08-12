@@ -5,7 +5,8 @@ import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.config._
 import com.apilytics.core.http.{Client, Paginator}
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema, Parser}
+import com.apilytics.core.openapi.{Endpoint, Parser}
+import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import munit.FunSuite
 import org.apache.arrow.memory.RootAllocator
@@ -30,9 +31,9 @@ class GitHubE2ESuite extends FunSuite {
 
   /** The array response gets wrapped by Parser as ObjectType(Map("data" -> ArrayType(itemSchema))).
     * Extract the item ObjectType for Arrow schema mapping. */
-  private def itemSchema(ep: Endpoint): OpenAPISchema.ObjectType = {
+  private def itemSchema(ep: Endpoint): SourceSchema.ObjectType = {
     ep.responseSchema.properties("data") match {
-      case OpenAPISchema.ArrayType(obj: OpenAPISchema.ObjectType) => obj
+      case SourceSchema.ArrayType(obj: SourceSchema.ObjectType) => obj
       case other => throw new IllegalStateException(s"Expected ArrayType(ObjectType) but got $other")
     }
   }

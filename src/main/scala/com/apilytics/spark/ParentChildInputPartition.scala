@@ -1,13 +1,14 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config.{SourceConfig, TableConfig}
-import com.apilytics.core.openapi.{Endpoint, OpenAPISchema}
+import com.apilytics.core.openapi.Endpoint
+import com.apilytics.core.schema.SourceSchema
 import org.apache.spark.sql.connector.read.InputPartition
 
 case class ParentChildInputPartition(
     childEndpointTemplate: String,
     parentEndpoint: Endpoint,
-    childResponseSchema: OpenAPISchema.ObjectType,
+    childResponseSchema: SourceSchema.ObjectType,
     parentKey: String,
     pathParamName: String,
     parentKeyColumn: String,
