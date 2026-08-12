@@ -1,6 +1,12 @@
 name: Security
 
 on:
+  # Runs on PRs so a dependency change is caught before it reaches main. Without
+  # this the scan only ever reported after the fact, and a green CI was repeatedly
+  # mistaken for a clean build (#185, #193). Viable only alongside the caching
+  # below — gating PRs on a multi-hour job would not be.
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   schedule:
