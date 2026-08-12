@@ -1,15 +1,31 @@
 name: Security
 
 on:
+  # Runs on PRs so a dependency change is caught before it reaches main. Without
+  # this the scan only ever reported after the fact, and a green CI was repeatedly
+  # mistaken for a clean build (#185, #193). Viable only alongside the caching
+  # below — gating PRs on a multi-hour job would not be.
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   schedule:
     - cron: '0 8 * * 1'  # Monday 8am UTC
   workflow_dispatch:
 
+# Each run re-scans from scratch, so a queue of runs on the same ref is pure waste —
+# only the newest result is meaningful. Without this, merges stack multi-hour runs
+# and exhaust the GitHub API rate limit.
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   dependency-check:
     runs-on: ubuntu-latest
+    # Runs have taken up to 5 hours against the 6h job ceiling. Fail visibly rather
+    # than silently burning the budget.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v7
@@ -18,13 +34,42 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+          cache: sbt
 
       - uses: sbt/setup-sbt@v1
+
+      # Key by ISO week so the NVD database refreshes weekly; restore-keys lets a
+      # stale copy seed the run so dependency-check does an incremental update
+      # instead of pulling the full ~300k-CVE feed again.
+      - name: Compute cache key
+        id: cachekey
+        run: echo "week=$(date -u +%Y-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache NVD database
+        uses: actions/cache@v4
+        with:
+          # The data directory is not configurable from this plugin version, so cover
+          # the plausible locations; missing paths are ignored. The "Locate NVD
+          # database" step below reports the real one so this can be narrowed.
+          path: |
+            ~/.dependency-check
+            ~/.m2/repository/org/owasp
+            ~/.cache/dependency-check
+            ~/.local/share/dependency-check
+          key: nvd-${{ runner.os }}-${{ steps.cachekey.outputs.week }}
+          restore-keys: |
+            nvd-${{ runner.os }}-
 
       - name: OWASP Dependency Check
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: sbt dependencyCheck
+
+      # Temporary: confirms which path actually holds the database so the cache above
+      # can be narrowed to it. Remove once known.
+      - name: Locate NVD database
+        if: always()
+        run: find ~ -name 'odc.mv.db' -o -name '*.h2.db' 2>/dev/null | head -5 || true
 
       - name: Upload report
         if: always()
