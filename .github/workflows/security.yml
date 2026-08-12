@@ -23,9 +23,10 @@ concurrency:
 jobs:
   dependency-check:
     runs-on: ubuntu-latest
-    # Runs have taken up to 5 hours against the 6h job ceiling. Fail visibly rather
-    # than silently burning the budget.
-    timeout-minutes: 45
+    # A cold NVD sync does not fit in 45 minutes. Kept well under the 6h ceiling,
+    # but generous enough that the first run can finish and populate the cache —
+    # with the split restore/save below, later runs should land in minutes.
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v7
@@ -45,8 +46,13 @@ jobs:
         id: cachekey
         run: echo "week=$(date -u +%Y-%V)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache NVD database
-        uses: actions/cache@v4
+      # Restore and save are split deliberately. The combined `actions/cache` action
+      # only writes in its post-step, which is *skipped* when the job is cancelled —
+      # so a timeout meant the cache was never written, the next run started cold,
+      # timed out too, and the cache could never warm up. Saving with `if: always()`
+      # persists whatever the sync managed, so runs make progress across attempts.
+      - name: Restore NVD database
+        uses: actions/cache/restore@v4
         with:
           # The data directory is not configurable from this plugin version, so cover
           # the plausible locations; missing paths are ignored. The "Locate NVD
@@ -64,6 +70,21 @@ jobs:
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: sbt dependencyCheck
+
+      # `if: always()` is the point of splitting restore/save — this must run even
+      # when the scan above is cancelled or fails, otherwise the cache never warms.
+      # The run_id suffix keeps the key unique so a save can never collide; the
+      # restore step's prefix `restore-keys` picks up the most recent one.
+      - name: Save NVD database
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.dependency-check
+            ~/.m2/repository/org/owasp
+            ~/.cache/dependency-check
+            ~/.local/share/dependency-check
+          key: nvd-${{ runner.os }}-${{ steps.cachekey.outputs.week }}-${{ github.run_id }}
 
       # Temporary: confirms which path actually holds the database so the cache above
       # can be narrowed to it. Remove once known.
