@@ -12,17 +12,6 @@
   </suppress>
 
   <!--
-    Netty 4.1.114 is a transitive dep from http4s-ember-client.
-    The http4s version we use bundles this; upgrading requires an http4s bump.
-    Suppressed until next http4s upgrade.
-  -->
-  <suppress>
-    <notes>Netty transitive from http4s-ember, awaiting upstream bump</notes>
-    <filePath regex="true">.*netty-(buffer|common)-4\.1\.114.*\.jar</filePath>
-    <vulnerabilityName regex="true">.*</vulnerabilityName>
-  </suppress>
-
-  <!--
     commons-lang3 3.14.0 is a transitive dep from swagger-parser.
     The CVE is in the Spark-provided copy too; this version isn't shipped
     in the assembly JAR (shaded out by assembly merge strategy).
