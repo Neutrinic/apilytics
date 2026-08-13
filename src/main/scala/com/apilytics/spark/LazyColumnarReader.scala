@@ -84,10 +84,20 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
   private[apilytics] def peakAllocatedBytes: Long = allocator.getPeakMemoryAllocation
 
   override def close(): Unit = {
-    // 1. Cancel producer fiber (stops pagination mid-stream if needed)
-    producer.cancel.unsafeRunSync()
+    // 1. Cancel the producer, draining concurrently so cancellation can complete.
+    //
+    // The producer's `guarantee` finalizer offers the end-of-stream sentinel, and
+    // `guarantee` finalizers are uncancelable. `Fiber.cancel` waits for finalization.
+    // So if the queue is full when Spark stops early — a satisfied LIMIT, a failed
+    // task — that offer blocks forever and `cancel` never returns, deadlocking
+    // close(). Draining alongside cancellation keeps a slot free for the sentinel.
+    (for {
+      drainer <- drainLoop.start
+      _       <- producer.cancel
+      _       <- drainer.cancel
+    } yield ()).unsafeRunSync()
 
-    // 2. Drain any remaining queued items
+    // 2. Sweep anything offered between the drainer stopping and now
     drainQueue()
 
     // 3. Close current batch + root
@@ -100,6 +110,24 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
     // 5. Close Arrow allocator (verifies all memory released)
     allocator.close()
   }
+
+  /** Continuously take and release queued batches until cancelled.
+    *
+    * Runs only during close(), to keep the bounded queue from blocking the producer's
+    * uncancelable finalizer. Batches taken here are released rather than handed on —
+    * close() means Spark is done reading.
+    */
+  private def drainLoop: IO[Unit] =
+    queue.take.flatMap { item =>
+      IO {
+        item.foreach {
+          case Right((batch, root)) =>
+            batch.close()
+            if (root != null) root.close()
+          case Left(_) => // errors are irrelevant once we are closing
+        }
+      }.flatMap(_ => drainLoop)
+    }
 
   private def drainQueue(): Unit = {
     var item = queue.tryTake.unsafeRunSync()
