@@ -1,14 +1,12 @@
 name: Security
 
+# Advisory only — weekly and on demand, never on PRs or pushes.
+#
+# This scan does not gate anything (see continue-on-error below), so running it per
+# PR or per merge only spent CI time on a report nobody was blocked by. Actual
+# vulnerability gating for Scala dependencies is tracked in #199 (SBOM + OSV), which
+# matches by package coordinates instead of guessing CPEs.
 on:
-  # Runs on PRs so a dependency change is caught before it reaches main. Without
-  # this the scan only ever reported after the fact, and a green CI was repeatedly
-  # mistaken for a clean build (#185, #193). Viable only alongside the caching
-  # below — gating PRs on a multi-hour job would not be.
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
   schedule:
     - cron: '0 8 * * 1'  # Monday 8am UTC
   workflow_dispatch:
