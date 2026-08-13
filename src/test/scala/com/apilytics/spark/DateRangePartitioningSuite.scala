@@ -557,6 +557,67 @@ class DateRangePartitioningSuite extends FunSuite {
     }
   }
 
+  /** Build an enum-partitioned scan with `n` values and the given rate limit. */
+  private def enumScanWith(values: List[String], rateLimit: Int): RESTScan = {
+    val tableConfig = TableConfig(
+      endpoint = "/items",
+      partition = Some(PartitionConfig.Enum(param = "status", values = values))
+    )
+    val table = new RESTTable(
+      tableName = "items",
+      arrowSchema = dummySchema,
+      endpoint = dummyEndpoint,
+      tableConfig = Some(tableConfig),
+      sourceConfig = dummySourceConfig.copy(
+        http = HttpConfig(maxBackoff = 30.seconds, timeout = 30.seconds, rateLimit = Some(rateLimit))
+      ),
+      baseUrl = "https://api.example.com"
+    )
+    new RESTScan(
+      table = table,
+      arrowSchema = dummySchema,
+      prunedSchema = None,
+      pushedParams = Map.empty,
+      pushedLimit = None
+    )
+  }
+
+  test("Rate limit remainder is distributed, not truncated away") {
+    // 15 / 4 truncates to 3 each = 12 rps, silently wasting a fifth of the budget.
+    val scan = enumScanWith(List("a", "b", "c", "d"), rateLimit = 15)
+    val shares = scan.planInputPartitions()
+      .map(_.asInstanceOf[RESTInputPartition].effectiveRateLimit.get)
+      .toList
+
+    assertEquals(shares.sum, 15, s"shares must sum to the configured limit, got $shares")
+    assertEquals(shares.sorted, List(3, 4, 4, 4))
+  }
+
+  test("Rate limit shares never exceed the configured limit") {
+    // The aggregate is the property that matters — it is what the API sees.
+    List(1, 5, 7, 16, 100).foreach { limit =>
+      val values = List("a", "b", "c", "d", "e")
+      if (limit >= values.size) {
+        val shares = enumScanWith(values, limit).planInputPartitions()
+          .map(_.asInstanceOf[RESTInputPartition].effectiveRateLimit.get)
+        assertEquals(shares.sum, limit, s"limit=$limit produced ${shares.toList}")
+        assert(shares.forall(_ >= 1), s"every partition needs at least 1 rps, got ${shares.toList}")
+      }
+    }
+  }
+
+  test("Rate limit below partition count fails fast instead of exceeding the limit") {
+    // Previously this fell back to 1 rps per partition: 5 configured, 10 partitions,
+    // 10 rps actual. Double the limit the setting exists to enforce.
+    val values = (1 to 10).map(_.toString).toList
+    val ex = intercept[IllegalArgumentException] {
+      enumScanWith(values, rateLimit = 5).planInputPartitions()
+    }
+    assert(ex.getMessage.contains("rate-limit is 5 rps"), ex.getMessage)
+    assert(ex.getMessage.contains("10 partitions"), ex.getMessage)
+    assert(ex.getMessage.contains("exceeding the configured limit"), ex.getMessage)
+  }
+
   test("Loader validates enum partition requires param") {
     val config = ConfigFactory.parseString(
       """
