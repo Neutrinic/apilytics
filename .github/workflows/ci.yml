@@ -62,7 +62,8 @@ jobs:
           chmod +x "$RUNNER_TEMP/osv-scanner"
 
       - name: Scan dependencies
-        run: "$RUNNER_TEMP/osv-scanner" scan source -L bom.cdx.json
+        run: |
+          "$RUNNER_TEMP/osv-scanner" scan source -L bom.cdx.json
 
       - name: Upload SBOM
         if: always()
