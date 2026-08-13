@@ -243,9 +243,32 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI specs (Swag
 - **Parent-child joins** - chain API calls (e.g., fetch issues then comments for each)
 - **Batch joins** - reduce API calls from O(n) to O(n/batch_size) for bulk lookups
 - **Parallel partitioning** - date-range or enum partitioning for concurrent reads
-- **Rate limiting** - configurable requests per second with automatic distribution across partitions
+- **Rate limiting** - configurable requests per second, divided across partitions ([see below](#rate-limiting))
 - **Retry with backoff** - exponential backoff for transient failures (429, 5xx)
 - **Checkpoint support** - incremental reads via cursor, offset, or timestamp tracking
+
+### Rate limiting
+
+`rate-limit` is a **ceiling, not a target**. The configured limit is divided across
+partitions at planning time — 15 rps over 4 partitions becomes `4+4+4+3` — and each
+partition throttles itself to its own share.
+
+What that guarantees, and what it does not:
+
+- **The limit is never exceeded.** Shares always sum to exactly the configured value.
+- **It is not coordinated across executors.** There is no shared token bucket; each
+  partition simply obeys its share.
+- **You may use less than you configured.** The division assumes every partition runs
+  at once. If your cluster runs fewer tasks concurrently than there are partitions,
+  the real rate is proportionally lower — 10 partitions on 2 cores uses roughly a
+  fifth of the budget.
+- **`rate-limit` must be at least the partition count**, since a partition cannot be
+  given less than 1 rps. Planning fails with a clear message otherwise rather than
+  quietly exceeding the limit.
+
+If you need a true global limit under arbitrary cluster shapes, that needs
+driver-coordinated permits — tracked in
+[#205](https://github.com/Neutrinic/apilytics/issues/205).
 
 ## Logging & Debugging
 

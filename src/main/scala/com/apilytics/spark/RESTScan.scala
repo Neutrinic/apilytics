@@ -95,19 +95,19 @@ class RESTScan(
     val paramName = config.param
     val values = config.values
     val numPartitions = values.size
-    val effectiveRateLimit = calculateEffectiveRateLimit(numPartitions)
+    val shares = rateLimitShares(numPartitions)
 
-    effectiveRateLimit match {
-      case Some(limit) =>
+    shares match {
+      case Some(s) =>
         logInfo(s"Partitioning by enum '$paramName' into $numPartitions partitions: ${values.mkString(", ")}, " +
-          s"rate limit distributed: ${table.sourceConfig.http.rateLimit.get} / $numPartitions = $limit rps per partition")
+          s"rate limit ${s.sum} rps distributed as ${s.mkString("+")}")
       case None =>
         logInfo(s"Partitioning by enum '$paramName' into $numPartitions partitions: ${values.mkString(", ")}")
     }
 
-    values.map { value =>
+    values.zipWithIndex.map { case (value, idx) =>
       val partitionParams = pushedParams.updated(paramName, value)
-      makePartition(partitionParams, effectiveRateLimit)
+      makePartition(partitionParams, shares.map(_(idx)))
     }.toArray
   }
 
@@ -151,17 +151,17 @@ class RESTScan(
         Some(Array.empty)
       } else {
         val numPartitions = ranges.size
-        val effectiveRateLimit = calculateEffectiveRateLimit(numPartitions)
+        val shares = rateLimitShares(numPartitions)
 
-        effectiveRateLimit match {
-          case Some(limit) =>
+        shares match {
+          case Some(s) =>
             logInfo(s"Partitioning into $numPartitions date ranges (${config.range} each), " +
-              s"rate limit distributed: ${table.sourceConfig.http.rateLimit.get} / $numPartitions = $limit rps per partition")
+              s"rate limit ${s.sum} rps distributed as ${s.mkString("+")}")
           case None =>
             logInfo(s"Partitioning into $numPartitions date ranges (${config.range} each)")
         }
 
-        Some(ranges.map { case (rangeStart, rangeEnd) =>
+        Some(ranges.zipWithIndex.map { case ((rangeStart, rangeEnd), idx) =>
           val startStr = formatter.format(Instant.ofEpochMilli(rangeStart))
           val endStr = formatter.format(Instant.ofEpochMilli(rangeEnd))
 
@@ -170,7 +170,7 @@ class RESTScan(
             .updated(config.startParam, startStr)
             .updated(config.endParam, endStr)
 
-          makePartition(partitionParams, effectiveRateLimit)
+          makePartition(partitionParams, shares.map(_(idx)))
         }.toArray)
       }
     } catch {
@@ -230,19 +230,36 @@ class RESTScan(
     * @param numPartitions Number of partitions that will run in parallel
     * @return Effective rate limit per partition, or None if no rate limit configured
     */
-  private def calculateEffectiveRateLimit(numPartitions: Int): Option[Int] = {
-    table.sourceConfig.http.rateLimit.flatMap { configuredLimit =>
-      val perPartition = configuredLimit / numPartitions
-      if (perPartition > 0) {
-        Some(perPartition)
-      } else {
-        // Rate limit is lower than partition count - use minimum of 1 rps
-        logWarning(s"Configured rate limit ($configuredLimit rps) is less than partition count " +
-          s"($numPartitions). Using minimum of 1 rps per partition, which may exceed API limits.")
-        Some(1)
+  /** Split the configured rate limit across partitions, one share each.
+    *
+    * Shares sum to exactly the configured limit. Plain integer division silently lost
+    * the remainder — 15 rps over 4 partitions gave 3 each, using 12 of 15 — so the
+    * remainder is handed out one per partition instead.
+    *
+    * This bounds the aggregate rate only while partitions run concurrently. If the
+    * cluster runs fewer tasks at once the real rate is lower, never higher, so the
+    * configured limit is still respected; it is a ceiling, not a target (#205).
+    *
+    * @throws IllegalArgumentException if the limit cannot cover one rps per partition
+    */
+  private def rateLimitShares(numPartitions: Int): Option[IndexedSeq[Int]] =
+    table.sourceConfig.http.rateLimit.map { configuredLimit =>
+      if (configuredLimit < numPartitions) {
+        // Previously this fell back to 1 rps per partition and logged a warning, which
+        // exceeded the very limit the setting exists to enforce. Fail at planning time
+        // instead — a job that quietly doubles its request rate is worse than one that
+        // refuses to start.
+        throw new IllegalArgumentException(
+          s"rate-limit is $configuredLimit rps but this scan plans $numPartitions partitions, " +
+            s"so each would need less than 1 rps. Running anyway would allow up to $numPartitions rps, " +
+            s"exceeding the configured limit. Raise rate-limit to at least $numPartitions, " +
+            s"or reduce the partition count."
+        )
       }
+      val base      = configuredLimit / numPartitions
+      val remainder = configuredLimit % numPartitions
+      IndexedSeq.tabulate(numPartitions)(i => base + (if (i < remainder) 1 else 0))
     }
-  }
 
   override def createReaderFactory(): PartitionReaderFactory =
     new RESTPartitionReaderFactory()
