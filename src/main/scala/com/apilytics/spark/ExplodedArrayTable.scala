@@ -2,7 +2,7 @@ package com.apilytics.spark
 
 import com.apilytics.core.config.{SchemaMode, SourceConfig, TableConfig}
 import org.slf4j.LoggerFactory
-import com.apilytics.core.openapi.Endpoint
+import com.apilytics.core.source.SourceHandle
 import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import com.apilytics.core.schema.SchemaMapper.ArrayFieldInfo
@@ -23,7 +23,8 @@ class ExplodedArrayTable(
     val baseTableName: String,
     val arrayFieldName: String,
     val arrayFieldInfo: ArrayFieldInfo,
-    val endpoint: Endpoint,
+    val recordSchema: SourceSchema.ObjectType,
+    val handle: SourceHandle,
     val tableConfig: Option[TableConfig],
     val sourceConfig: SourceConfig,
     val baseUrl: String
@@ -57,8 +58,8 @@ class ExplodedArrayTable(
     // Parent scalar fields (exclude the array field itself)
     val parentSchema = SchemaMapper.toArrowSchemaWithMode(
       SourceSchema.ObjectType(
-        endpoint.responseSchema.properties.filterNot(_._1 == arrayFieldName),
-        endpoint.responseSchema.required
+        recordSchema.properties.filterNot(_._1 == arrayFieldName),
+        recordSchema.required
       ),
       sourceConfig.schema.flattenDepth,
       effectiveMode

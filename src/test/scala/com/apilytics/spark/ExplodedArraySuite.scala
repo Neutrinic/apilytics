@@ -1,6 +1,7 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config._
+import com.apilytics.core.rest.RestHandle
 import com.apilytics.core.openapi.{Endpoint, ParsedSpec, QueryParam}
 import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
@@ -78,7 +79,8 @@ class ExplodedArraySuite extends FunSuite {
       baseTableName = "customers",
       arrayFieldName = "tags",
       arrayFieldInfo = tagsField,
-      endpoint = endpoint,
+      recordSchema = endpoint.responseSchema,
+      handle = RestHandle(endpoint.path, "https://api.example.com", None),
       tableConfig = None,
       sourceConfig = sourceConfig,
       baseUrl = "http://localhost"
@@ -130,7 +132,8 @@ class ExplodedArraySuite extends FunSuite {
       baseTableName = "customers",
       arrayFieldName = "addresses",
       arrayFieldInfo = addrField,
-      endpoint = endpoint,
+      recordSchema = endpoint.responseSchema,
+      handle = RestHandle(endpoint.path, "https://api.example.com", None),
       tableConfig = None,
       sourceConfig = sourceConfig,
       baseUrl = "http://localhost"
@@ -200,12 +203,7 @@ class ExplodedArraySuite extends FunSuite {
   test("ExplodedArrayPartitionReaderFactory supports columnar reads") {
     val factory = new ExplodedArrayPartitionReaderFactory()
     val partition = ExplodedArrayInputPartition(
-      endpoint = Endpoint(
-        path = "/items",
-        operationId = None,
-        responseSchema = SourceSchema.ObjectType(Map("id" -> SourceSchema.IntegerType())),
-        queryParams = Nil
-      ),
+      handle = RestHandle("/items", "https://api.example.com", None),
       tableConfig = None,
       sourceConfig = SourceConfig(
         openapi = "test.yaml",
@@ -253,7 +251,8 @@ class ExplodedArraySuite extends FunSuite {
       baseTableName = "items",
       arrayFieldName = "tags",
       arrayFieldInfo = tagsField,
-      endpoint = endpoint,
+      recordSchema = endpoint.responseSchema,
+      handle = RestHandle(endpoint.path, "https://api.example.com", None),
       tableConfig = tableConfig,
       sourceConfig = sourceConfig,
       baseUrl = "http://localhost"

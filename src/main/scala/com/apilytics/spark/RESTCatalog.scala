@@ -65,41 +65,12 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
   }
 
   private def loadBaseTable(ident: Identifier, tableName: String): Table = {
-    val tableConfig = config.tables.get(tableName)
-
-    // Try to find endpoint in spec, or create synthetic endpoint for config-only tables
-    // Config-only tables are useful for streaming formats (ndjson, sse, msgpack) where
-    // the OpenAPI spec may not define the endpoint or uses external $refs
-    val endpoint = findEndpointForTable(tableName) match {
-      case Some(specEndpoint) =>
-        // If table has explicit config endpoint (potentially with concrete path params),
-        // use that path instead of the spec's parameterized path.
-        // e.g., config has "/repos/octocat/Hello-World/issues", spec has "/repos/{owner}/{repo}/issues"
-        tableConfig.map(tc => specEndpoint.copy(path = tc.endpoint)).getOrElse(specEndpoint)
-
-      case None =>
-        // No spec endpoint - create synthetic endpoint from config
-        tableConfig match {
-          case Some(tc) =>
-            // Create synthetic endpoint with empty/variant schema
-            // Schema will be inferred at runtime for variant mode
-            Endpoint(
-              path = tc.endpoint,
-              operationId = Some(tableName),
-              responseSchema = SourceSchema.ObjectType(Map.empty),
-              queryParams = Nil
-            )
-          case None =>
-            throw new NoSuchTableException(ident)
-        }
-    }
-
-    // Resolving a response schema down to a record schema — data-path extraction,
-    // unwrapping synthetic array wrappers — is the source's business now (#191).
-    val effectiveSchema = source.recordSchema(endpoint, tableName)
+    // Endpoint matching, config-path overrides, synthetic endpoints for config-only
+    // tables and record-schema resolution all happen in the source catalog (#191).
+    val spec = source.table(tableName).getOrElse(throw new NoSuchTableException(ident))
 
     val arrowSchema = SchemaMapper.toArrowSchemaWithMode(
-      effectiveSchema,
+      spec.schema,
       config.schema.flattenDepth,
       config.schema.mode
     )
@@ -107,8 +78,8 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
     new RESTTable(
       tableName = tableName,
       arrowSchema = arrowSchema,
-      endpoint = endpoint,
-      tableConfig = tableConfig,
+      handle = spec.handle,
+      tableConfig = config.tables.get(tableName),
       sourceConfig = config,
       baseUrl = effectiveBaseUrl
     )
@@ -123,7 +94,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
     )
 
     // Find parent endpoint
-    val parentEndpoint = findEndpointForTable(parentTableName).getOrElse(
+    val parentSpec = source.table(parentTableName).getOrElse(
       throw new NoSuchTableException(Identifier.of(Array("default"), parentTableName))
     )
 
@@ -144,7 +115,7 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
       childEndpointTemplate = tableConfig.endpoint,
       parentTableName = parentTableName,
       parentKey = parentKey,
-      parentEndpoint = parentEndpoint,
+      parentHandle = parentSpec.handle,
       childResponseSchema = childEndpoint.responseSchema,
       tableConfig = tableConfig,
       sourceConfig = config,
@@ -154,10 +125,10 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
 
   private def loadExplodedTable(ident: Identifier, baseTableName: String, arrayFieldName: String): Table = {
     val tableConfig = config.tables.get(baseTableName)
-    val endpoint = findEndpointForTable(baseTableName).getOrElse(throw new NoSuchTableException(ident))
+    val baseSpec = source.table(baseTableName).getOrElse(throw new NoSuchTableException(ident))
 
     // Verify the array field exists
-    val arrayFields = SchemaMapper.findArrayFields(endpoint.responseSchema)
+    val arrayFields = SchemaMapper.findArrayFields(baseSpec.schema)
     val arrayFieldInfo = arrayFields.find(_.fieldName == arrayFieldName).getOrElse(
       throw new NoSuchTableException(ident)
     )
@@ -167,7 +138,8 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
       baseTableName = baseTableName,
       arrayFieldName = arrayFieldName,
       arrayFieldInfo = arrayFieldInfo,
-      endpoint = endpoint,
+      recordSchema = baseSpec.schema,
+      handle = baseSpec.handle,
       tableConfig = tableConfig,
       sourceConfig = config,
       baseUrl = effectiveBaseUrl
@@ -243,9 +215,6 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
     }
   }
 
-  private def findEndpointForTable(tableName: String): Option[Endpoint] =
-    source.resolveEndpoint(tableName)
-
   /** Get the effective schema for a table, accounting for data-path extraction.
     * This is the schema used for exploded view generation.
     */
@@ -272,8 +241,8 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
           val result = (parts.length - 1 to 1 by -1).view.flatMap { splitAt =>
             val baseTableName = parts.take(splitAt).mkString("_")
             val arrayFieldName = parts.drop(splitAt).mkString("_")
-            findEndpointForTable(baseTableName).flatMap { endpoint =>
-              val arrayFields = SchemaMapper.findArrayFields(endpoint.responseSchema)
+            source.table(baseTableName).flatMap { spec =>
+              val arrayFields = SchemaMapper.findArrayFields(spec.schema)
               if (arrayFields.exists(_.fieldName == arrayFieldName)) {
                 Some((baseTableName, arrayFieldName))
               } else None

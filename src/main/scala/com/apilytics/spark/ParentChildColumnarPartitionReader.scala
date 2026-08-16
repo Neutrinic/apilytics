@@ -61,7 +61,7 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
     // Fetch all parent records first
     val parentRecords: fs2.Stream[IO, Json] =
       session
-        .pages(ReadRequest(handleFor(partition.parentEndpoint.path)))
+        .pages(ReadRequest(partition.parentHandle))
         .flatMap(page => fs2.Stream.emits(page.records))
 
     // Determine join strategy (default to NestedLoop for backward compatibility)

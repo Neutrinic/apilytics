@@ -1,6 +1,7 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config._
+import com.apilytics.core.rest.RestHandle
 import com.apilytics.core.openapi.Endpoint
 import com.apilytics.core.schema.SourceSchema
 import com.typesafe.config.ConfigFactory
@@ -88,7 +89,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "events",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -117,7 +118,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "events",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -146,7 +147,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "events",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -191,7 +192,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "events",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -232,7 +233,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "events",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -268,7 +269,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "logs",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -301,7 +302,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "events",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -333,7 +334,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "events",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -370,7 +371,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "events",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -471,7 +472,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "orders",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -498,7 +499,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "users",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig,
       baseUrl = "https://api.example.com"
@@ -534,7 +535,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "items",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = sourceConfig,
       baseUrl = "https://api.example.com"
@@ -566,7 +567,7 @@ class DateRangePartitioningSuite extends FunSuite {
     val table = new RESTTable(
       tableName = "items",
       arrowSchema = dummySchema,
-      endpoint = dummyEndpoint,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
       tableConfig = Some(tableConfig),
       sourceConfig = dummySourceConfig.copy(
         http = HttpConfig(maxBackoff = 30.seconds, timeout = 30.seconds, rateLimit = Some(rateLimit))
