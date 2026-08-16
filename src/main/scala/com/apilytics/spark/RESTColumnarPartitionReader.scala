@@ -1,11 +1,12 @@
 package com.apilytics.spark
 
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{IO, Ref}
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.checkpoint.{CheckpointState, CheckpointStore}
-import com.apilytics.core.config.{CheckpointMode, ResponseFormat, SchemaMode}
-import com.apilytics.core.http.{Client, Paginator, ResponseCache}
+import com.apilytics.core.config.{CheckpointMode, SchemaMode}
+import com.apilytics.core.rest.{RestHandle, RestSource}
+import com.apilytics.core.source.{ReadRequest, RecordSession, RecordSource}
 import fs2.Stream
 import io.circe.Json
 import io.circe.pointer.Pointer
@@ -14,7 +15,6 @@ import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
-import org.http4s.Uri
 
 /** Zero-copy columnar reader that lazily streams Arrow batches via a bounded queue.
   * Memory scales with batch size, not total partition size.
@@ -33,14 +33,13 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
 
   override protected def prefetchSize: Int = partition.sourceConfig.schema.prefetchBatches
 
-  // Use lazy vals to avoid initialization order issues with LazyColumnarReader's constructor
-  // which starts a fiber that may access these before they're initialized
-  private lazy val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
-
-  // Use effective rate limit calculated by RESTScan (distributed across partitions)
-  private lazy val httpConfig = partition.effectiveRateLimit match {
-    case Some(_) => partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
-    case None    => partition.sourceConfig.http
+  // Apply this partition's share of the rate limit, distributed by RESTScan (#205).
+  private def effectiveConfig = partition.effectiveRateLimit match {
+    case Some(_) =>
+      partition.sourceConfig.copy(
+        http = partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
+      )
+    case None => partition.sourceConfig
   }
 
   // Use Spark's Hadoop config for S3/HDFS credential resolution via core-site.xml.
@@ -58,21 +57,16 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
     CheckpointStore.fromConfig(partition.checkpointConfig, hadoopConf)
   }
 
-  override protected def clientResource: Resource[IO, Client.RestClient] =
-    Client.resource(httpConfig, partition.sourceConfig.auth, responseCache)
+  override protected def recordSource: RecordSource = new RestSource(effectiveConfig)
 
   override protected def buildStream(
-      client: Client.RestClient
+      session: RecordSession
   ): Stream[IO, (org.apache.spark.sql.vectorized.ColumnarBatch, VectorSchemaRoot)] = {
-    val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
 
-    // For streaming formats (NDJSON, SSE), each record from the stream is already
-    // an individual JSON object - data-path extraction doesn't apply. data-path is
-    // only used for standard JSON responses where records are nested in a wrapper
-    // (e.g., {"results": [...], "pagination": {...}}).
-    val isStreamingFormat = partition.responseFormat != ResponseFormat.Json
-    val dataPath = if (isStreamingFormat) None else partition.tableConfig.flatMap(_.dataPath)
+    // URI construction, pagination and data-path extraction all live behind the source
+    // now — this reader only says which table to read and what was pushed down (#191).
+    val handle = RestHandle(partition.endpoint.path, partition.baseUrl, partition.tableConfig)
 
     val isTimestampMode = partition.checkpointConfig.exists(cc => cc.enabled && cc.mode == CheckpointMode.Timestamp)
     val timestampPointer = if (isTimestampMode) {
@@ -89,11 +83,11 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
       val checkpointParams = injectTimestampParam(partition.pushedParams, startState)
 
       Stream.eval(Ref.of[IO, Option[CheckpointState]](None)).flatMap { stateRef =>
-        Paginator
-          .pagesWithState(client, baseUri, checkpointParams, partition.sourceConfig.pagination,
-            partition.pushedLimit, partition.responseFormat, startState)
-          .flatMap { case (pageJson, pageState) =>
-            val records = Converter.extractRecords(pageJson, dataPath)
+        session
+          .pages(ReadRequest(handle, checkpointParams, partition.pushedLimit, startState))
+          .flatMap { page =>
+            val records   = page.records
+            val pageState = page.state
 
             // Determine checkpoint state for this page:
             // - For cursor/offset modes, use the state from Paginator

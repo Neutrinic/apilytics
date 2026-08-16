@@ -1,13 +1,13 @@
 package com.apilytics.spark
 
-import cats.effect.{IO, Resource}
+import cats.effect.IO
 import com.apilytics.core.arrow.Converter
-import com.apilytics.core.http.{Client, Paginator, ResponseCache}
+import com.apilytics.core.rest.{RestHandle, RestSource}
+import com.apilytics.core.source.{ReadRequest, RecordSession, RecordSource}
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.sql.vectorized.ColumnarBatch
-import org.http4s.Uri
 
 /** Zero-copy columnar reader for exploded array views.
   * Each API record is exploded by the array field, then lazily streamed as Arrow batches.
@@ -21,25 +21,19 @@ class ExplodedArrayColumnarPartitionReader(partition: ExplodedArrayInputPartitio
 
   override protected def prefetchSize: Int = partition.sourceConfig.schema.prefetchBatches
 
-  // Use singleton cache that persists across queries on this executor
-  private val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
-
-  override protected def clientResource: Resource[IO, Client.RestClient] =
-    Client.resource(partition.sourceConfig.http, partition.sourceConfig.auth, responseCache)
+  override protected def recordSource: RecordSource = new RestSource(partition.sourceConfig)
 
   override protected def buildStream(
-      client: Client.RestClient
+      session: RecordSession
   ): fs2.Stream[IO, (ColumnarBatch, VectorSchemaRoot)] = {
-    val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
-    val dataPath = partition.tableConfig.flatMap(_.dataPath)
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
     val outer = partition.sourceConfig.schema.explodeOuter
+    val handle = RestHandle(partition.endpoint.path, partition.baseUrl, partition.tableConfig)
 
-    Paginator
-      .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
-      .flatMap { pageJson =>
-        val records = Converter.extractRecords(pageJson, dataPath)
-        val exploded = records.flatMap(r =>
+    session
+      .pages(ReadRequest(handle, partition.pushedParams, partition.pushedLimit))
+      .flatMap { page =>
+        val exploded = page.records.flatMap(r =>
           ExplodedArrayOps.explodeRecord(r, partition.arrayFieldName, partition.arrayJsonPath, outer)
         )
         if (exploded.isEmpty) fs2.Stream.empty
