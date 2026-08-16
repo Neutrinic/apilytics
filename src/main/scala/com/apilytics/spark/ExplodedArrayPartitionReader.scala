@@ -3,12 +3,12 @@ package com.apilytics.spark
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
-import com.apilytics.core.http.{Client, Paginator}
+import com.apilytics.core.rest.{RestHandle, RestSource}
+import com.apilytics.core.source.ReadRequest
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.connector.read.PartitionReader
-import org.http4s.Uri
 
 /** Row-based partition reader for exploded array views.
   *
@@ -42,18 +42,15 @@ class ExplodedArrayPartitionReader(partition: ExplodedArrayInputPartition) exten
   }
 
   private def fetchExplodedRows(): Iterator[InternalRow] = {
-    val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
-    val dataPath = partition.tableConfig.flatMap(_.dataPath)
     val outer = partition.sourceConfig.schema.explodeOuter
+    val handle = RestHandle(partition.endpoint.path, partition.baseUrl, partition.tableConfig)
 
-    val program: IO[List[InternalRow]] = Client
-      .resource(partition.sourceConfig.http, partition.sourceConfig.auth)
-      .use { client =>
-        Paginator
-          .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
-          .flatMap { pageJson =>
-            val records = Converter.extractRecords(pageJson, dataPath)
-            val exploded = records.flatMap(r =>
+    val program: IO[List[InternalRow]] = new RestSource(partition.sourceConfig).session
+      .use { session =>
+        session
+          .pages(ReadRequest(handle, partition.pushedParams, partition.pushedLimit))
+          .flatMap { page =>
+            val exploded = page.records.flatMap(r =>
               ExplodedArrayOps.explodeRecord(r, partition.arrayFieldName, partition.arrayJsonPath, outer)
             )
             if (exploded.isEmpty) fs2.Stream.empty

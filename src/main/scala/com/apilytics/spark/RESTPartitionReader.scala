@@ -3,13 +3,13 @@ package com.apilytics.spark
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
-import com.apilytics.core.http.{Client, Paginator}
+import com.apilytics.core.rest.{RestHandle, RestSource}
+import com.apilytics.core.source.ReadRequest
 import fs2.Stream
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.connector.read.PartitionReader
-import org.http4s.Uri
 
 class RESTPartitionReader(partition: RESTInputPartition) extends PartitionReader[InternalRow] {
 
@@ -38,22 +38,23 @@ class RESTPartitionReader(partition: RESTInputPartition) extends PartitionReader
   }
 
   private def fetchAllRows(): Iterator[InternalRow] = {
-    val baseUri = Uri.unsafeFromString(partition.baseUrl + partition.endpoint.path)
-    val dataPath = partition.tableConfig.flatMap(_.dataPath)
+    val handle = RestHandle(partition.endpoint.path, partition.baseUrl, partition.tableConfig)
 
-    // Use effective rate limit calculated by RESTScan (distributed across partitions)
-    val httpConfig = partition.effectiveRateLimit match {
-      case Some(_) => partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
-      case None    => partition.sourceConfig.http
+    // This partition's share of the rate limit, distributed by RESTScan (#205).
+    val effectiveConfig = partition.effectiveRateLimit match {
+      case Some(_) =>
+        partition.sourceConfig.copy(
+          http = partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
+        )
+      case None => partition.sourceConfig
     }
 
-    val program: IO[List[InternalRow]] = Client
-      .resource(httpConfig, partition.sourceConfig.auth)
-      .use { client =>
-        Paginator
-          .pages(client, baseUri, partition.pushedParams, partition.sourceConfig.pagination, partition.pushedLimit)
-          .flatMap { pageJson =>
-            val records = Converter.extractRecords(pageJson, dataPath)
+    val program: IO[List[InternalRow]] = new RestSource(effectiveConfig).session
+      .use { session =>
+        session
+          .pages(ReadRequest(handle, partition.pushedParams, partition.pushedLimit))
+          .flatMap { page =>
+            val records = page.records
             if (records.isEmpty) Stream.empty
             else {
               val root = Converter.toArrow(records, arrowSchema, allocator)

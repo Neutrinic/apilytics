@@ -4,13 +4,13 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.config.JoinStrategy
-import com.apilytics.core.http.{Client, Paginator}
+import com.apilytics.core.rest.{RestHandle, RestSource}
+import com.apilytics.core.source.{ReadRequest, RecordSession}
 import io.circe.Json
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.connector.read.PartitionReader
-import org.http4s.Uri
 
 /** Row-based partition reader for parent-child endpoint joins.
   *
@@ -43,38 +43,38 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
     allocator.close()
   }
 
+  /** Handle for a path on this source. `tableConfig = None` means no data-path
+    * extraction, which is what the parent endpoint wants. */
+  private def handleFor(path: String, withTableConfig: Boolean = false) =
+    RestHandle(path, partition.baseUrl, if (withTableConfig) Some(partition.tableConfig) else None)
+
   private def fetchParentChildRows(): Iterator[InternalRow] = {
-    val parentBaseUri = Uri.unsafeFromString(partition.baseUrl + partition.parentEndpoint.path)
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
     val joinStrategy = partition.tableConfig.joinStrategy.getOrElse(JoinStrategy.NestedLoop)
 
-    // Use effective rate limit calculated by ParentChildScan (distributed across partitions)
-    val httpConfig = partition.effectiveRateLimit match {
-      case Some(_) => partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
-      case None    => partition.sourceConfig.http
+    // This partition's share of the rate limit, distributed by ParentChildScan (#205).
+    val effectiveConfig = partition.effectiveRateLimit match {
+      case Some(_) =>
+        partition.sourceConfig.copy(
+          http = partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
+        )
+      case None => partition.sourceConfig
     }
 
-    val program: IO[List[InternalRow]] = Client
-      .resource(httpConfig, partition.sourceConfig.auth)
-      .use { client =>
-        // Fetch parent records
-        val parentPages = Paginator.pages(
-          client,
-          parentBaseUri,
-          Map.empty,
-          partition.sourceConfig.pagination,
-          None
-        )
-        val parentRecords: fs2.Stream[IO, Json] = parentPages.flatMap { pageJson =>
-          val records = Converter.extractRecords(pageJson, None)
-          fs2.Stream.emits(records)
-        }
+    val program: IO[List[InternalRow]] = new RestSource(effectiveConfig).session
+      .use { session =>
+        // Fetch parent records. No table config on the handle means no data-path
+        // extraction, which is what the parent endpoint wants.
+        val parentRecords: fs2.Stream[IO, Json] =
+          session
+            .pages(ReadRequest(handleFor(partition.parentEndpoint.path)))
+            .flatMap(page => fs2.Stream.emits(page.records))
 
         val rowsStream = joinStrategy match {
           case JoinStrategy.Batch =>
-            executeBatchJoin(parentRecords, client, batchSize)
+            executeBatchJoin(parentRecords, session, batchSize)
           case JoinStrategy.NestedLoop =>
-            executeNestedLoopJoin(parentRecords, client, batchSize)
+            executeNestedLoopJoin(parentRecords, session, batchSize)
         }
         rowsStream.compile.toList
       }
@@ -84,7 +84,7 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
 
   private def executeNestedLoopJoin(
       parentRecords: fs2.Stream[IO, Json],
-      client: Client.RestClient,
+      session: RecordSession,
       batchSize: Int
   ): fs2.Stream[IO, InternalRow] = {
     parentRecords.flatMap { parentRecord =>
@@ -98,17 +98,14 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
             s"{${partition.pathParamName}}",
             keyValue
           )
-          val childUri = Uri.unsafeFromString(partition.baseUrl + childPath)
-          val dataPath = partition.tableConfig.dataPath
 
-          Paginator.pages(
-            client,
-            childUri,
+
+          session.pages(ReadRequest(
+            handleFor(childPath, withTableConfig = true),
             partition.pushedParams,
-            partition.sourceConfig.pagination,
             partition.pushedLimit
-          ).flatMap { pageJson =>
-            val childRecords = Converter.extractRecords(pageJson, dataPath)
+          )).flatMap { page =>
+            val childRecords = page.records
             if (childRecords.isEmpty) fs2.Stream.empty
             else {
               val enrichedRecords = childRecords.map { childRecord =>
@@ -129,7 +126,7 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
 
   private def executeBatchJoin(
       parentRecords: fs2.Stream[IO, Json],
-      client: Client.RestClient,
+      session: RecordSession,
       arrowBatchSize: Int
   ): fs2.Stream[IO, InternalRow] = {
     val batchParam = partition.tableConfig.batchParam.getOrElse(
@@ -140,8 +137,6 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
     val maxBatchSize = partition.tableConfig.batchSize
     val separator = partition.tableConfig.batchSeparator
 
-    val childBaseUri = Uri.unsafeFromString(partition.baseUrl + partition.tableConfig.endpoint)
-    val dataPath = partition.tableConfig.dataPath
 
     parentRecords
       .map { parentRecord =>
@@ -161,14 +156,12 @@ class ParentChildPartitionReader(partition: ParentChildInputPartition) extends P
 
         val batchParams = partition.pushedParams + (batchParam -> keyValues)
 
-        Paginator.pages(
-          client,
-          childBaseUri,
+        session.pages(ReadRequest(
+          handleFor(partition.tableConfig.endpoint, withTableConfig = true),
           batchParams,
-          partition.sourceConfig.pagination,
           partition.pushedLimit
-        ).flatMap { pageJson =>
-          val childRecords = Converter.extractRecords(pageJson, dataPath)
+        )).flatMap { page =>
+          val childRecords = page.records
           if (childRecords.isEmpty) fs2.Stream.empty
           else {
             val enrichedRecords = childRecords.flatMap { childRecord =>
