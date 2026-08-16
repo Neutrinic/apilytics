@@ -60,6 +60,26 @@ class RESTScanBuilder(table: RESTTable) extends ScanBuilder
       return false
     }
 
+    // Only COUNT is pushed for now.
+    //
+    // Spark fixes the scan's schema at plan time, but the aggregation reader types each
+    // value from whatever JSON came back — an API may answer a SUM with 12500 or 12500.0,
+    // and a custom aggregate may answer with a string. There is no static type that
+    // describes that, and advertising the wrong one crashes the query during optimization
+    // (#212). COUNT is safe because it is always a whole number.
+    //
+    // Refusing the push is not a loss of correctness: Spark computes these itself from the
+    // scanned rows. It costs a full read, which is exactly what pushdown existed to avoid,
+    // so re-enabling it is worth doing properly — see #213.
+    val unsupported = matched.filterNot(_.function == AggregationFunction.Count)
+    if (unsupported.nonEmpty) {
+      logInfo(
+        s"Aggregation pushdown declined for ${unsupported.map(_.function).mkString(", ")}: " +
+          "only COUNT has a stable result type (#213). Spark will aggregate these itself."
+      )
+      return false
+    }
+
     // All matched - accept the pushdown
     val descriptions = aggs.map(describeAggregate).mkString(", ")
     logInfo(s"Aggregations pushed to API: $descriptions")

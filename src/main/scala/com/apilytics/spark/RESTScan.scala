@@ -20,8 +20,30 @@ class RESTScan(
     resolvedAggConfigs: List[AggregationConfig] = Nil
 ) extends Scan with Batch with SupportsReportStatistics with Logging {
 
-  // If pruned, return the pruned schema; otherwise return full schema
-  override def readSchema(): StructType = prunedSchema.getOrElse(table.schema())
+  /** Schema of what this scan actually produces.
+    *
+    * Once an aggregation is pushed, that is one row of aggregate values — not table
+    * rows — and `SupportsPushDownAggregates` requires the schema to say so. Returning
+    * the table schema regardless made Spark assert on the column count and fail the
+    * query during optimization, so COUNT pushdown never worked (#212).
+    */
+  override def readSchema(): StructType =
+    if (pushedAggregation.isDefined) aggregateSchema
+    else prunedSchema.getOrElse(table.schema())
+
+  /** One field per pushed aggregate, in the order the reader emits them.
+    *
+    * Only COUNT reaches here — `RESTScanBuilder.pushAggregation` declines everything else,
+    * because their result types are decided by the JSON that comes back rather than at plan
+    * time, and Spark needs the schema up front (#213). COUNT is always a whole number.
+    */
+  private def aggregateSchema: StructType = {
+    import org.apache.spark.sql.types._
+
+    // Legacy count config produces one COUNT column with no resolved config.
+    val count = math.max(resolvedAggConfigs.size, 1)
+    StructType((0 until count).map(i => StructField(s"count_$i", LongType, nullable = true)))
+  }
 
   override def toBatch(): Batch = this
 
