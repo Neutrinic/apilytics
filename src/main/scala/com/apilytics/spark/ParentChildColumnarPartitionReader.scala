@@ -1,15 +1,15 @@
 package com.apilytics.spark
 
-import cats.effect.{IO, Resource}
+import cats.effect.IO
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.config.JoinStrategy
-import com.apilytics.core.http.{Client, Paginator, ResponseCache}
+import com.apilytics.core.rest.{RestHandle, RestSource}
+import com.apilytics.core.source.{ReadRequest, RecordSession, RecordSource}
 import io.circe.Json
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.sql.vectorized.ColumnarBatch
-import org.http4s.Uri
 
 /** Columnar reader for parent-child endpoint joins (nested API calls).
   *
@@ -37,53 +37,48 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
 
   override protected def prefetchSize: Int = partition.sourceConfig.schema.prefetchBatches
 
-  // Use lazy vals to avoid initialization order issues with LazyColumnarReader's constructor
-  // which starts a fiber that may access these before they're initialized
-  private lazy val responseCache = ResponseCache.fromConfig(partition.sourceConfig.http.responseCache)
-
-  // Use effective rate limit calculated by ParentChildScan (distributed across partitions)
-  private lazy val httpConfig = partition.effectiveRateLimit match {
-    case Some(_) => partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
-    case None    => partition.sourceConfig.http
+  // Apply this partition's share of the rate limit, distributed by ParentChildScan (#205).
+  private def effectiveConfig = partition.effectiveRateLimit match {
+    case Some(_) =>
+      partition.sourceConfig.copy(
+        http = partition.sourceConfig.http.copy(rateLimit = partition.effectiveRateLimit)
+      )
+    case None => partition.sourceConfig
   }
 
-  override protected def clientResource: Resource[IO, Client.RestClient] =
-    Client.resource(httpConfig, partition.sourceConfig.auth, responseCache)
+  override protected def recordSource: RecordSource = new RestSource(effectiveConfig)
+
+  /** Handle for a path on this source. `tableConfig = None` means no data-path
+    * extraction, which is what the parent endpoint wants. */
+  private def handleFor(path: String, withTableConfig: Boolean = false) =
+    RestHandle(path, partition.baseUrl, if (withTableConfig) Some(partition.tableConfig) else None)
 
   override protected def buildStream(
-      client: Client.RestClient
+      session: RecordSession
   ): fs2.Stream[IO, (ColumnarBatch, VectorSchemaRoot)] = {
-    val parentBaseUri = Uri.unsafeFromString(partition.baseUrl + partition.parentEndpoint.path)
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
 
     // Fetch all parent records first
-    val parentPages = Paginator.pages(
-      client,
-      parentBaseUri,
-      Map.empty,
-      partition.sourceConfig.pagination,
-      None
-    )
-    val parentRecords: fs2.Stream[IO, Json] = parentPages.flatMap { pageJson =>
-      val records = Converter.extractRecords(pageJson, None)
-      fs2.Stream.emits(records)
-    }
+    val parentRecords: fs2.Stream[IO, Json] =
+      session
+        .pages(ReadRequest(handleFor(partition.parentEndpoint.path)))
+        .flatMap(page => fs2.Stream.emits(page.records))
 
     // Determine join strategy (default to NestedLoop for backward compatibility)
     val joinStrategy = partition.tableConfig.joinStrategy.getOrElse(JoinStrategy.NestedLoop)
 
     joinStrategy match {
       case JoinStrategy.Batch =>
-        executeBatchJoin(parentRecords, client, batchSize)
+        executeBatchJoin(parentRecords, session, batchSize)
       case JoinStrategy.NestedLoop =>
-        executeNestedLoopJoin(parentRecords, client, batchSize)
+        executeNestedLoopJoin(parentRecords, session, batchSize)
     }
   }
 
   /** Execute nested loop join - one API call per parent row. */
   private def executeNestedLoopJoin(
       parentRecords: fs2.Stream[IO, Json],
-      client: Client.RestClient,
+      session: RecordSession,
       batchSize: Int
   ): fs2.Stream[IO, (ColumnarBatch, VectorSchemaRoot)] = {
     parentRecords.flatMap { parentRecord =>
@@ -99,18 +94,14 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
             s"{${partition.pathParamName}}",
             keyValue
           )
-          val childUri = Uri.unsafeFromString(partition.baseUrl + childPath)
-          val dataPath = partition.tableConfig.dataPath
-
-          val childPages = Paginator.pages(
-            client,
-            childUri,
-            partition.pushedParams,
-            partition.sourceConfig.pagination,
-            partition.pushedLimit
-          )
-          childPages.flatMap { pageJson =>
-            val childRecords = Converter.extractRecords(pageJson, dataPath)
+          session
+            .pages(ReadRequest(
+              handleFor(childPath, withTableConfig = true),
+              partition.pushedParams,
+              partition.pushedLimit
+            ))
+            .flatMap { page =>
+            val childRecords = page.records
             if (childRecords.isEmpty) fs2.Stream.empty
             else {
               val enrichedRecords = childRecords.map { childRecord =>
@@ -131,7 +122,7 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
   /** Execute batch join - collect parent keys and fetch children in batches. */
   private def executeBatchJoin(
       parentRecords: fs2.Stream[IO, Json],
-      client: Client.RestClient,
+      session: RecordSession,
       arrowBatchSize: Int
   ): fs2.Stream[IO, (ColumnarBatch, VectorSchemaRoot)] = {
     val batchParam = partition.tableConfig.batchParam.getOrElse(
@@ -144,9 +135,6 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
 
     // For batch joins, the endpoint should NOT have path parameter substitution
     // It should be a base endpoint like "/orders" not "/orders/{order_id}/items"
-    val childBaseUri = Uri.unsafeFromString(partition.baseUrl + partition.tableConfig.endpoint)
-    val dataPath = partition.tableConfig.dataPath
-
     // Collect all parent keys with their original JSON values
     parentRecords
       .map { parentRecord =>
@@ -166,15 +154,14 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
 
         val batchParams = partition.pushedParams + (batchParam -> keyValues)
 
-        val childPages = Paginator.pages(
-          client,
-          childBaseUri,
-          batchParams,
-          partition.sourceConfig.pagination,
-          partition.pushedLimit
-        )
-        childPages.flatMap { pageJson =>
-          val childRecords = Converter.extractRecords(pageJson, dataPath)
+        session
+          .pages(ReadRequest(
+            handleFor(partition.tableConfig.endpoint, withTableConfig = true),
+            batchParams,
+            partition.pushedLimit
+          ))
+          .flatMap { page =>
+          val childRecords = page.records
           if (childRecords.isEmpty) fs2.Stream.empty
           else {
             // Find the parent key field in child records to map back

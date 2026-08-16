@@ -24,9 +24,10 @@ class RESTPartitionReaderFactory extends PartitionReaderFactory {
     }
   }
 
+  // Only aggregate partitions reach this: supportColumnarReads returns false for them
+  // and true for everything else, so a RESTInputPartition is always read columnar (#211).
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] = {
     partition match {
-      case p: RESTInputPartition        => new RESTPartitionReader(p)
       case p: CountInputPartition       => new CountPartitionReader(p)
       case p: AggregationInputPartition => new AggregationPartitionReader(p)
       case other => throw new IllegalArgumentException(

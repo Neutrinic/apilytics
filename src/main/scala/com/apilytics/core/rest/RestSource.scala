@@ -4,18 +4,21 @@ import cats.effect.{IO, Resource}
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.config.{ResponseFormat, SourceConfig, TableConfig}
 import com.apilytics.core.http.{Client, Paginator, ResponseCache}
-import com.apilytics.core.openapi.Endpoint
 import com.apilytics.core.source.{ReadRequest, RecordPage, RecordSession, RecordSource, SourceHandle}
 import fs2.Stream
 import org.http4s.Uri
 
-/** REST's identity for one table: which endpoint, on which base URL, with what
-  * table-level configuration.
+/** REST's identity for one table: a path against a base URL, plus the table-level
+  * configuration that governs how its responses are read.
+  *
+  * Carries the path rather than an `Endpoint` deliberately — reading needs only the
+  * path, and parent-child joins substitute concrete values into it. Keeping the
+  * OpenAPI type out of the handle is also one less thing coupling callers to REST.
   *
   * Opaque to the Spark layer — it only ever passes this back in a [[ReadRequest]].
   */
 final case class RestHandle(
-    endpoint: Endpoint,
+    path: String,
     baseUrl: String,
     tableConfig: Option[TableConfig]
 ) extends SourceHandle
@@ -58,7 +61,7 @@ private[rest] final class RestSession(
         )
     }
 
-    val uri    = Uri.unsafeFromString(handle.baseUrl + handle.endpoint.path)
+    val uri    = Uri.unsafeFromString(handle.baseUrl + handle.path)
     val format = sourceConfig.http.responseFormat
 
     // For streaming formats (NDJSON, SSE) every element is already one record, so

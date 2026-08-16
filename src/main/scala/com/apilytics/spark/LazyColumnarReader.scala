@@ -1,9 +1,9 @@
 package com.apilytics.spark
 
-import cats.effect.{IO, Resource}
+import cats.effect.IO
 import cats.effect.std.Queue
 import cats.effect.unsafe.implicits.global
-import com.apilytics.core.http.Client
+import com.apilytics.core.source.{RecordSession, RecordSource}
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
@@ -23,8 +23,12 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
   // Subclasses provide these:
   protected def allocator: RootAllocator
   protected def arrowSchema: ArrowSchema
-  protected def clientResource: Resource[IO, Client.RestClient]
-  protected def buildStream(client: Client.RestClient): fs2.Stream[IO, (ColumnarBatch, VectorSchemaRoot)]
+
+  /** Where records come from. Protocol-neutral — this base class knows nothing about
+    * HTTP, pagination or OpenAPI, so a non-REST source drops in unchanged (#191).
+    */
+  protected def recordSource: RecordSource
+  protected def buildStream(session: RecordSession): fs2.Stream[IO, (ColumnarBatch, VectorSchemaRoot)]
 
   /** Batches held in flight ahead of Spark. Must be >= 1.
     *
@@ -35,8 +39,8 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
 
   // --- Lifecycle managed by this base class ---
 
-  // Acquire HTTP client manually so it stays open across next() calls.
-  private val (client, releaseClient) = clientResource.allocated.unsafeRunSync()
+  // Acquire the session manually so it stays open across next() calls.
+  private val (session, releaseSession) = recordSource.session.allocated.unsafeRunSync()
 
   // Queue transports Either so producer errors propagate to the Spark thread.
   // None = end-of-stream sentinel, Some(Left(t)) = error, Some(Right(...)) = batch.
@@ -46,7 +50,7 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
     Queue.bounded[IO, QueueItem](prefetchSize).unsafeRunSync()
 
   // Producer fiber: runs the stream in background, feeding batches into the queue.
-  private val producer = buildStream(client)
+  private val producer = buildStream(session)
     .evalMap(batch => queue.offer(Some(Right(batch))))
     .compile
     .drain
@@ -104,8 +108,8 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
     if (currentBatch != null) currentBatch.close()
     if (currentRoot != null) currentRoot.close()
 
-    // 4. Release HTTP client
-    releaseClient.unsafeRunSync()
+    // 4. Release the source session
+    releaseSession.unsafeRunSync()
 
     // 5. Close Arrow allocator (verifies all memory released)
     allocator.close()

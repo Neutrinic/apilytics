@@ -58,7 +58,7 @@ class RestSourceSuite extends FunSuite {
   )
 
   private def handle(dataPath: Option[String]) = RestHandle(
-    endpoint = endpoint,
+    path = endpoint.path,
     baseUrl = s"http://localhost:${server.port()}",
     tableConfig = dataPath.map(dp => TableConfig(endpoint = "/items", dataPath = Some(dp)))
   )
