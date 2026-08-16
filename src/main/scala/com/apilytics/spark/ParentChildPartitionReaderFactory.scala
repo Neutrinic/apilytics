@@ -8,12 +8,13 @@ class ParentChildPartitionReaderFactory extends PartitionReaderFactory {
 
   override def supportColumnarReads(partition: InputPartition): Boolean = true
 
-  override def createReader(partition: InputPartition): PartitionReader[InternalRow] = {
-    partition match {
-      case p: ParentChildInputPartition => new ParentChildPartitionReader(p)
-      case _ => throw new IllegalArgumentException(s"Unexpected partition type: ${partition.getClass}")
-    }
-  }
+  // Abstract in PartitionReaderFactory so it has to exist, but Spark never calls it
+  // while supportColumnarReads is true. The row-based reader that used to live here was
+  // unreachable from birth — this factory shipped with the flag already true (#211).
+  override def createReader(partition: InputPartition): PartitionReader[InternalRow] =
+    throw new UnsupportedOperationException(
+      "Parent-child joins are read as columnar batches only"
+    )
 
   override def createColumnarReader(partition: InputPartition): PartitionReader[ColumnarBatch] = {
     partition match {

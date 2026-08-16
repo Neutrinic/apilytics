@@ -13,8 +13,11 @@ class ExplodedArrayPartitionReaderFactory extends PartitionReaderFactory {
     new ExplodedArrayColumnarPartitionReader(p)
   }
 
-  override def createReader(partition: InputPartition): PartitionReader[InternalRow] = {
-    val p = partition.asInstanceOf[ExplodedArrayInputPartition]
-    new ExplodedArrayPartitionReader(p)
-  }
+  // Abstract in PartitionReaderFactory so it has to exist, but Spark never calls it
+  // while supportColumnarReads is true. A throw states that; the row-based reader that
+  // used to live here was unreachable from the commit that added columnar reads (#211).
+  override def createReader(partition: InputPartition): PartitionReader[InternalRow] =
+    throw new UnsupportedOperationException(
+      "Exploded array views are read as columnar batches only"
+    )
 }
