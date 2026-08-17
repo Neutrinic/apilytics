@@ -40,7 +40,7 @@ class ExplodedArrayColumnarPartitionReader(partition: ExplodedArrayInputPartitio
         else {
           // Convert in `map`, not inside `emits`, so batches are allocated as the
           // bounded queue pulls them rather than all at once per page.
-          fs2.Stream.emits(exploded.grouped(batchSize).toList).unchunk.map { chunk =>
+          fs2.Stream.emits(exploded.grouped(batchSize).toList).chunkLimit(1).unchunks.map { chunk =>
             val root = Converter.toArrow(chunk, arrowSchema, allocator)
             (arrowToBatch(root), root)
           }

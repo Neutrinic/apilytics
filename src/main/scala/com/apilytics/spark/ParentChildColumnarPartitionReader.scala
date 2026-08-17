@@ -109,7 +109,7 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
               }
               // Convert in `map`, not inside `emits`, so batches are allocated as the
               // bounded queue pulls them rather than all at once per page.
-              fs2.Stream.emits(enrichedRecords.grouped(batchSize).toList).unchunk.map { chunk =>
+              fs2.Stream.emits(enrichedRecords.grouped(batchSize).toList).chunkLimit(1).unchunks.map { chunk =>
                 val root = Converter.toArrow(chunk, arrowSchema, allocator)
                 (arrowToBatch(root), root)
               }
@@ -186,7 +186,7 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
             else {
               // Convert in `map`, not inside `emits`, so batches are allocated as the
               // bounded queue pulls them rather than all at once per batch-join round.
-              fs2.Stream.emits(enrichedRecords.grouped(arrowBatchSize).toList).unchunk.map { chunk =>
+              fs2.Stream.emits(enrichedRecords.grouped(arrowBatchSize).toList).chunkLimit(1).unchunks.map { chunk =>
                 val root = Converter.toArrow(chunk, arrowSchema, allocator)
                 (arrowToBatch(root), root)
               }
