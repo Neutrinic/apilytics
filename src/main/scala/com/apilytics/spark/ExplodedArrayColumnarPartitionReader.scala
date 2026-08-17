@@ -2,7 +2,7 @@ package com.apilytics.spark
 
 import cats.effect.IO
 import com.apilytics.core.arrow.Converter
-import com.apilytics.core.rest.{RestHandle, RestSource}
+import com.apilytics.core.rest.RestSource
 import com.apilytics.core.source.{ReadRequest, RecordSession, RecordSource}
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
@@ -28,7 +28,7 @@ class ExplodedArrayColumnarPartitionReader(partition: ExplodedArrayInputPartitio
   ): fs2.Stream[IO, (ColumnarBatch, VectorSchemaRoot)] = {
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
     val outer = partition.sourceConfig.schema.explodeOuter
-    val handle = RestHandle(partition.endpoint.path, partition.baseUrl, partition.tableConfig)
+    val handle = partition.handle
 
     session
       .pages(ReadRequest(handle, partition.pushedParams, partition.pushedLimit))

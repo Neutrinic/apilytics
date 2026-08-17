@@ -22,7 +22,7 @@ class ParentChildScan(
 
     Array(ParentChildInputPartition(
       childEndpointTemplate = table.childEndpointTemplate,
-      parentEndpoint = table.parentEndpoint,
+      parentHandle = table.parentHandle,
       childResponseSchema = table.childResponseSchema,
       parentKey = table.parentKey,
       pathParamName = table.pathParamName,

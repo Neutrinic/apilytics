@@ -1,6 +1,7 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config._
+import com.apilytics.core.rest.RestHandle
 import com.apilytics.core.openapi.{Endpoint, QueryParam}
 import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
@@ -292,7 +293,7 @@ class ParentChildSuite extends FunSuite {
       childEndpointTemplate = "/customers/{customer_id}/orders",
       parentTableName = "customers",
       parentKey = "id",
-      parentEndpoint = parentEndpoint,
+      parentHandle = RestHandle(parentEndpoint.path, "https://api.example.com", None),
       childResponseSchema = parentSchema, // simplified
       tableConfig = tableConfig,
       sourceConfig = sourceConfig,
@@ -333,7 +334,7 @@ class ParentChildSuite extends FunSuite {
         childEndpointTemplate = "/orders",
         parentTableName = "customers",
         parentKey = "id",
-        parentEndpoint = parentEndpoint,
+        parentHandle = RestHandle(parentEndpoint.path, "https://api.example.com", None),
         childResponseSchema = parentSchema,
         tableConfig = tableConfig,
         sourceConfig = sourceConfig,
@@ -374,7 +375,7 @@ class ParentChildSuite extends FunSuite {
       childEndpointTemplate = "/customers/{customer_id}/orders",
       parentTableName = "customers",
       parentKey = "id",
-      parentEndpoint = parentEndpoint,
+      parentHandle = RestHandle(parentEndpoint.path, "https://api.example.com", None),
       childResponseSchema = childSchema,
       tableConfig = tableConfig,
       sourceConfig = sourceConfig,
@@ -425,7 +426,7 @@ class ParentChildSuite extends FunSuite {
       childEndpointTemplate = "/customers/{customer_id}/orders",
       parentTableName = "customers",
       parentKey = "id",
-      parentEndpoint = parentEndpoint,
+      parentHandle = RestHandle(parentEndpoint.path, "https://api.example.com", None),
       childResponseSchema = childSchema,
       tableConfig = tableConfig,
       sourceConfig = sourceConfig,
@@ -483,12 +484,7 @@ class ParentChildSuite extends FunSuite {
     val parentSchema = SourceSchema.ObjectType(Map("id" -> SourceSchema.IntegerType()))
     val partition = ParentChildInputPartition(
       childEndpointTemplate = "/customers/{customer_id}/orders",
-      parentEndpoint = Endpoint(
-        path = "/customers",
-        operationId = None,
-        responseSchema = parentSchema,
-        queryParams = Nil
-      ),
+      parentHandle = RestHandle("/customers", "https://api.example.com", None),
       childResponseSchema = parentSchema,
       parentKey = "id",
       pathParamName = "customer_id",

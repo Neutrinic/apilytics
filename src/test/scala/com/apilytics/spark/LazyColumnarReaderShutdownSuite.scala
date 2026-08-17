@@ -1,6 +1,7 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config._
+import com.apilytics.core.rest.RestHandle
 import com.apilytics.core.openapi.Endpoint
 import com.apilytics.core.schema.{SchemaMapper, SourceSchema}
 import com.github.tomakehurst.wiremock.WireMockServer
@@ -77,7 +78,11 @@ class LazyColumnarReaderShutdownSuite extends FunSuite {
     )
 
     RESTInputPartition(
-      endpoint = endpoint,
+      handle = RestHandle(
+        endpoint.path,
+        s"http://localhost:${server.port()}",
+        Some(TableConfig(endpoint = "/items", dataPath = Some("/results")))
+      ),
       tableConfig = Some(TableConfig(endpoint = "/items", dataPath = Some("/results"))),
       sourceConfig = sourceConfig,
       baseUrl = s"http://localhost:${server.port()}",

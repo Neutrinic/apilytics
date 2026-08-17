@@ -216,7 +216,7 @@ class RESTScan(
       effectiveRateLimit: Option[Int]
   ): RESTInputPartition = {
     RESTInputPartition(
-      endpoint = table.endpoint,
+      handle = table.handle,
       tableConfig = table.tableConfig,
       sourceConfig = table.sourceConfig,
       baseUrl = table.baseUrl,

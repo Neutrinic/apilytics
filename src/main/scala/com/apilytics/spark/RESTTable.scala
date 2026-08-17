@@ -1,7 +1,7 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config.{SourceConfig, TableConfig}
-import com.apilytics.core.openapi.Endpoint
+import com.apilytics.core.source.SourceHandle
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.sql.connector.catalog.{SupportsRead, Table, TableCapability}
 import org.apache.spark.sql.connector.read.ScanBuilder
@@ -14,7 +14,7 @@ import scala.jdk.CollectionConverters._
 class RESTTable(
     val tableName: String,
     val arrowSchema: ArrowSchema,
-    val endpoint: Endpoint,
+    val handle: SourceHandle,
     val tableConfig: Option[TableConfig],
     val sourceConfig: SourceConfig,
     val baseUrl: String

@@ -5,6 +5,7 @@ import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.checkpoint.{CheckpointState, CheckpointStore}
 import com.apilytics.core.config._
+import com.apilytics.core.rest.RestHandle
 import com.apilytics.core.openapi.Endpoint
 import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
@@ -973,7 +974,7 @@ class WireMockSuite extends FunSuite {
 
     val partition = ParentChildInputPartition(
       childEndpointTemplate = "/orders",
-      parentEndpoint = parentEndpoint,
+      parentHandle = RestHandle(parentEndpoint.path, s"http://localhost:${server.port()}", None),
       childResponseSchema = childSchema,
       parentKey = "id",
       pathParamName = "customer_id",
@@ -1078,7 +1079,7 @@ class WireMockSuite extends FunSuite {
 
     val partition = ParentChildInputPartition(
       childEndpointTemplate = "/tasks",
-      parentEndpoint = parentEndpoint,
+      parentHandle = RestHandle(parentEndpoint.path, s"http://localhost:${server.port()}", None),
       childResponseSchema = childSchema,
       parentKey = "id",
       pathParamName = "project_id",

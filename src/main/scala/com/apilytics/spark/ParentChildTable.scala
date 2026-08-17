@@ -1,7 +1,7 @@
 package com.apilytics.spark
 
 import com.apilytics.core.config.{SchemaMode, SourceConfig, TableConfig}
-import com.apilytics.core.openapi.Endpoint
+import com.apilytics.core.source.SourceHandle
 import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
@@ -31,7 +31,7 @@ class ParentChildTable(
     val childEndpointTemplate: String,
     val parentTableName: String,
     val parentKey: String,
-    val parentEndpoint: Endpoint,
+    val parentHandle: SourceHandle,
     val childResponseSchema: SourceSchema.ObjectType,
     val tableConfig: TableConfig,
     val sourceConfig: SourceConfig,

@@ -18,7 +18,7 @@ class ExplodedArrayScan(
 
   override def planInputPartitions(): Array[InputPartition] =
     Array(ExplodedArrayInputPartition(
-      endpoint = table.endpoint,
+      handle = table.handle,
       tableConfig = table.tableConfig,
       sourceConfig = table.sourceConfig,
       baseUrl = table.baseUrl,

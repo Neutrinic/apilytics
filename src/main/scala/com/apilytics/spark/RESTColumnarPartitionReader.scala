@@ -5,7 +5,7 @@ import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.checkpoint.{CheckpointState, CheckpointStore}
 import com.apilytics.core.config.{CheckpointMode, SchemaMode}
-import com.apilytics.core.rest.{RestHandle, RestSource}
+import com.apilytics.core.rest.RestSource
 import com.apilytics.core.source.{ReadRequest, RecordSession, RecordSource}
 import fs2.Stream
 import io.circe.Json
@@ -64,9 +64,9 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
   ): Stream[IO, (org.apache.spark.sql.vectorized.ColumnarBatch, VectorSchemaRoot)] = {
     val batchSize = partition.sourceConfig.schema.arrowBatchSize
 
-    // URI construction, pagination and data-path extraction all live behind the source
-    // now — this reader only says which table to read and what was pushed down (#191).
-    val handle = RestHandle(partition.endpoint.path, partition.baseUrl, partition.tableConfig)
+    // The partition carries a protocol-neutral handle; this reader never learns what
+    // kind of source produced it (#191).
+    val handle = partition.handle
 
     val isTimestampMode = partition.checkpointConfig.exists(cc => cc.enabled && cc.mode == CheckpointMode.Timestamp)
     val timestampPointer = if (isTimestampMode) {
