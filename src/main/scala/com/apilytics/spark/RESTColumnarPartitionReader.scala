@@ -111,7 +111,7 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
               // built only when the bounded queue pulls it. Converting inside
               // `Stream.emits` would allocate every batch in the page up front and
               // make peak memory track page size instead of arrow-batch-size.
-              Stream.emits(records.grouped(batchSize).toList).unchunk.map { chunk =>
+              Stream.emits(records.grouped(batchSize).toList).chunkLimit(1).unchunks.map { chunk =>
                 partition.schemaMode match {
                   case SchemaMode.Variant =>
                     (VariantBatch.fromRecords(chunk), null: VectorSchemaRoot)

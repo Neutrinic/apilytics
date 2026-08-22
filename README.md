@@ -4,13 +4,18 @@
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics_2.13)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Scala](https://img.shields.io/badge/Scala-2.13-red.svg)](https://www.scala-lang.org/)
-[![Spark](https://img.shields.io/badge/Spark-4.1-orange.svg)](https://spark.apache.org/)
+[![Spark](https://img.shields.io/badge/Spark-4.2-orange.svg)](https://spark.apache.org/)
 
 Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
-Built and tested against **Spark 4.1** on Scala 2.13 / Java 17. Spark is a `provided`
-dependency, so the connector also runs on Spark 4.0 clusters — the Data Source V2 and
-Arrow columnar APIs it uses are unchanged between the two.
+Built and tested against **Spark 4.2** on Scala 2.13 / Java 17.
+
+**APIlytics tracks the current Spark release.** Each version is built and tested against
+the latest Spark, and older releases are not supported — no compatibility floor is
+maintained, and version bumps are ordinary changes rather than breaking ones. Pin a
+released version if you need to stay on an older Spark. If you need broad compatibility
+across Spark versions, [flare](https://github.com/Neutrinic/flare-spark) is built for
+that; this connector trades it for the freedom to use current Spark APIs.
 
 ## Installation
 
@@ -503,7 +508,7 @@ Spark Catalog ← Tables ← ScanBuilder (pushdown) → HTTP Client
 
 ## Stack
 
-- Scala 2.13 / Spark 4.1
+- Scala 2.13 / Spark 4.2
 - http4s-ember-client (HTTP)
 - circe (JSON) + circe-pointer (RFC 6901)
 - swagger-parser (OpenAPI)

@@ -27,8 +27,8 @@ lazy val root = (project in file("."))
     name := "apilytics",
     libraryDependencies ++= Seq(
       // Spark
-      "org.apache.spark" %% "spark-sql"          % "4.1.3" % "provided",
-      "org.apache.spark" %% "spark-catalyst"      % "4.1.3" % "provided",
+      "org.apache.spark" %% "spark-sql"          % "4.2.0" % "provided",
+      "org.apache.spark" %% "spark-catalyst"      % "4.2.0" % "provided",
 
       // HTTP + JSON
       "org.http4s"       %% "http4s-ember-client" % "0.23.36",
@@ -45,8 +45,8 @@ lazy val root = (project in file("."))
 
       // Arrow — keep in lockstep with the version Spark bundles, since
       // ArrowColumnVector hands our buffers straight to Spark's own Arrow.
-      "org.apache.arrow"  % "arrow-vector"        % "18.3.0",
-      "org.apache.arrow"  % "arrow-memory-netty"  % "18.3.0",
+      "org.apache.arrow"  % "arrow-vector"        % "19.0.0",
+      "org.apache.arrow"  % "arrow-memory-netty"  % "19.0.0",
 
       // Config
       "com.typesafe"      % "config"              % "1.4.9",
