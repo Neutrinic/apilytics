@@ -168,6 +168,8 @@ object Loader {
       val tableConfig = TableConfig(
         endpoint = tc.getString("endpoint"),
         dataPath = optional(tc, "data-path"),
+        pagination =
+          if (tc.hasPath("pagination")) Some(readPagination(tc.getConfig("pagination"))) else None,
         filters = if (tc.hasPath("filters")) {
           tc.getConfigList("filters").asScala.toList.map { fc =>
             FilterConfig(

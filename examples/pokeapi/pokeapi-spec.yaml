@@ -99,6 +99,33 @@ paths:
                     items:
                       $ref: "#/components/schemas/NamedResource"
 
+  /api/v2/type/{id}:
+    get:
+      operationId: getType
+      summary: Get a type by ID or name, including the Pokemon that have it
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Type details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  pokemon:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TypePokemon"
+
   /api/v2/ability:
     get:
       operationId: listAbilities
@@ -142,6 +169,15 @@ components:
           type: string
         url:
           type: string
+
+    TypePokemon:
+      type: object
+      properties:
+        slot:
+          type: integer
+          description: Which of the Pokemon's type slots this type occupies
+        pokemon:
+          $ref: "#/components/schemas/NamedResource"
 
     PokemonSummary:
       type: object

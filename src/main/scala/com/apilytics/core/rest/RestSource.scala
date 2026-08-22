@@ -70,12 +70,19 @@ private[rest] final class RestSession(
     val dataPath =
       if (format != ResponseFormat.Json) None else handle.tableConfig.flatMap(_.dataPath)
 
+    // A table may override pagination, because pagination belongs to an endpoint rather
+    // than to an API: a list endpoint pages through `/results` while the detail endpoint
+    // on the child side of a join returns one object. Inheriting the source setting there
+    // makes the paginator hunt for a results path that is not present, decide the page is
+    // empty, and return nothing (#217).
+    val pagination = handle.tableConfig.flatMap(_.pagination).getOrElse(sourceConfig.pagination)
+
     Paginator
       .pagesWithState(
         client,
         uri,
         request.params,
-        sourceConfig.pagination,
+        pagination,
         request.limit,
         format,
         request.startState

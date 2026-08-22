@@ -253,12 +253,49 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI specs (Swag
 - **Schema modes** - strict (default, typed columns) or variant (native VARIANT for schema-free queries)
 - **Schema flattening** - nested objects flatten to a configurable depth, deeper nesting falls back to STRING
 - **Arrow internals** - zero-copy path to Spark ColumnarBatch
-- **Parent-child joins** - chain API calls (e.g., fetch issues then comments for each)
+- **Parent-child joins** - chain API calls (e.g., fetch issues then comments for each), [see below](#parent-child-joins)
 - **Batch joins** - reduce API calls from O(n) to O(n/batch_size) for bulk lookups
 - **Parallel partitioning** - date-range or enum partitioning for concurrent reads
 - **Rate limiting** - configurable requests per second, divided across partitions ([see below](#rate-limiting))
 - **Retry with backoff** - exponential backoff for transient failures (429, 5xx)
 - **Checkpoint support** - incremental reads via cursor, offset, or timestamp tracking
+
+### Parent-child joins
+
+Chain a second call per row of a parent table. The bundled PokéAPI config has a working
+example — for each row of `types`, fetch that type's detail endpoint and return the Pokemon
+it contains:
+
+```hocon
+type_pokemon {
+  endpoint      = "/api/v2/type/{type_name}"   # {type_name} filled from the parent row
+  parent-table  = "types"
+  parent-key    = "name"                       # parent column substituted into the path
+  data-path     = "/pokemon"                   # child records are nested in the response
+  join-strategy = "nested_loop"                # one call per parent row
+
+  # The detail endpoint returns a single object, so the source-level offset pagination
+  # (which pages through /results) does not apply here.
+  pagination { style = none }
+}
+```
+
+```sql
+SELECT _parent_type_name AS type, pokemon_name, slot
+FROM api.default.type_pokemon LIMIT 5;
+```
+
+Two things catch people out, both of which produce **zero rows with no error** if missed:
+
+- **`data-path` is needed when the child nests its records.** Without it the table
+  advertises the wrapper's columns while the reader reads the nested ones.
+- **Pagination is per-endpoint.** A detail endpoint usually does not paginate like the
+  list endpoint the source-level config was written for, so it needs
+  `pagination { style = none }` (or its own settings). Any table may override pagination
+  this way, not just join children.
+
+The parent key arrives as a column named after the path parameter — `{type_name}` gives
+`_parent_type_name`.
 
 ### Rate limiting
 
