@@ -1,7 +1,7 @@
 # APIlytics
 
 [![Build](https://github.com/Neutrinic/apilytics/actions/workflows/ci.yml/badge.svg)](https://github.com/Neutrinic/apilytics/actions/workflows/ci.yml)
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics_2.13)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics-spark-4-2_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics-spark-4-2_2.13)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Scala](https://img.shields.io/badge/Scala-2.13-red.svg)](https://www.scala-lang.org/)
 [![Spark](https://img.shields.io/badge/Spark-4.2-orange.svg)](https://spark.apache.org/)
@@ -10,12 +10,20 @@ Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
 Built and tested against **Spark 4.2** on Scala 2.13 / Java 17.
 
-**APIlytics tracks the current Spark release.** Each version is built and tested against
-the latest Spark, and older releases are not supported — no compatibility floor is
-maintained, and version bumps are ordinary changes rather than breaking ones. Pin a
-released version if you need to stay on an older Spark. If you need broad compatibility
-across Spark versions, [flare](https://github.com/Neutrinic/flare-spark) is built for
-that; this connector trades it for the freedom to use current Spark APIs.
+**APIlytics tracks the current Spark release.** Each release is built and tested against
+the latest Spark; older Spark versions are not supported. If you need broad compatibility
+across Spark versions, [flare](https://github.com/Neutrinic/flare-spark) is built for that
+— this connector trades it for the freedom to use current Spark APIs.
+
+The **artifact name carries the Spark line** (`apilytics-spark-4-2` targets Spark 4.2) and
+the **version is ordinary semver** describing our own changes. So upgrading Spark means
+changing the dependency coordinate, deliberately: nothing can move you across Spark
+versions without an explicit edit. Staying on an older Spark means staying on its
+coordinate, which simply stops receiving updates.
+
+> **Moving from `apilytics_2.13`?** That coordinate covered Spark 4.0/4.1 and is no longer
+> updated. Switch to `apilytics-spark-4-2_2.13` for Spark 4.2. No code or config changes are
+> required — only the dependency line.
 
 ## Installation
 
@@ -23,15 +31,15 @@ that; this connector trades it for the freedom to use current Spark APIs.
 
 ```scala
 // build.sbt
-libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.8.0"
+libraryDependencies += "io.github.neutrinic" %% "apilytics-spark-4-2" % "0.8.0"
 ```
 
 ```bash
 # spark-submit
-spark-submit --packages io.github.neutrinic:apilytics_2.13:0.8.0 your-app.jar
+spark-submit --packages io.github.neutrinic:apilytics-spark-4-2_2.13:0.8.0 your-app.jar
 
 # spark-shell
-spark-shell --packages io.github.neutrinic:apilytics_2.13:0.8.0
+spark-shell --packages io.github.neutrinic:apilytics-spark-4-2_2.13:0.8.0
 ```
 
 Then configure the catalog:
