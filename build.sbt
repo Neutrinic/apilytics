@@ -22,13 +22,22 @@ ThisBuild / scmInfo := Some(
   )
 )
 
+val sparkVersion = "4.2.0"
+
+/** Spark line this build targets, e.g. "42" for Spark 4.2 — derived rather than
+  * hardcoded so bumping `sparkVersion` cannot leave the published coordinate stale. */
+val sparkSuffix = sparkVersion.split('.').take(2).mkString
+
 lazy val root = (project in file("."))
   .settings(
-    name := "apilytics",
+    // The artifact name carries the Spark line, the version stays semver for our own
+    // changes (#219). Upgrading Spark therefore means editing the dependency
+    // coordinate — the loudest possible signal, and one no auto-bumper can cross.
+    name := s"apilytics-spark$sparkSuffix",
     libraryDependencies ++= Seq(
       // Spark
-      "org.apache.spark" %% "spark-sql"          % "4.2.0" % "provided",
-      "org.apache.spark" %% "spark-catalyst"      % "4.2.0" % "provided",
+      "org.apache.spark" %% "spark-sql"          % sparkVersion % "provided",
+      "org.apache.spark" %% "spark-catalyst"      % sparkVersion % "provided",
 
       // HTTP + JSON
       "org.http4s"       %% "http4s-ember-client" % "0.23.36",
