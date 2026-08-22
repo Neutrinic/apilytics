@@ -3,6 +3,8 @@ ThisBuild / version := "0.8.0"
 // Must be >= the scala-library the dependency classpath pulls in (SIP-51):
 // the bumped deps bring 2.13.18, and the compiler cannot be older than that.
 ThisBuild / scalaVersion := "2.13.18"
+// Tells sbt/coursier how to order versions when reporting evictions.
+ThisBuild / versionScheme := Some("semver-spec")
 
 // Publishing settings for Maven Central
 ThisBuild / homepage := Some(url("https://github.com/Neutrinic/apilytics"))
@@ -22,18 +24,21 @@ ThisBuild / scmInfo := Some(
   )
 )
 
-val sparkVersion = "4.2.0"
+// Spark to build against. Overridable so the next Spark can be tried without editing
+// the build: sbt -DsparkVersion=4.3.0 test
+val sparkVersion    = sys.props.getOrElse("sparkVersion", "4.2.0")
 
-/** Spark line this build targets, e.g. "42" for Spark 4.2 — derived rather than
-  * hardcoded so bumping `sparkVersion` cannot leave the published coordinate stale. */
-val sparkSuffix = sparkVersion.split('.').take(2).mkString
+/** Spark line this build targets, e.g. "4.2" — derived rather than hardcoded so bumping
+  * `sparkVersion` cannot leave the published coordinate stale. sbt normalises the dot to
+  * a dash in the artifact id, giving `apilytics-spark-4-2`, matching flare-spark. */
+val sparkMajorMinor = sparkVersion.split('.').take(2).mkString(".")
 
 lazy val root = (project in file("."))
   .settings(
     // The artifact name carries the Spark line, the version stays semver for our own
     // changes (#219). Upgrading Spark therefore means editing the dependency
     // coordinate — the loudest possible signal, and one no auto-bumper can cross.
-    name := s"apilytics-spark$sparkSuffix",
+    name := s"apilytics-spark-$sparkMajorMinor",
     libraryDependencies ++= Seq(
       // Spark
       "org.apache.spark" %% "spark-sql"          % sparkVersion % "provided",
