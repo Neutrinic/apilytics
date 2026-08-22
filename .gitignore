@@ -22,3 +22,6 @@ CLAUDE.md
 
 # User config files (may contain credentials)
 *.local.conf
+
+# Jupyter checkpoint files
+.ipynb_checkpoints/

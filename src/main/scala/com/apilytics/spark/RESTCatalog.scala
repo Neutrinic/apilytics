@@ -116,7 +116,11 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
       parentTableName = parentTableName,
       parentKey = parentKey,
       parentHandle = parentSpec.handle,
-      childResponseSchema = childEndpoint.responseSchema,
+      // Resolve the child's *record* schema, not its raw response schema. The reader
+      // applies this table's data-path when reading, so a child whose records are
+      // nested (e.g. data-path = "/pokemon") would otherwise advertise the wrapper's
+      // columns and return nothing at all (#217).
+      childResponseSchema = source.recordSchema(childEndpoint, tableName),
       tableConfig = tableConfig,
       sourceConfig = config,
       baseUrl = effectiveBaseUrl

@@ -323,6 +323,14 @@ final case class TableConfig(
     joinStrategy: Option[JoinStrategy] = None,
     /** Date-range partitioning configuration for parallel reads. */
     partition: Option[PartitionConfig] = None,
+    /** Pagination for this table, overriding the source-level setting.
+      *
+      * Pagination is a property of an endpoint, not of an API. A list endpoint may
+      * page through `/results` while a detail endpoint — typically the child side of
+      * a parent-child join — returns a single object. Inheriting the source setting
+      * there makes the paginator look for a results path that is not present and
+      * conclude the page is empty, yielding no rows at all (#217). */
+    pagination: Option[PaginationConfig] = None,
     /** Query parameter name for batch ID lookup (batch join strategy). */
     batchParam: Option[String] = None,
     /** Maximum number of IDs per batch request (batch join strategy). */
