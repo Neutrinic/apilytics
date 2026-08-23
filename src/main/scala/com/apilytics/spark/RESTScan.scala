@@ -33,16 +33,34 @@ class RESTScan(
 
   /** One field per pushed aggregate, in the order the reader emits them.
     *
-    * Only COUNT reaches here — `RESTScanBuilder.pushAggregation` declines everything else,
-    * because their result types are decided by the JSON that comes back rather than at plan
-    * time, and Spark needs the schema up front (#213). COUNT is always a whole number.
+    * Types come from `RESTScanBuilder.resolveResultType`, fixed at plan time, and the
+    * reader coerces to them. Inferring from each response instead is what crashed COUNT
+    * in #212, since Spark has already committed to this schema by then.
     */
   private def aggregateSchema: StructType = {
+    import com.apilytics.core.config.AggregationResultType._
     import org.apache.spark.sql.types._
 
     // Legacy count config produces one COUNT column with no resolved config.
-    val count = math.max(resolvedAggConfigs.size, 1)
-    StructType((0 until count).map(i => StructField(s"count_$i", LongType, nullable = true)))
+    val configs =
+      if (resolvedAggConfigs.nonEmpty) resolvedAggConfigs
+      else List(AggregationConfig(function = com.apilytics.core.config.AggregationFunction.Count,
+                                  endpoint = "", responsePath = "",
+                                  resultType = Some(Long)))
+
+    StructType(configs.zipWithIndex.map { case (cfg, i) =>
+      val dataType = cfg.resultType.getOrElse(Double) match {
+        case Long    => LongType
+        case Double  => DoubleType
+        case String  => StringType
+        case Boolean => BooleanType
+      }
+      val name = cfg.function match {
+        case com.apilytics.core.config.AggregationFunction.Custom(n) => n
+        case f => s"${f.toString.toLowerCase}_${cfg.column.getOrElse(i.toString)}"
+      }
+      StructField(name, dataType, nullable = true)
+    })
   }
 
   override def toBatch(): Batch = this

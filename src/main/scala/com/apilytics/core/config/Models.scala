@@ -262,6 +262,21 @@ final case class CountConfig(
     responsePath: String
 )
 
+/** Result type of a pushed aggregate, fixed at plan time.
+  *
+  * Spark needs a scan's schema before any data arrives, but an API may answer the same
+  * SUM with `42` on one call and `42.0` on the next, and a custom aggregate may answer
+  * with a string. So the type is decided when planning and the reader coerces to it,
+  * rather than being inferred per response (#213).
+  */
+sealed trait AggregationResultType extends Serializable
+object AggregationResultType {
+  case object Long extends AggregationResultType
+  case object Double extends AggregationResultType
+  case object String extends AggregationResultType
+  case object Boolean extends AggregationResultType
+}
+
 /** Aggregation function type for pushdown. */
 sealed trait AggregationFunction extends Serializable
 object AggregationFunction {
@@ -308,7 +323,15 @@ final case class AggregationConfig(
     /** JSON pointer to extract result from response (e.g., "/total"). */
     responsePath: String,
     /** Additional query parameters to send with the request. */
-    params: Map[String, String] = Map.empty
+    params: Map[String, String] = Map.empty,
+    /** Result type, filled in by the planner — not a user setting.
+      *
+      * Deliberately not configurable: Spark fixes an aggregate's type itself (`SUM` over
+      * an integer column is `bigint` whatever the scan advertises), so a user-chosen type
+      * could only disagree with the plan. The planner mirrors Spark's rules and the reader
+      * coerces to the result, which is what makes an API answering `42` on one call and
+      * `42.0` on the next safe (#213). */
+    resultType: Option[AggregationResultType] = None
 )
 
 final case class TableConfig(

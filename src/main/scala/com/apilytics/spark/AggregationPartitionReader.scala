@@ -3,7 +3,7 @@ package com.apilytics.spark
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.implicits._
-import com.apilytics.core.config.AggregationConfig
+import com.apilytics.core.config.{AggregationConfig, AggregationResultType}
 import com.apilytics.core.http.Client
 import com.apilytics.core.http.Client.RestClient
 import io.circe.Json
@@ -85,26 +85,54 @@ class AggregationPartitionReader(partition: AggregationInputPartition) extends P
 
     client.get(uri, params).map { response =>
       configsWithIndex.map { case (config, idx) =>
-        idx -> extractValue(response.json, config.responsePath)
+        idx -> extractValue(response.json, config)
       }
     }
   }
 
   /** Extract value from JSON using JSON pointer. */
-  private def extractValue(json: Json, responsePath: String): Any = {
+  private def extractValue(json: Json, config: AggregationConfig): Any = {
+    val responsePath = config.responsePath
     val pointer = Pointer.parse(responsePath).getOrElse(
       throw new IllegalArgumentException(s"Invalid JSON pointer: $responsePath")
     )
 
     pointer.get(json) match {
       case Right(valueJson) =>
-        jsonToScala(valueJson)
+        config.resultType.map(coerce(valueJson, _, responsePath)).getOrElse(jsonToScala(valueJson))
       case Left(_) =>
         throw new RuntimeException(
           s"Value not found at '$responsePath' in response: $json"
         )
     }
   }
+
+  /** Coerce a value to the type the scan advertised for this aggregate.
+    *
+    * The planner fixes the type before any data arrives (#213), so an API answering `42`
+    * on one call and `42.0` on the next must still produce the declared type — inferring
+    * per response would not match the schema Spark has already committed to.
+    *
+    * Only applies when a type was resolved; a partition built by hand without one keeps
+    * the older inferred behaviour.
+    */
+  private def coerce(json: Json, target: AggregationResultType, path: String): Any =
+    if (json.isNull) null
+    else {
+      def fail(expected: String) =
+        throw new RuntimeException(
+          s"Aggregate at '$path' expected $expected to match its declared type, got: $json")
+      target match {
+        case AggregationResultType.Long =>
+          json.asNumber.flatMap(_.toLong).getOrElse(fail("a whole number"))
+        case AggregationResultType.Double =>
+          json.asNumber.map(_.toDouble).getOrElse(fail("a number"))
+        case AggregationResultType.String =>
+          UTF8String.fromString(json.asString.getOrElse(json.noSpaces))
+        case AggregationResultType.Boolean =>
+          json.asBoolean.getOrElse(fail("a boolean"))
+      }
+    }
 
   /** Convert JSON value to Spark InternalRow types.
     * Strings must be UTF8String for Spark compatibility.

@@ -1,6 +1,6 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{AggregationConfig, AggregationFunction, CountConfig, FilterConfig}
+import com.apilytics.core.config.{AggregationConfig, AggregationFunction, AggregationResultType, CountConfig, FilterConfig}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.expressions.NamedReference
 import org.apache.spark.sql.connector.expressions.aggregate._
@@ -60,33 +60,69 @@ class RESTScanBuilder(table: RESTTable) extends ScanBuilder
       return false
     }
 
-    // Only COUNT is pushed for now.
+    // Push only the aggregates whose result type is unambiguous, because the scan has to
+    // agree with the type Spark has already given the aggregate expression — advertising a
+    // different one crashes the query during optimization (#212).
     //
-    // Spark fixes the scan's schema at plan time, but the aggregation reader types each
-    // value from whatever JSON came back — an API may answer a SUM with 12500 or 12500.0,
-    // and a custom aggregate may answer with a string. There is no static type that
-    // describes that, and advertising the wrong one crashes the query during optimization
-    // (#212). COUNT is safe because it is always a whole number.
+    // COUNT is always whole, AVG always fractional, and SUM promotes integral columns to
+    // long. MIN/MAX instead preserve the column type exactly (MAX over an int column is an
+    // int, not a bigint) across every orderable type including dates and decimals, and a
+    // custom aggregate's type is decided inside Spark with no way to read it. Reproducing
+    // either faithfully is guesswork, so they are declined.
     //
-    // Refusing the push is not a loss of correctness: Spark computes these itself from the
-    // scanned rows. It costs a full read, which is exactly what pushdown existed to avoid,
-    // so re-enabling it is worth doing properly — see #213.
-    val unsupported = matched.filterNot(_.function == AggregationFunction.Count)
-    if (unsupported.nonEmpty) {
+    // Declining costs a full read but is never wrong: Spark aggregates the scanned rows.
+    val undecidable = matched.filter { c =>
+      c.function match {
+        case AggregationFunction.Min | AggregationFunction.Max => true
+        case AggregationFunction.Custom(_)                     => true
+        case _                                                 => false
+      }
+    }
+    if (undecidable.nonEmpty) {
       logInfo(
-        s"Aggregation pushdown declined for ${unsupported.map(_.function).mkString(", ")}: " +
-          "only COUNT has a stable result type (#213). Spark will aggregate these itself."
+        s"Aggregation pushdown declined for ${undecidable.map(_.function).mkString(", ")}: " +
+          "result type is not decidable at plan time (#213). Spark will aggregate these itself."
       )
       return false
     }
 
-    // All matched - accept the pushdown
+    // Fix each aggregate's result type now, at plan time. Spark needs the scan's schema
+    // before any data arrives, and the reader coerces values to what is decided here —
+    // otherwise an API answering `42` on one call and `42.0` on the next would not match
+    // the advertised schema, which is what crashed COUNT in #212.
+    val typed = matched.map(cfg => cfg.copy(resultType = Some(resolveResultType(cfg))))
+
     val descriptions = aggs.map(describeAggregate).mkString(", ")
     logInfo(s"Aggregations pushed to API: $descriptions")
     pushedAggregation = Some(aggregation)
-    resolvedAggConfigs = matched.toList
+    resolvedAggConfigs = typed.toList
     true
   }
+
+  /** Decide an aggregate's result type, mirroring Spark's own aggregate typing.
+    *
+    * This is not a free choice: Spark has already typed the aggregate expression, so the
+    * scan has to agree with it. COUNT is whole, AVG is fractional, and SUM/MIN/MAX take
+    * the type of the column being aggregated — the same rules Spark applies.
+    */
+  private def resolveResultType(cfg: AggregationConfig): AggregationResultType =
+    cfg.resultType.getOrElse {
+      import org.apache.spark.sql.types._
+      cfg.function match {
+        case AggregationFunction.Count => AggregationResultType.Long
+        case AggregationFunction.Avg   => AggregationResultType.Double
+        case _ =>
+          cfg.column
+            .flatMap(c => table.schema().fields.find(_.name == c))
+            .map(_.dataType match {
+              case _: IntegerType | _: LongType | _: ShortType | _: ByteType => AggregationResultType.Long
+              case _: StringType                                            => AggregationResultType.String
+              case _: BooleanType                                           => AggregationResultType.Boolean
+              case _                                                        => AggregationResultType.Double
+            })
+            .getOrElse(AggregationResultType.Double)
+      }
+    }
 
   /** Match a Spark aggregate expression to an AggregationConfig. */
   private def matchAggregateToConfig(agg: AggregateFunc): Option[AggregationConfig] = {
@@ -138,7 +174,7 @@ class RESTScanBuilder(table: RESTTable) extends ScanBuilder
   /** Find a custom aggregation config by name. */
   private def findCustomAggConfig(name: String): Option[AggregationConfig] = {
     aggregationConfigs.values.find {
-      case AggregationConfig(AggregationFunction.Custom(n), _, _, _, _) =>
+      case AggregationConfig(AggregationFunction.Custom(n), _, _, _, _, _) =>
         n.equalsIgnoreCase(name)
       case _ => false
     }
