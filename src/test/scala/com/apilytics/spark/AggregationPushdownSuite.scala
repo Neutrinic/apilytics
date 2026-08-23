@@ -82,11 +82,10 @@ class AggregationPushdownSuite extends FunSuite {
     )
   }
 
-  test("SUM is not pushed down but still returns the right answer") {
-    // The API offers a SUM endpoint, but its result type is only known once the JSON
-    // arrives, so pushing it would mean advertising a schema we cannot guarantee (#213).
-    // Declining must degrade to a normal scan, not a crash: Spark reads the rows and
-    // sums them itself.
+  test("SUM is pushed to the configured endpoint and typed from the column") {
+    // `number` is an integer in the spec, so the planner fixes this aggregate as a whole
+    // number and the reader coerces to it — the API answering 42 or 42.0 makes no
+    // difference to the schema Spark already committed to (#213).
     Files.writeString(
       configPath,
       Files.readString(configPath).replace(
@@ -96,17 +95,41 @@ class AggregationPushdownSuite extends FunSuite {
     )
     spark.sql("CLEAR CACHE")
 
+    server.stubFor(get(urlPathEqualTo("/stats")).willReturn(okJson("""{"total": 42.0}""")))
+
+    val rows = spark.sql("SELECT SUM(number) FROM api.default.issues").collect()
+
+    assertEquals(rows.length, 1)
+    assertEquals(rows.head.getLong(0), 42L, "a decimal response must still land as the declared whole number")
+
+    // Pushed down: the aggregate endpoint was called and the rows were never scanned.
+    server.verify(1, getRequestedFor(urlPathEqualTo("/stats")))
+    server.verify(0, getRequestedFor(urlPathEqualTo("/repos/octocat/Hello-World/issues")))
+  }
+
+  test("MAX is not pushed, and still returns the right answer") {
+    // MIN/MAX preserve the aggregated column's type exactly — MAX over an int column is
+    // an int, not a bigint — so the scan cannot advertise a type without reproducing
+    // Spark's rules across every orderable type. Declining must degrade to a normal scan
+    // rather than a crash (#213).
+    Files.writeString(
+      configPath,
+      Files.readString(configPath).replace(
+        """count { param = "per_page", param-value = "1", response-path = "/total_count" }""",
+        """aggregations { m { function = "max", column = "number", endpoint = "/stats", response-path = "/max" } }"""
+      )
+    )
+    spark.sql("CLEAR CACHE")
+
     server.stubFor(
       get(urlPathEqualTo("/repos/octocat/Hello-World/issues"))
         .willReturn(okJson("""[{"id": 1, "number": 10, "title": "a"}, {"id": 2, "number": 32, "title": "b"}]"""))
     )
 
-    val rows = spark.sql("SELECT SUM(number) FROM api.default.issues").collect()
+    // Spark aggregates the scanned rows itself; the aggregate endpoint is never called.
+    val rows = spark.sql("SELECT MAX(number) FROM api.default.issues").collect()
 
-    assertEquals(rows.length, 1)
-    assertEquals(rows.head.get(0).toString, "42", "Spark should have summed 10 + 32 itself")
-
-    // The aggregate endpoint must not have been called — the push was declined.
+    assertEquals(rows.head.getInt(0), 32, "MAX over an int column stays an int")
     server.verify(0, getRequestedFor(urlPathEqualTo("/stats")))
   }
 

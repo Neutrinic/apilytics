@@ -319,7 +319,7 @@ object Loader {
           paramsConfig.root().keySet().asScala.map { key =>
             key -> paramsConfig.getString(key)
           }.toMap
-        } else Map.empty
+        } else Map.empty,
       )
 
       // Validate column is required for sum/avg/min/max
