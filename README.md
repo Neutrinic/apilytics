@@ -31,15 +31,15 @@ coordinate, which simply stops receiving updates.
 
 ```scala
 // build.sbt
-libraryDependencies += "io.github.neutrinic" %% "apilytics-spark-4-2" % "0.8.0"
+libraryDependencies += "io.github.neutrinic" %% "apilytics-spark-4-2" % "1.0.0"
 ```
 
 ```bash
 # spark-submit
-spark-submit --packages io.github.neutrinic:apilytics-spark-4-2_2.13:0.8.0 your-app.jar
+spark-submit --packages io.github.neutrinic:apilytics-spark-4-2_2.13:1.0.0 your-app.jar
 
 # spark-shell
-spark-shell --packages io.github.neutrinic:apilytics-spark-4-2_2.13:0.8.0
+spark-shell --packages io.github.neutrinic:apilytics-spark-4-2_2.13:1.0.0
 ```
 
 Then configure the catalog:
@@ -558,8 +558,50 @@ Spark Catalog ← Tables ← ScanBuilder (pushdown) → HTTP Client
 - circe (JSON) + circe-pointer (RFC 6901)
 - swagger-parser (OpenAPI)
 - Apache Arrow (columnar format)
-- pureconfig (HOCON config)
+- Typesafe Config (HOCON config)
 - fs2 (streaming pagination)
+
+## Compatibility
+
+APIlytics follows [semantic versioning](https://semver.org/spec/v2.0.0.html). What that
+promise covers — and does not — is spelled out here, because the project is consumed
+through configuration and SQL rather than through Scala imports.
+
+### The public surface
+
+These are stable within a major version. Breaking any of them requires a major bump.
+
+| Surface | What is promised |
+| --- | --- |
+| **The catalog class name** | `com.apilytics.spark.RESTCatalog` keeps its fully-qualified name, so `spark.sql.catalog.<name>` entries keep working. |
+| **The HOCON config schema** | Existing keys keep their names, types, defaults and meanings. New keys may be added; they will be optional. |
+| **The SQL surface** | Tables stay addressable as `<catalog>.default.<table>`, named as configured. |
+| **The artifact coordinate** | `io.github.neutrinic:apilytics-spark-<line>_2.13`, resolvable from Maven Central. |
+
+### Not public
+
+**Everything else under `com.apilytics.*` is internal**, including the source layer
+(`com.apilytics.core.source`), the REST implementation, the OpenAPI parser, the Arrow
+converter and every Spark class other than `RESTCatalog`. These are published in the jar
+because the JVM requires it, not as an invitation. They change in minor and patch releases
+without notice.
+
+If you need programmatic access to something here, please open an issue rather than
+importing it — that is how it becomes supported.
+
+### Spark versions
+
+The supported Spark line lives **in the artifact name**, not in the version:
+
+```
+io.github.neutrinic:apilytics-spark-4-2_2.13:1.0.0
+                                   └─ Spark line   └─ our semver
+```
+
+APIlytics tracks the current Spark release rather than maintaining a compatibility floor
+([#189](https://github.com/Neutrinic/apilytics/issues/189)). Moving to a new Spark line
+means editing the coordinate — a deliberate change no automated version bump can make for
+you. Older lines keep the releases they already have; they do not receive new ones.
 
 ## License
 

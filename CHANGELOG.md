@@ -5,6 +5,110 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-08-23
+
+First stable release. The version marks architectural stability rather than a burst of
+features: the source layer is now protocol-neutral, the Spark support policy is decided,
+and the published coordinate is settled.
+
+### Breaking
+
+- **The artifact is renamed.** `io.github.neutrinic:apilytics_2.13` becomes
+  **`io.github.neutrinic:apilytics-spark-4-2_2.13`**. The Spark line now lives in the
+  artifact name so the version can stay ordinary semver describing this project's own
+  changes, and so moving Spark requires an explicit edit to the dependency coordinate that
+  no automated bump can cross (#219). The old coordinate stops receiving updates. **No code
+  or config changes are required** — only the dependency line.
+- **Spark 4.2 is required** (was 4.0/4.1). APIlytics tracks the current Spark release and
+  does not maintain a compatibility floor; pin an older release to stay on an older Spark
+  (#189).
+- **Scala 2.13.18** minimum, required by SIP-51 given the dependency classpath.
+
+### Added
+
+- **Protocol-neutral source layer** (#191) — `core.source` defines how any protocol
+  supplies tables and records, with REST as the first implementation. Spark-layer code no
+  longer reaches into HTTP or OpenAPI types, which is what makes further protocols additive.
+- **Per-table pagination** — `pagination { … }` inside a table overrides the source-level
+  setting. Pagination belongs to an endpoint, not to an API (#217).
+- **`prefetch-batches`** — bounds how many Arrow batches the reader holds ahead of Spark.
+  Peak reader memory is now `prefetch-batches × arrow-batch-size`, both configurable (#37).
+- **Working parent-child example** against a public API, plus documentation of the two
+  traps that silently return zero rows (#217).
+- **OSV vulnerability scanning** on every PR via a CycloneDX SBOM, matching by package
+  coordinate rather than guessing CPEs (#199).
+- **Config-relative spec paths** — a relative `openapi` now resolves against the directory
+  holding the config file rather than the process working directory, so a spec bundled
+  beside its config is found wherever the pair is mounted. URLs and absolute paths are
+  unaffected (#225).
+- **A documented compatibility contract** — the README now states what semver covers: the
+  catalog class name, the config schema, the SQL surface and the artifact coordinate.
+  Everything else under `com.apilytics.*` is internal (#225).
+
+### Fixed
+
+- **`close()` could deadlock** — a cancelled reader's uncancelable finalizer parked forever
+  offering its end-of-stream sentinel into a full queue, hanging the task rather than
+  failing it. Fires whenever Spark stops early: a satisfied `LIMIT`, a failed task, a
+  cancelled job (#203).
+- **`COUNT(*)` pushdown crashed during optimization** — `readSchema` advertised the table's
+  columns while the reader returned one aggregate value, so the query failed before reading
+  anything (#212).
+- **`SUM`/`AVG` pushdown** now works, with result types fixed at plan time so an API
+  answering `42` on one call and `42.0` on the next still matches the schema (#213).
+- **The rate limit could exceed itself** — a limit below the partition count fell back to
+  1 rps per partition, allowing more than the configured total. Integer division also
+  discarded the remainder silently. Shares now sum exactly, and an impossible split fails
+  at planning (#205).
+- **Parent-child joins returned nothing** when the child nested its records or paginated
+  differently from the list endpoint (#217).
+- **Arrow conversion was not actually lazy** — every batch in a page was allocated up front,
+  so peak memory tracked page size and `arrow-batch-size` had no downward effect. Peak
+  dropped ~70% at small batch sizes (#37).
+- **Checkpoint store crashed on executors** under Spark 4.1+, where `SparkSession.active`
+  changed the exception type it throws and silently defeated the fallback (#186).
+- **jackson-databind pin broke Spark 4.1+** — it sat outside the range
+  `jackson-module-scala` enforces, taking out Spark's error machinery (#185).
+- **Releases would have carried the wrong version** — `version` was set literally in
+  `build.sbt`, which outranks the value sbt-ci-release derives from the git tag. Tagging
+  `v1.0.0` would have published `0.8.0`, and because the artifact was renamed there was no
+  existing artifact for the repository to reject (#225).
+- **The bundled Slack example never worked in the image** — its config named a spec under
+  `/opt/spark/examples/`, but the image copies examples to `/opt/apilytics/examples/`
+  (#225).
+- **The PokeAPI examples fetched their own spec over the network** at query time, from the
+  tip of the default branch, so editing the spec retroactively changed what a released
+  example did. They now read the copy shipped beside them (#225).
+- **Security pins never reached consumers** — `dependencyOverrides` is resolution-time only
+  and is not published, so released artifacts resolved vulnerable transitive versions.
+  Fixed at the source by upgrading `swagger-parser` (#188).
+
+### Removed
+
+- **Three unreachable row-based readers** (343 lines). Spark never calls `createReader`
+  while `supportColumnarReads` is true, so they could not run — two had been orphaned when
+  columnar reads arrived, one was unreachable from its first commit (#211).
+
+### Changed
+
+- Dependencies refreshed: Arrow 19.0.0, http4s 0.23.36, circe 0.14.16, fs2 3.13.0,
+  swagger-parser 2.1.45, netty 4.2.17, typesafe-config 1.4.9.
+- OWASP dependency-check is now advisory and weekly rather than a merge gate. It identifies
+  dependencies by guessing CPEs, and every suppression carried was a misidentification;
+  OSV (#199) does the gating instead (#200).
+- Security scans use the NVD bulk data feed instead of paging the API — runs went from
+  timing out after hours to about seven minutes (#197).
+
+### Known limitations
+
+- `MIN`/`MAX` and custom aggregates are not pushed down; they fall back to a full scan with
+  Spark computing the result (#213).
+- Aggregate pushdown is REST-specific and will not carry to future protocols without
+  further work.
+- Filter pushdown covers `=`, `>`, `>=`, `<`, `<=` for columns declared in a table's
+  `filters` config. Anything else filters client-side after a full scan.
+- Read-only. No writes, no streaming source yet (#36).
+
 ## [0.8.0] - 2026-02-28
 
 ### Added
