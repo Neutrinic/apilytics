@@ -25,3 +25,8 @@ CLAUDE.md
 
 # Jupyter checkpoint files
 .ipynb_checkpoints/
+
+# Python build artifacts
+python/dist/
+python/*.egg-info/
+__pycache__/
