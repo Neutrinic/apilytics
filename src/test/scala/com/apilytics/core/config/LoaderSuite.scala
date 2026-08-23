@@ -839,8 +839,17 @@ class LoaderSuite extends FunSuite {
 
   test("a Windows drive letter is not mistaken for a URL scheme") {
     // "C:" matches a naive scheme regex; requiring 2+ chars before the colon excludes it.
-    val windows = "C:\\specs\\api.yaml"
-    assertEquals(Loader.resolveSpecLocation(windows, configDir), windows)
+    //
+    // What the path then means is genuinely platform-dependent: on Windows it is an
+    // absolute path and passes through, while on Linux it is an ordinary — if oddly
+    // named — relative file and anchors to the config directory. The bug this guards
+    // against is neither of those: returning it unanchored on a platform where it is
+    // relative, because it was read as a URL.
+    val windows  = "C:\\specs\\api.yaml"
+    val resolved = Loader.resolveSpecLocation(windows, configDir)
+
+    if (new java.io.File(windows).isAbsolute) assertEquals(resolved, windows)
+    else assertEquals(resolved, new java.io.File(configDir.get, windows).getPath)
   }
 
   test("load() anchors a bundled spec to the config file it came from") {
