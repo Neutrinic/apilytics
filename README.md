@@ -10,16 +10,6 @@ Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
 Built and tested against **Spark 4.2** on Scala 2.13 / Java 17.
 
-The **artifact name carries the Spark line** (`apilytics-spark-4-2` targets Spark 4.2) and
-the **version is ordinary semver** describing our own changes. So upgrading Spark means
-changing the dependency coordinate, deliberately: nothing can move you across Spark
-versions without an explicit edit. Staying on an older Spark means staying on its
-coordinate, which simply stops receiving updates.
-
-> **Moving from `apilytics_2.13`?** That coordinate covered Spark 4.0/4.1 and is no longer
-> updated. Switch to `apilytics-spark-4-2_2.13` for Spark 4.2. No code or config changes are
-> required — only the dependency line.
-
 ## Installation
 
 ### Maven Central
