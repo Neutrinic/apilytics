@@ -1,9 +1,7 @@
 # APIlytics
 
 [![Build](https://github.com/Neutrinic/apilytics/actions/workflows/ci.yml/badge.svg)](https://github.com/Neutrinic/apilytics/actions/workflows/ci.yml)
-<!-- UNRELEASED: badge points at the published 4.0/4.1 artifact. On release, swap both
-     occurrences of `apilytics_2.13` back to `apilytics-spark-4-2_2.13`. -->
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics_2.13)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics-spark-4-2_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics-spark-4-2_2.13)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Scala](https://img.shields.io/badge/Scala-2.13-red.svg)](https://www.scala-lang.org/)
 [![Spark](https://img.shields.io/badge/Spark-4.2-orange.svg)](https://spark.apache.org/)
@@ -12,56 +10,22 @@ Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
 Built and tested against **Spark 4.2** on Scala 2.13 / Java 17.
 
-**APIlytics tracks the current Spark release.** Each release is built and tested against
-the latest Spark; older Spark versions are not supported. If you need broad compatibility
-across Spark versions, [flare](https://github.com/Neutrinic/flare-spark) is built for that
-— this connector trades it for the freedom to use current Spark APIs.
-
-The **artifact name carries the Spark line** (`apilytics-spark-4-2` targets Spark 4.2) and
-the **version is ordinary semver** describing our own changes. So upgrading Spark means
-changing the dependency coordinate, deliberately: nothing can move you across Spark
-versions without an explicit edit. Staying on an older Spark means staying on its
-coordinate, which simply stops receiving updates.
-
-> **Moving from `apilytics_2.13`?** That coordinate covered Spark 4.0/4.1 and stops
-> receiving updates. `apilytics-spark-4-2_2.13` succeeds it for Spark 4.2 — no code or
-> config changes are required, only the dependency line.
-> <!-- UNRELEASED: delete the next line on release. -->
-> It is not published yet; see [Installation](#maven-central).
-
 ## Installation
 
 ### Maven Central
 
-<!-- UNRELEASED:BEGIN — delete this block when v1.0.0 is tagged and published.
-     Restoring it is the whole "unchore": drop the notice and the fenced block
-     immediately below, and un-comment the release snippet that follows. -->
-> [!IMPORTANT]
-> **`apilytics-spark-4-2` is not published yet.** The Spark 4.2 artifact is awaiting the
-> 1.0.0 release, so the coordinate below does not resolve from Maven Central today.
->
-> Until then, use **[Docker](#docker)** — it is built from `main` on every merge and works
-> now — or the previous artifact, which targets **Spark 4.0/4.1**:
->
-> ```scala
-> libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.8.0"
-> ```
-<!-- UNRELEASED:END -->
-
-<!-- UNRELEASED: un-comment on release
 ```scala
 // build.sbt
-libraryDependencies += "io.github.neutrinic" %% "apilytics-spark-4-2" % "1.0.0"
+libraryDependencies += "io.github.neutrinic" %% "apilytics-spark-4-2" % "0.8.0"
 ```
 
 ```bash
 # spark-submit
-spark-submit --packages io.github.neutrinic:apilytics-spark-4-2_2.13:1.0.0 your-app.jar
+spark-submit --packages io.github.neutrinic:apilytics-spark-4-2_2.13:0.8.0 your-app.jar
 
 # spark-shell
-spark-shell --packages io.github.neutrinic:apilytics-spark-4-2_2.13:1.0.0
+spark-shell --packages io.github.neutrinic:apilytics-spark-4-2_2.13:0.8.0
 ```
--->
 
 Then configure the catalog:
 
@@ -579,50 +543,8 @@ Spark Catalog ← Tables ← ScanBuilder (pushdown) → HTTP Client
 - circe (JSON) + circe-pointer (RFC 6901)
 - swagger-parser (OpenAPI)
 - Apache Arrow (columnar format)
-- Typesafe Config (HOCON config)
+- pureconfig (HOCON config)
 - fs2 (streaming pagination)
-
-## Compatibility
-
-APIlytics follows [semantic versioning](https://semver.org/spec/v2.0.0.html). What that
-promise covers — and does not — is spelled out here, because the project is consumed
-through configuration and SQL rather than through Scala imports.
-
-### The public surface
-
-These are stable within a major version. Breaking any of them requires a major bump.
-
-| Surface | What is promised |
-| --- | --- |
-| **The catalog class name** | `com.apilytics.spark.RESTCatalog` keeps its fully-qualified name, so `spark.sql.catalog.<name>` entries keep working. |
-| **The HOCON config schema** | Existing keys keep their names, types, defaults and meanings. New keys may be added; they will be optional. |
-| **The SQL surface** | Tables stay addressable as `<catalog>.default.<table>`, named as configured. |
-| **The artifact coordinate** | `io.github.neutrinic:apilytics-spark-<line>_2.13`, resolvable from Maven Central. |
-
-### Not public
-
-**Everything else under `com.apilytics.*` is internal**, including the source layer
-(`com.apilytics.core.source`), the REST implementation, the OpenAPI parser, the Arrow
-converter and every Spark class other than `RESTCatalog`. These are published in the jar
-because the JVM requires it, not as an invitation. They change in minor and patch releases
-without notice.
-
-If you need programmatic access to something here, please open an issue rather than
-importing it — that is how it becomes supported.
-
-### Spark versions
-
-The supported Spark line lives **in the artifact name**, not in the version:
-
-```
-io.github.neutrinic:apilytics-spark-4-2_2.13:1.0.0
-                                   └─ Spark line   └─ our semver
-```
-
-APIlytics tracks the current Spark release rather than maintaining a compatibility floor
-([#189](https://github.com/Neutrinic/apilytics/issues/189)). Moving to a new Spark line
-means editing the coordinate — a deliberate change no automated version bump can make for
-you. Older lines keep the releases they already have; they do not receive new ones.
 
 ## License
 
