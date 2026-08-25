@@ -1,7 +1,9 @@
 # APIlytics
 
 [![Build](https://github.com/Neutrinic/apilytics/actions/workflows/ci.yml/badge.svg)](https://github.com/Neutrinic/apilytics/actions/workflows/ci.yml)
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics-spark-4-2_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics-spark-4-2_2.13)
+<!-- UNRELEASED: badge points at the published 4.0/4.1 artifact. On release, swap both
+     occurrences of `apilytics_2.13` back to `apilytics-spark-4-2_2.13`. -->
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics_2.13)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Scala](https://img.shields.io/badge/Scala-2.13-red.svg)](https://www.scala-lang.org/)
 [![Spark](https://img.shields.io/badge/Spark-4.2-orange.svg)](https://spark.apache.org/)
@@ -21,14 +23,32 @@ changing the dependency coordinate, deliberately: nothing can move you across Sp
 versions without an explicit edit. Staying on an older Spark means staying on its
 coordinate, which simply stops receiving updates.
 
-> **Moving from `apilytics_2.13`?** That coordinate covered Spark 4.0/4.1 and is no longer
-> updated. Switch to `apilytics-spark-4-2_2.13` for Spark 4.2. No code or config changes are
-> required — only the dependency line.
+> **Moving from `apilytics_2.13`?** That coordinate covered Spark 4.0/4.1 and stops
+> receiving updates. `apilytics-spark-4-2_2.13` succeeds it for Spark 4.2 — no code or
+> config changes are required, only the dependency line.
+> <!-- UNRELEASED: delete the next line on release. -->
+> It is not published yet; see [Installation](#maven-central).
 
 ## Installation
 
 ### Maven Central
 
+<!-- UNRELEASED:BEGIN — delete this block when v1.0.0 is tagged and published.
+     Restoring it is the whole "unchore": drop the notice and the fenced block
+     immediately below, and un-comment the release snippet that follows. -->
+> [!IMPORTANT]
+> **`apilytics-spark-4-2` is not published yet.** The Spark 4.2 artifact is awaiting the
+> 1.0.0 release, so the coordinate below does not resolve from Maven Central today.
+>
+> Until then, use **[Docker](#docker)** — it is built from `main` on every merge and works
+> now — or the previous artifact, which targets **Spark 4.0/4.1**:
+>
+> ```scala
+> libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.8.0"
+> ```
+<!-- UNRELEASED:END -->
+
+<!-- UNRELEASED: un-comment on release
 ```scala
 // build.sbt
 libraryDependencies += "io.github.neutrinic" %% "apilytics-spark-4-2" % "1.0.0"
@@ -41,6 +61,7 @@ spark-submit --packages io.github.neutrinic:apilytics-spark-4-2_2.13:1.0.0 your-
 # spark-shell
 spark-shell --packages io.github.neutrinic:apilytics-spark-4-2_2.13:1.0.0
 ```
+-->
 
 Then configure the catalog:
 
