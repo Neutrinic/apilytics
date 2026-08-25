@@ -11,8 +11,34 @@ object Loader {
   private val log = LoggerFactory.getLogger(getClass)
 
   def load(path: String): SourceConfig = {
-    val config = ConfigFactory.parseFile(new java.io.File(path)).resolve()
-    readSourceConfig(config)
+    val file   = new java.io.File(path)
+    val config = ConfigFactory.parseFile(file).resolve()
+    val sc     = readSourceConfig(config)
+    sc.copy(openapi = resolveSpecLocation(sc.openapi, Option(file.getAbsoluteFile.getParentFile)))
+  }
+
+  /** Resolve a relative `openapi` path against the directory holding the config file.
+    *
+    * A spec that ships beside its config can then be named `openapi = "my-spec.yaml"`
+    * and still be found wherever the pair is mounted — a repo checkout, the Docker
+    * image, someone else's filesystem — without the config knowing an absolute path
+    * or fetching itself over the network.
+    *
+    * URLs and absolute paths are passed through untouched. Two platform traps:
+    *
+    *   - The scheme test requires at least two characters before the colon, so a Windows
+    *     drive letter (`C:\...`) is not mistaken for a URL scheme.
+    *   - A leading slash counts as absolute regardless of platform. `File.isAbsolute`
+    *     alone says `/opt/spark/spec.json` is *relative* on Windows, so a config written
+    *     for Linux would silently have its path joined onto the config directory.
+    */
+  private[config] def resolveSpecLocation(location: String, configDir: Option[java.io.File]): String = {
+    val hasScheme  = location.matches("^[A-Za-z][A-Za-z0-9+.\\-]+:.*")
+    val rooted     = location.startsWith("/") || location.startsWith("\\")
+    val isAbsolute = rooted || new java.io.File(location).isAbsolute
+
+    if (hasScheme || isAbsolute) location
+    else configDir.map(dir => new java.io.File(dir, location).getPath).getOrElse(location)
   }
 
   def load(config: Config): SourceConfig = {

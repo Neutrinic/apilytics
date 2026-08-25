@@ -797,4 +797,73 @@ class LoaderSuite extends FunSuite {
     val warnings = Loader.warnPlaintextCredentials(result)
     assertEquals(warnings.size, 0)
   }
+
+  // --- Spec location resolution ---
+  //
+  // A spec bundled next to its config must be findable wherever the pair is mounted,
+  // so relative paths anchor to the config's directory rather than the process CWD.
+
+  private val configDir = Some(new java.io.File("/etc/apilytics"))
+
+  test("relative spec path resolves against the config's directory") {
+    assertEquals(
+      Loader.resolveSpecLocation("pokeapi-spec.yaml", configDir),
+      new java.io.File("/etc/apilytics/pokeapi-spec.yaml").getPath
+    )
+  }
+
+  test("absolute spec paths are left alone") {
+    val absolute = new java.io.File("/srv/specs/api.yaml").getAbsolutePath
+    assertEquals(Loader.resolveSpecLocation(absolute, configDir), absolute)
+  }
+
+  test("a unix absolute path stays absolute on every platform") {
+    // File.isAbsolute calls "/opt/..." relative on Windows, which would join a
+    // Linux-authored config's spec path onto the config directory. Configs are written
+    // once and run on both, so the leading slash has to be honoured either way.
+    val unix = "/opt/apilytics/examples/slack/slack-openapi.json"
+    assertEquals(Loader.resolveSpecLocation(unix, configDir), unix)
+  }
+
+  test("URLs are left alone") {
+    // A relative-looking URL would otherwise be prefixed into a nonexistent local path.
+    for (url <- List(
+           "https://example.com/openapi.json",
+           "http://example.com/openapi.json",
+           "s3://bucket/openapi.json",
+           "hdfs://namenode/specs/openapi.json",
+           "file:///srv/specs/api.yaml",
+           "classpath:openapi.json"
+         )) assertEquals(Loader.resolveSpecLocation(url, configDir), url, s"rewrote $url")
+  }
+
+  test("a Windows drive letter is not mistaken for a URL scheme") {
+    // "C:" matches a naive scheme regex; requiring 2+ chars before the colon excludes it.
+    //
+    // What the path then means is genuinely platform-dependent: on Windows it is an
+    // absolute path and passes through, while on Linux it is an ordinary — if oddly
+    // named — relative file and anchors to the config directory. The bug this guards
+    // against is neither of those: returning it unanchored on a platform where it is
+    // relative, because it was read as a URL.
+    val windows  = "C:\\specs\\api.yaml"
+    val resolved = Loader.resolveSpecLocation(windows, configDir)
+
+    if (new java.io.File(windows).isAbsolute) assertEquals(resolved, windows)
+    else assertEquals(resolved, new java.io.File(configDir.get, windows).getPath)
+  }
+
+  test("load() anchors a bundled spec to the config file it came from") {
+    // The end-to-end path: the same pairing the shipped examples rely on.
+    val dir = java.nio.file.Files.createTempDirectory("apilytics-spec-resolve")
+    val conf = dir.resolve("source.conf")
+    java.nio.file.Files.write(
+      conf,
+      """openapi = "bundled-spec.yaml"
+        |auth { type = bearer, token = "t" }
+        |""".stripMargin.getBytes("UTF-8")
+    )
+
+    val result = Loader.load(conf.toString)
+    assertEquals(result.openapi, dir.resolve("bundled-spec.yaml").toFile.getPath)
+  }
 }

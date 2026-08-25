@@ -1,5 +1,7 @@
 ThisBuild / organization := "io.github.neutrinic"
-ThisBuild / version := "0.8.0"
+// No `version` here on purpose. sbt-ci-release derives it from the git tag via dynver,
+// and a literal setting silently outranks that: releases would carry whatever was written
+// here rather than what was tagged.
 // Must be >= the scala-library the dependency classpath pulls in (SIP-51):
 // the bumped deps bring 2.13.18, and the compiler cannot be older than that.
 ThisBuild / scalaVersion := "2.13.18"
