@@ -26,6 +26,14 @@ and the published coordinate is settled.
 
 ### Added
 
+- **Streaming reads.** REST endpoints can be consumed as a Structured Streaming
+  micro-batch source, so a materialized view over an API can refresh incrementally
+  instead of re-reading everything. Requires timestamp checkpointing: a pull-based API
+  cannot report how much is available without being asked, so the offset is the clock and
+  each batch filters on a "changed since" parameter. Cursor and offset checkpointing
+  cannot express that and stay batch-only, reported at analysis rather than at run
+  time (#36).
+
 - **Spark 4.0, 4.1 and 4.2 are all supported by one jar**, each built and tested in CI.
   The connector uses no API newer than 4.0, so the whole line works without version
   branching. The Spark line has been removed from the artifact name accordingly:

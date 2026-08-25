@@ -86,7 +86,7 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
         session
           .pages(ReadRequest(handle, checkpointParams, partition.pushedLimit, startState))
           .flatMap { page =>
-            val records   = page.records
+            val records   = withinStreamBound(page.records)
             val pageState = page.state
 
             // Determine checkpoint state for this page:
@@ -133,6 +133,31 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
       }
     }
   }
+
+  /** Drop records at or after a streaming batch's end offset.
+    *
+    * The API filter is one-sided — "changed since X" — so a batch also receives records
+    * newer than its own end offset, which the next batch would deliver again. Trimming
+    * here is what makes consecutive batches disjoint.
+    *
+    * A record with no timestamp at `timestampPath` is kept: it cannot be shown to belong
+    * to a later batch, and dropping it would lose data outright rather than duplicate it.
+    */
+  private def withinStreamBound(records: List[Json]): List[Json] =
+    partition.streamBound match {
+      case None => records
+      case Some(bound) =>
+        Pointer.parse(bound.timestampPath).toOption match {
+          case None =>
+            logWarning(s"Invalid checkpoint.timestamp-path '${bound.timestampPath}'; " +
+              "cannot trim this batch, so records may be delivered again.")
+            records
+          case Some(ptr) =>
+            records.filter { r =>
+              ptr.get(r).toOption.flatMap(_.asString).forall(_ < bound.endExclusive)
+            }
+        }
+    }
 
   /** Inject saved timestamp as a query parameter for timestamp checkpoint mode. */
   private def injectTimestampParam(params: Map[String, String], startState: Option[CheckpointState]): Map[String, String] = {

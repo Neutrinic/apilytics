@@ -1,10 +1,11 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{AggregationConfig, PartitionConfig}
+import com.apilytics.core.config.{AggregationConfig, CheckpointMode, PartitionConfig}
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
 import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan, Statistics, SupportsReportStatistics}
+import org.apache.spark.sql.connector.read.streaming.MicroBatchStream
 import org.apache.spark.sql.types.StructType
 
 import java.time.format.DateTimeFormatter
@@ -303,6 +304,57 @@ class RESTScan(
 
   override def createReaderFactory(): PartitionReaderFactory =
     new RESTPartitionReaderFactory()
+
+  /** One partition covering everything the API reports as changed since `from`.
+    *
+    * Not split by date range: the interval is a single micro-batch, usually seconds wide,
+    * and splitting it would multiply requests against a rate limit for no parallelism
+    * worth having. `checkpointConfig` is deliberately dropped — Spark owns the offset log
+    * for a stream, and leaving it set would have the reader also load and overwrite the
+    * batch checkpoint file underneath it.
+    */
+  private[spark] def streamingPartitions(
+      timestampParam: String,
+      from: String,
+      bound: Option[StreamBound]
+  ): Array[InputPartition] =
+    Array(
+      RESTInputPartition(
+        handle = table.handle,
+        tableConfig = table.tableConfig,
+        sourceConfig = table.sourceConfig,
+        baseUrl = table.baseUrl,
+        arrowSchemaJson = arrowSchema.toJson,
+        pushedParams = pushedParams + (timestampParam -> from),
+        pushedLimit = pushedLimit,
+        effectiveRateLimit = table.sourceConfig.http.rateLimit,
+        schemaMode = table.sourceConfig.schema.mode,
+        responseFormat = table.sourceConfig.http.responseFormat,
+        tableName = table.tableName,
+        checkpointConfig = None,
+        streamBound = bound
+      )
+    )
+
+  /** Micro-batch source for this table, when it is configured for timestamp checkpointing.
+    *
+    * `RESTTable` only advertises MICRO_BATCH_READ under those conditions, so reaching
+    * here without them means the capability and this method have drifted apart.
+    */
+  override def toMicroBatchStream(checkpointLocation: String): MicroBatchStream = {
+    val cc = table.tableConfig
+      .flatMap(_.checkpoint)
+      .filter(c => c.mode == CheckpointMode.Timestamp && c.timestampParam.isDefined)
+      .getOrElse(
+        throw new IllegalStateException(
+          s"Table '${table.tableName}' cannot be read as a stream. Streaming requires " +
+            "checkpoint { mode = timestamp, timestamp-param = \"...\" } so each batch can " +
+            "ask the API for records changed since the last offset."
+        )
+      )
+
+    new RESTMicroBatchStream(this, cc, cc.timestampParam.get)
+  }
 
   /** Report statistics to Spark for query optimization. */
   override def estimateStatistics(): Statistics =

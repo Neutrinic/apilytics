@@ -22,5 +22,11 @@ case class RESTInputPartition(
     /** Table name for checkpoint file naming. */
     tableName: String = "",
     /** Checkpoint configuration for incremental reads. */
-    checkpointConfig: Option[CheckpointConfig] = None
+    checkpointConfig: Option[CheckpointConfig] = None,
+    /** Exclusive upper bound for a streaming micro-batch.
+      *
+      * The API filter is one-sided, so a request for "changed since X" also returns
+      * records newer than this batch's end offset. Without trimming them the next batch
+      * returns them again. Set only for streaming reads. */
+    streamBound: Option[StreamBound] = None
 ) extends InputPartition

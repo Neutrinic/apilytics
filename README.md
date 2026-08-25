@@ -121,7 +121,40 @@ Full example: [examples/sdp](examples/sdp/).
 SDP runs on Spark Connect and needs its Python client (`pyarrow`, `grpcio`, `grpcio-status`,
 `googleapis-common-protos`, `zstandard`). This image ships them.
 
-Streaming tables are not supported ([#36](https://github.com/Neutrinic/apilytics/issues/36)).
+SDP streaming tables are untested — see [Streaming](#streaming) for what the connector
+itself supports.
+
+### Streaming
+
+Read an endpoint as a micro-batch source:
+
+```scala
+spark.readStream.table("api.default.issues")
+  .writeStream.format("console").start()
+```
+
+Requires timestamp checkpointing, because each batch asks the API for what changed:
+
+```hocon
+tables.issues {
+  endpoint = "/issues"
+  checkpoint {
+    mode            = timestamp
+    timestamp-param = "since"        # query parameter the API filters on
+    timestamp-path  = "/updated_at"  # where the timestamp lives in a record
+  }
+}
+```
+
+Tables without it stay batch-only and are rejected at analysis rather than at run time.
+
+A new stream starts from **now**, so only new records are delivered; use a batch query to
+load history. Delivery is at-least-once: a record that becomes visible to the API after
+the batch covering its timestamp has run will be missed, so an API with delayed visibility
+needs a lag applied at the source.
+
+Timestamps are compared as strings, which is correct for fixed-width ISO-8601 UTC
+(`2026-01-15T10:30:00Z`) and wrong for epoch seconds or varying offsets.
 
 ## Development Setup
 

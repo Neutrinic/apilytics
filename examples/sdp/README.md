@@ -40,6 +40,6 @@ PySpark install does not.
 
 ## Limitations
 
-`CREATE STREAMING TABLE ... FROM STREAM` needs a micro-batch source, which APIlytics tables
-do not yet declare ([#36](https://github.com/Neutrinic/apilytics/issues/36)). Materialized
-views work.
+`CREATE STREAMING TABLE ... FROM STREAM` needs a micro-batch source. APIlytics tables now
+provide one when timestamp checkpointing is configured, but that combination has not been
+tested through SDP. Materialized views, as above, are verified.
