@@ -138,6 +138,27 @@ class MicroBatchStreamSuite extends FunSuite {
     assert(second.value > first.value, s"${second.value} did not advance past ${first.value}")
   }
 
+  test("Trigger.AvailableNow pins the end of the run") {
+    // "Available now" has to mean a specific instant. If the end keeps reading the clock,
+    // a run meant to drain and stop instead chases records arriving while it works.
+    val stream = scanFor(table(Some(checkpoint()))).toMicroBatchStream("/tmp/cp")
+      .asInstanceOf[RESTMicroBatchStream]
+
+    stream.prepareForTriggerAvailableNow()
+    val pinned = stream.latestOffset().asInstanceOf[TimestampOffset]
+    Thread.sleep(1100)
+    val later = stream.latestOffset().asInstanceOf[TimestampOffset]
+
+    assertEquals(later.value, pinned.value, "end moved during an AvailableNow run")
+  }
+
+  test("without AvailableNow the end still tracks the clock") {
+    val stream = scanFor(table(Some(checkpoint()))).toMicroBatchStream("/tmp/cp")
+    val first = stream.latestOffset().asInstanceOf[TimestampOffset]
+    Thread.sleep(1100)
+    assert(stream.latestOffset().asInstanceOf[TimestampOffset].value > first.value)
+  }
+
   // --- Planning ---
 
   test("each batch asks the API for records changed since its start offset") {

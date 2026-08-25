@@ -33,6 +33,10 @@ and the published coordinate is settled.
   each batch filters on a "changed since" parameter. Cursor and offset checkpointing
   cannot express that and stay batch-only, reported at analysis rather than at run
   time (#36).
+- **`Trigger.AvailableNow` support**, which Declarative Pipelines uses for every run. The
+  end of a run is now fixed when it is prepared; reading the clock instead meant a run
+  meant to drain and stop chased records arriving while it worked. Verified end to end:
+  SDP streaming tables materialize from an API across repeated runs (#36).
 
 - **Spark 4.0, 4.1 and 4.2 are all supported by one jar**, each built and tested in CI.
   The connector uses no API newer than 4.0, so the whole line works without version

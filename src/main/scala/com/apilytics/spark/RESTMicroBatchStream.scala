@@ -3,7 +3,7 @@ package com.apilytics.spark
 import com.apilytics.core.checkpoint.CheckpointState
 import com.apilytics.core.config.CheckpointConfig
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.connector.read.streaming.{MicroBatchStream, Offset}
+import org.apache.spark.sql.connector.read.streaming.{MicroBatchStream, Offset, ReadLimit, SupportsTriggerAvailableNow}
 import org.apache.spark.sql.connector.read.{InputPartition, PartitionReaderFactory}
 
 import java.time.format.DateTimeFormatter
@@ -60,6 +60,7 @@ class RESTMicroBatchStream(
     checkpoint: CheckpointConfig,
     timestampParam: String
 ) extends MicroBatchStream
+    with SupportsTriggerAvailableNow
     with Logging {
 
   private val formatter = DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC)
@@ -78,7 +79,28 @@ class RESTMicroBatchStream(
     TimestampOffset(start)
   }
 
-  override def latestOffset(): Offset = TimestampOffset(now())
+  override def latestOffset(): Offset = TimestampOffset(availableNowEnd.getOrElse(now()))
+
+  /** End of the current Trigger.AvailableNow run, fixed when the run is prepared.
+    *
+    * "Available now" has to mean a specific instant. Left reading the clock, the end
+    * keeps moving and a run that is supposed to drain and stop instead chases records
+    * that arrive while it works.
+    */
+  @volatile private var availableNowEnd: Option[String] = None
+
+  override def prepareForTriggerAvailableNow(): Unit = {
+    val end = now()
+    logInfo(s"Trigger.AvailableNow: draining up to $end")
+    availableNowEnd = Some(end)
+  }
+
+  /** Called instead of the no-argument form once the source declares admission control.
+    *
+    * There is no rate limit to apply: a batch is one request for whatever the API says
+    * changed in the window, and `ReadLimit` cannot be translated into that.
+    */
+  override def latestOffset(start: Offset, limit: ReadLimit): Offset = latestOffset()
 
   override def deserializeOffset(json: String): Offset = TimestampOffset.fromJson(json)
 
