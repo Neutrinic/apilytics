@@ -13,12 +13,22 @@ ARG SPARK_VERSION=4.2.0
 ARG JDK_VERSION=21
 
 # Install dependencies (including Python for PySpark)
+#
+# pandas is pinned below 3.0: PySpark warns it does not yet fully support pandas >= 3.0.0,
+# and an unpinned install resolves to it.
+#
+# The pyarrow/grpcio/zstandard set is what Spark Connect's Python client needs. Without
+# them `spark-pipelines` fails at import, so Spark Declarative Pipelines cannot run at all
+# — SDP is Connect-only. Classic PySpark does not need them, which is why the gap went
+# unnoticed.
 RUN microdnf update -y && \
     microdnf install -y java-${JDK_VERSION}-openjdk-devel tar gzip curl procps python3.11 python3.11-pip && \
     microdnf clean all && \
     ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
     ln -sf /usr/bin/python3.11 /usr/bin/python && \
-    pip3 install --no-cache-dir jupyter pandas
+    pip3 install --no-cache-dir jupyter "pandas<3.0.0" \
+      "pyarrow>=18.0.0" "grpcio>=1.48.1" "grpcio-status>=1.48.1" \
+      "googleapis-common-protos>=1.65.0" "zstandard>=0.25.0"
 
 # Install Almond (Scala kernel for Jupyter)
 ARG ALMOND_VERSION=0.14.0-RC15
