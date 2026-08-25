@@ -105,6 +105,24 @@ docker run -p 10000:10000 --rm ghcr.io/neutrinic/apilytics:latest thrift
 
 Connect with JDBC URL `jdbc:hive2://localhost:10000`. Both `pokeapi` and `github` catalogs are pre-configured.
 
+### Declarative Pipelines
+
+Materialize an API into a view with [Spark Declarative Pipelines](https://spark.apache.org/docs/latest/declarative-pipelines-programming-guide.html):
+
+```bash
+docker run --rm ghcr.io/neutrinic/apilytics:latest spark-pipelines run --spec /opt/apilytics/examples/sdp/spark-pipeline.yml
+```
+
+SDP has no custom source API — pipelines read through ordinary catalogs — so this needs no
+connector-specific code. The catalog is registered in the spec's `configuration:` block
+because the SDP CLI takes no `--conf` flags. See [examples/sdp](examples/sdp/).
+
+Worth knowing: SDP runs on Spark Connect and needs its Python client (`pyarrow`, `grpcio`,
+`grpcio-status`, `googleapis-common-protos`, `zstandard`). This image ships them; a plain
+PySpark install does not, and classic PySpark working is not evidence that SDP will run.
+
+Streaming tables need a micro-batch source and are not supported yet ([#36](https://github.com/Neutrinic/apilytics/issues/36)); materialized views work today.
+
 ## Development Setup
 
 For local development or contributing:

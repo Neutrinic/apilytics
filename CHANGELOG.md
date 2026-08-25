@@ -44,6 +44,11 @@ and the published coordinate is settled.
 - **A documented compatibility contract** — the README now states what semver covers: the
   catalog class name, the config schema, the SQL surface and the artifact coordinate.
   Everything else under `com.apilytics.*` is internal (#225).
+- **Spark Declarative Pipelines support**, with a worked example under `examples/sdp`.
+  No connector code was needed: SDP has no custom source API, so pipelines read through
+  the catalog like any other Spark job. The image now ships the Spark Connect Python
+  client that SDP requires, and `spark-pipelines` is a recognised entrypoint command
+  (#35).
 
 ### Fixed
 
@@ -76,6 +81,8 @@ and the published coordinate is settled.
 - **The bundled Slack example never worked in the image** — its config named a spec under
   `/opt/spark/examples/`, but the image copies examples to `/opt/apilytics/examples/`
   (#225).
+- **`pandas` was unpinned in the image** and resolved to 3.0.5, above the range PySpark
+  supports. Now pinned below 3.0 (#35).
 - **The PokeAPI examples fetched their own spec over the network** at query time, from the
   tip of the default branch, so editing the spec retroactively changed what a released
   example did. They now read the copy shipped beside them (#225).

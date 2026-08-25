@@ -53,6 +53,10 @@ while [[ $# -gt 0 ]]; do
       echo "  # Run a Python script"
       echo "  docker run -it neutrinic/apilytics spark-submit /opt/apilytics/examples/pyspark/basic.py"
       echo ""
+      echo "Declarative Pipelines:"
+      echo "  # Materialize an API into a view"
+      echo "  docker run neutrinic/apilytics spark-pipelines run --spec /opt/apilytics/examples/sdp/spark-pipeline.yml"
+      echo ""
       echo "Jupyter:"
       echo "  # Start Jupyter notebook server"
       echo "  docker run -p 8888:8888 neutrinic/apilytics jupyter"
@@ -99,6 +103,15 @@ while [[ $# -gt 0 ]]; do
         --conf "spark.sql.catalog.$CATALOG_NAME=com.apilytics.spark.RESTCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.config=$CONFIG_FILE" \
         "$@"
+      ;;
+    spark-pipelines)
+      # Spark Declarative Pipelines.
+      #
+      # No --conf is injected here: the SDP CLI accepts none. A pipeline registers its
+      # catalog in the spec's own `configuration:` block, so passing Spark settings on
+      # the command line would be silently dropped.
+      shift
+      exec spark-pipelines "$@"
       ;;
     jupyter)
       # Start Jupyter notebook server with both pokeapi and github catalogs

@@ -1,0 +1,28 @@
+########################################################################
+# Spark Declarative Pipelines reading from an APIlytics catalog.
+#
+# There is no APIlytics-specific plumbing here. SDP has no custom source
+# API: pipelines read through ordinary catalogs, so the connector is
+# registered exactly as it is for any other Spark job — via
+# `spark.sql.catalog.*` — and `api.default.pokemon` resolves like any
+# other table.
+#
+# Run it with:
+#   docker run --rm ghcr.io/neutrinic/apilytics:latest \
+#     spark-pipelines run --spec /opt/apilytics/examples/sdp/spark-pipeline.yml
+########################################################################
+
+name: apilytics_pokeapi
+
+# Where SDP keeps pipeline state. Any path Spark can write to works.
+storage: file:///tmp/apilytics-sdp-storage
+
+# The catalog is registered here rather than on the command line: the SDP
+# CLI has no --conf flag, so Spark settings have to travel in the spec.
+configuration:
+  spark.sql.catalog.api: com.apilytics.spark.RESTCatalog
+  spark.sql.catalog.api.config: /opt/apilytics/examples/pokeapi/pokeapi-config.conf
+
+libraries:
+  - glob:
+      include: transformations/**
