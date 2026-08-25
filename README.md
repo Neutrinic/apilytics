@@ -107,21 +107,26 @@ Connect with JDBC URL `jdbc:hive2://localhost:10000`. Both `pokeapi` and `github
 
 ### Declarative Pipelines
 
-Materialize an API into a view with [Spark Declarative Pipelines](https://spark.apache.org/docs/latest/declarative-pipelines-programming-guide.html):
+Materialize an API into a view with [Spark Declarative Pipelines](https://spark.apache.org/docs/latest/declarative-pipelines-programming-guide.html). Requires Spark 4.1+.
 
 ```bash
 docker run --rm ghcr.io/neutrinic/apilytics:latest spark-pipelines run --spec /opt/apilytics/examples/sdp/spark-pipeline.yml
 ```
 
-SDP has no custom source API — pipelines read through ordinary catalogs — so this needs no
-connector-specific code. The catalog is registered in the spec's `configuration:` block
-because the SDP CLI takes no `--conf` flags. See [examples/sdp](examples/sdp/).
+Register the catalog in the spec — the SDP CLI takes no `--conf` flags:
 
-Worth knowing: SDP runs on Spark Connect and needs its Python client (`pyarrow`, `grpcio`,
-`grpcio-status`, `googleapis-common-protos`, `zstandard`). This image ships them; a plain
-PySpark install does not, and classic PySpark working is not evidence that SDP will run.
+```yaml
+configuration:
+  spark.sql.catalog.api: com.apilytics.spark.RESTCatalog
+  spark.sql.catalog.api.config: /path/to/your-config.conf
+```
 
-Streaming tables need a micro-batch source and are not supported yet ([#36](https://github.com/Neutrinic/apilytics/issues/36)); materialized views work today.
+Full example: [examples/sdp](examples/sdp/).
+
+SDP runs on Spark Connect and needs its Python client (`pyarrow`, `grpcio`, `grpcio-status`,
+`googleapis-common-protos`, `zstandard`). This image ships them.
+
+Streaming tables are not supported ([#36](https://github.com/Neutrinic/apilytics/issues/36)).
 
 ## Development Setup
 
