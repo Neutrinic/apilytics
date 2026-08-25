@@ -1,14 +1,24 @@
 # APIlytics
 
 [![Build](https://github.com/Neutrinic/apilytics/actions/workflows/ci.yml/badge.svg)](https://github.com/Neutrinic/apilytics/actions/workflows/ci.yml)
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics-spark-4-2_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics-spark-4-2_2.13)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.neutrinic/apilytics_2.13.svg)](https://central.sonatype.com/artifact/io.github.neutrinic/apilytics_2.13)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Scala](https://img.shields.io/badge/Scala-2.13-red.svg)](https://www.scala-lang.org/)
-[![Spark](https://img.shields.io/badge/Spark-4.2-orange.svg)](https://spark.apache.org/)
+[![Spark](https://img.shields.io/badge/Spark-4.0--4.2-orange.svg)](https://spark.apache.org/)
 
 Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
-Built and tested against **Spark 4.2** on Scala 2.13 / Java 17.
+Runs on **Spark 4.0, 4.1 and 4.2** — Scala 2.13, Java 17. One jar covers the line; every
+version below is built and tested in CI.
+
+| | 4.0 | 4.1 | 4.2 |
+|---|:--:|:--:|:--:|
+| SQL, filter / limit / aggregate pushdown | ✅ | ✅ | ✅ |
+| Variant mode | ✅ | ✅ | ✅ |
+| Parent-child joins, checkpointing | ✅ | ✅ | ✅ |
+| Declarative Pipelines | — | ✅ | ✅ |
+
+Declarative Pipelines needs Spark's own SDP support, which arrived in 4.1.
 
 ## Installation
 
@@ -16,15 +26,15 @@ Built and tested against **Spark 4.2** on Scala 2.13 / Java 17.
 
 ```scala
 // build.sbt
-libraryDependencies += "io.github.neutrinic" %% "apilytics-spark-4-2" % "0.8.0"
+libraryDependencies += "io.github.neutrinic" %% "apilytics" % "0.8.0"
 ```
 
 ```bash
 # spark-submit
-spark-submit --packages io.github.neutrinic:apilytics-spark-4-2_2.13:0.8.0 your-app.jar
+spark-submit --packages io.github.neutrinic:apilytics_2.13:0.8.0 your-app.jar
 
 # spark-shell
-spark-shell --packages io.github.neutrinic:apilytics-spark-4-2_2.13:0.8.0
+spark-shell --packages io.github.neutrinic:apilytics_2.13:0.8.0
 ```
 
 Then configure the catalog:
