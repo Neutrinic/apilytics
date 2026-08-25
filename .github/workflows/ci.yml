@@ -7,8 +7,19 @@ on:
     branches: [main]
 
 jobs:
+  # One jar serves the whole Spark 4.x line, so every supported line is built and tested.
+  # This is not redundant: each Spark line ships a different jackson-module-scala with a
+  # narrow databind range, so a pin that satisfies one line breaks the others. Only the
+  # matrix catches that — it surfaces as a NoClassDefFoundError far from the cause.
   build:
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        spark: ["4.0.0", "4.1.0", "4.2.0"]
+
+    name: build (Spark ${{ matrix.spark }})
 
     steps:
       - uses: actions/checkout@v7
@@ -21,13 +32,13 @@ jobs:
       - uses: sbt/setup-sbt@v1
 
       - name: Compile
-        run: sbt compile
+        run: sbt -DsparkVersion=${{ matrix.spark }} compile
 
       - name: Test
-        run: sbt test
+        run: sbt -DsparkVersion=${{ matrix.spark }} test
 
       - name: Assembly
-        run: sbt assembly
+        run: sbt -DsparkVersion=${{ matrix.spark }} assembly
 
   # Vulnerability gate for our dependencies. Matches by package coordinates (purl)
   # against OSV, so identity is exact — unlike dependency-check, which guesses CPEs

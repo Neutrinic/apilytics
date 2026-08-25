@@ -30,17 +30,33 @@ ThisBuild / scmInfo := Some(
 // the build: sbt -DsparkVersion=4.3.0 test
 val sparkVersion    = sys.props.getOrElse("sparkVersion", "4.2.0")
 
-/** Spark line this build targets, e.g. "4.2" — derived rather than hardcoded so bumping
-  * `sparkVersion` cannot leave the published coordinate stale. sbt normalises the dot to
-  * a dash in the artifact id, giving `apilytics-spark-4-2`, matching flare-spark. */
+/** Spark line this build targets, e.g. "4.2". Used to pick line-specific dependency pins
+  * and to label matrix builds; it is deliberately NOT part of the artifact name. One jar
+  * serves the whole Spark 4.x line — see the compatibility table in the README. */
 val sparkMajorMinor = sparkVersion.split('.').take(2).mkString(".")
+
+/** jackson-module-scala enforces a narrow databind range, and every Spark line ships a
+  * different module-scala. A single pin cannot satisfy more than one line: 4.0 demands
+  * [2.18, 2.19), 4.1 demands [2.20, 2.21), 4.2 demands [2.21, 2.22). Each entry is the
+  * newest patch inside the range that line accepts.
+  *
+  * JacksonCompatibilitySuite asserts the chosen pin actually satisfies the Spark on the
+  * test classpath, so a wrong entry fails the build rather than surfacing as an unrelated
+  * NoClassDefFoundError in RDDOperationScope. */
+val jacksonDatabind = sparkMajorMinor match {
+  case "4.0" => "2.18.10"
+  case "4.1" => "2.20.2"
+  case _     => "2.21.5"
+}
 
 lazy val root = (project in file("."))
   .settings(
     // The artifact name carries the Spark line, the version stays semver for our own
     // changes (#219). Upgrading Spark therefore means editing the dependency
     // coordinate — the loudest possible signal, and one no auto-bumper can cross.
-    name := s"apilytics-spark-$sparkMajorMinor",
+    // One artifact per Spark major: 1.x targets Spark 4.x, 2.x will target Spark 5.
+    // The minor line is not in the name because a single jar covers 4.0 through 4.2.
+    name := "apilytics",
     libraryDependencies ++= Seq(
       // Spark
       "org.apache.spark" %% "spark-sql"          % sparkVersion % "provided",
@@ -88,7 +104,7 @@ lazy val root = (project in file("."))
     // resolves highest-wins, so a published lower bound would simply lose.
     // JacksonCompatibilitySuite fails the build if this drifts out of range.
     dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.21.5",
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonDatabind,
 
       // Netty reaches compile scope through arrow-memory-netty-buffer-patch, which
       // asks for a 4.1.x that carries a large pile of HIGH CVEs. Spark already puts

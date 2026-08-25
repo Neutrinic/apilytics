@@ -26,6 +26,14 @@ and the published coordinate is settled.
 
 ### Added
 
+- **Spark 4.0, 4.1 and 4.2 are all supported by one jar**, each built and tested in CI.
+  The connector uses no API newer than 4.0, so the whole line works without version
+  branching. The Spark line has been removed from the artifact name accordingly:
+  `apilytics-spark-4-2` is again **`apilytics`**, with 1.x targeting Spark 4.x (#232).
+- **jackson-databind is pinned per Spark line.** `jackson-module-scala` enforces a narrow
+  databind range and each line ships a different one — 4.0 needs [2.18, 2.19), 4.1 needs
+  [2.20, 2.21), 4.2 needs [2.21, 2.22) — so a single pin cannot serve them all (#232).
+
 - **Protocol-neutral source layer** (#191) — `core.source` defines how any protocol
   supplies tables and records, with REST as the first implementation. Spark-layer code no
   longer reaches into HTTP or OpenAPI types, which is what makes further protocols additive.
