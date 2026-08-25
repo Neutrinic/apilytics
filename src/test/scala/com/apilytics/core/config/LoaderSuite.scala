@@ -798,6 +798,130 @@ class LoaderSuite extends FunSuite {
     assertEquals(warnings.size, 0)
   }
 
+  // --- Unknown keys ---
+  //
+  // Every field is read with hasPath, so a typo is not an error — it is an absent key
+  // and a silent default. These pin the check that turns that into a failure.
+
+  private def loadString(hocon: String) = Loader.load(ConfigFactory.parseString(hocon))
+
+  test("a misspelled auth key fails instead of silently disabling auth") {
+    // The motivating case: `tokn` leaves token = None, so a bearer-auth source makes
+    // unauthenticated requests against a live API with nothing explaining why.
+    val e = intercept[IllegalArgumentException] {
+      loadString("""
+        |openapi = "https://example.com/openapi.json"
+        |auth { type = bearer, tokn = "secret" }
+        |""".stripMargin)
+    }
+    assert(e.getMessage.contains("auth.tokn"), e.getMessage)
+  }
+
+  test("a misspelled pagination key is reported with its full path") {
+    val e = intercept[IllegalArgumentException] {
+      loadString("""
+        |openapi = "https://example.com/openapi.json"
+        |auth { type = none }
+        |pagination { style = offset, offest-param = "offset" }
+        |""".stripMargin)
+    }
+    assert(e.getMessage.contains("pagination.offest-param"), e.getMessage)
+  }
+
+  test("unknown keys inside a table are found") {
+    val e = intercept[IllegalArgumentException] {
+      loadString("""
+        |openapi = "https://example.com/openapi.json"
+        |auth { type = none }
+        |tables { issues { endpoint = "/issues", datapath = "/items" } }
+        |""".stripMargin)
+    }
+    assert(e.getMessage.contains("tables.issues.datapath"), e.getMessage)
+  }
+
+  test("every unknown key is reported, not just the first") {
+    val e = intercept[IllegalArgumentException] {
+      loadString("""
+        |openapi = "https://example.com/openapi.json"
+        |auth { type = none, tokn = "x" }
+        |schema { flatten-dept = 3 }
+        |""".stripMargin)
+    }
+    assert(e.getMessage.contains("auth.tokn"), e.getMessage)
+    assert(e.getMessage.contains("schema.flatten-dept"), e.getMessage)
+  }
+
+  test("user-named sections keep accepting arbitrary names") {
+    // Table names, aggregation names and query parameters are chosen by the user or
+    // dictated by the API, so they must not be checked against a fixed key set.
+    val cfg = loadString("""
+      |openapi = "https://example.com/openapi.json"
+      |auth { type = none }
+      |tables {
+      |  whatever_name_i_like {
+      |    endpoint = "/x"
+      |    aggregations {
+      |      my_count {
+      |        function = "count"
+      |        endpoint = "/x/count"
+      |        response-path = "/total"
+      |        params { any_api_param = "1", another = "2" }
+      |      }
+      |    }
+      |  }
+      |}
+      |""".stripMargin)
+
+    assertEquals(cfg.tables.keySet, Set("whatever_name_i_like"))
+    assertEquals(cfg.tables("whatever_name_i_like").aggregations.keySet, Set("my_count"))
+  }
+
+  test("filters are checked inside the list") {
+    val e = intercept[IllegalArgumentException] {
+      loadString("""
+        |openapi = "https://example.com/openapi.json"
+        |auth { type = none }
+        |tables { issues {
+        |  endpoint = "/issues"
+        |  filters = [ { param = "state", colum = "state", operators = ["="] } ]
+        |} }
+        |""".stripMargin)
+    }
+    assert(e.getMessage.contains("colum"), e.getMessage)
+  }
+
+  test("a fully-specified config reports nothing") {
+    // Guards against the schema being so narrow that valid configs are rejected.
+    assertEquals(
+      Loader.unknownKeys(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |base-url = "https://api.example.com"
+        |auth { type = bearer, token = "t" }
+        |pagination { style = offset, offset-param = "o", page-size-param = "l"
+        |             max-page-size = 50, results-path = "/r", max-pages = 10 }
+        |schema { flatten-depth = 1, array-handling = keep_array, arrow-batch-size = 512
+        |         prefetch-batches = 4, explode-outer = true, mode = strict }
+        |http { max-retries = 2, max-backoff = "10s", timeout = "5s", rate-limit = 3
+        |       response-format = json
+        |       response-cache { enabled = true, backend = memory, ttl = "1m", max-entries = 10 } }
+        |cache { enabled = true, ttl = "1h", directory = "/tmp/c" }
+        |tables { t {
+        |  endpoint = "/t", data-path = "/d"
+        |  pagination { style = cursor, cursor-path = "/next", cursor-param = "c" }
+        |  filters = [ { param = "p", column = "c", operators = ["="] } ]
+        |  parent-table = "p", parent-key = "id", join-strategy = "batch"
+        |  batch-param = "ids", batch-size = 10, batch-separator = ";", child-key-field = "pid"
+        |  partition { type = "date-range", column = "at", range = "1d"
+        |              start-param = "s", end-param = "e", format = "yyyy-MM-dd" }
+        |  count { endpoint = "/t/count", param = "c", param-value = "1", response-path = "/n" }
+        |  checkpoint { enabled = true, path = "/tmp/cp", mode = timestamp
+        |               timestamp-path = "/at", timestamp-param = "since" }
+        |} }
+        |""".stripMargin)),
+      Nil
+    )
+  }
+
   // --- Spec location resolution ---
   //
   // A spec bundled next to its config must be findable wherever the pair is mounted,

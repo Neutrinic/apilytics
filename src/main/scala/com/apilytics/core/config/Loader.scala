@@ -1,6 +1,6 @@
 package com.apilytics.core.config
 
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.{Config, ConfigFactory, ConfigList, ConfigObject, ConfigValue}
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
@@ -46,6 +46,8 @@ object Loader {
   }
 
   private def readSourceConfig(config: Config): SourceConfig = {
+    rejectUnknownKeys(config)
+
     val sc = SourceConfig(
       openapi = config.getString("openapi"),
       auth = readAuth(config.getConfig("auth")),
@@ -437,4 +439,122 @@ object Loader {
 
   private def optional(config: Config, path: String): Option[String] =
     if (config.hasPath(path)) Some(config.getString(path)) else None
+
+  // --- Unknown-key detection -------------------------------------------------
+  //
+  // Every field is read with `hasPath`, so a misspelled key is not an error: it is
+  // absent, and the default silently applies. `tokn = "..."` under `type = bearer`
+  // yields no token and unauthenticated requests against a live API, with nothing in
+  // the logs to say why. The same goes for `offest-param`, `data-path`, and the rest.
+  //
+  // Typesafe Config has no schema, so the known shape is declared here and compared
+  // against what was actually supplied.
+
+  private sealed trait Shape
+  private case object Value extends Shape
+
+  /** @param keys  permitted keys and their shapes
+    * @param free  true when the user names the keys (table names, aggregation names),
+    *              in which case `keys` describes each value rather than the key set
+    */
+  private case class Obj(keys: Map[String, Shape], free: Boolean = false) extends Shape
+  private case class Arr(element: Shape) extends Shape
+
+  private val paginationShape = Obj(Map(
+    "style" -> Value, "cursor-path" -> Value, "cursor-param" -> Value,
+    "offset-param" -> Value, "page-size-param" -> Value, "max-page-size" -> Value,
+    "results-path" -> Value, "max-pages" -> Value
+  ))
+
+  private val partitionShape = Obj(Map(
+    "type" -> Value, "range" -> Value, "column" -> Value, "start-param" -> Value,
+    "end-param" -> Value, "format" -> Value, "param" -> Value, "values" -> Value
+  ))
+
+  private val tableShape = Obj(Map(
+    "endpoint" -> Value, "data-path" -> Value, "pagination" -> paginationShape,
+    "filters" -> Arr(Obj(Map("param" -> Value, "column" -> Value, "operators" -> Value))),
+    "parent-table" -> Value, "parent-key" -> Value, "join-strategy" -> Value,
+    "partition" -> partitionShape, "batch-param" -> Value, "batch-size" -> Value,
+    "batch-separator" -> Value, "child-key-field" -> Value,
+    "count" -> Obj(Map(
+      "endpoint" -> Value, "param" -> Value, "param-value" -> Value, "response-path" -> Value
+    )),
+    "aggregations" -> Obj(Map("*" -> Obj(Map(
+      "function" -> Value, "name" -> Value, "column" -> Value, "endpoint" -> Value,
+      "response-path" -> Value,
+      // Query parameters are arbitrary names chosen by the API, not by us.
+      "params" -> Obj(Map.empty, free = true)
+    ))), free = true),
+    "checkpoint" -> Obj(Map(
+      "enabled" -> Value, "path" -> Value, "mode" -> Value,
+      "timestamp-path" -> Value, "timestamp-param" -> Value
+    ))
+  ))
+
+  private val rootShape = Obj(Map(
+    "openapi" -> Value,
+    "base-url" -> Value,
+    "auth" -> Obj(Map(
+      "type" -> Value, "token" -> Value, "username" -> Value, "password" -> Value,
+      "header-name" -> Value, "header-value" -> Value, "client-id" -> Value,
+      "client-secret" -> Value, "token-url" -> Value
+    )),
+    "pagination" -> paginationShape,
+    "schema" -> Obj(Map(
+      "flatten-depth" -> Value, "array-handling" -> Value, "arrow-batch-size" -> Value,
+      "prefetch-batches" -> Value, "explode-outer" -> Value, "mode" -> Value
+    )),
+    "http" -> Obj(Map(
+      "max-retries" -> Value, "max-backoff" -> Value, "timeout" -> Value,
+      "rate-limit" -> Value, "response-format" -> Value,
+      "response-cache" -> Obj(Map(
+        "enabled" -> Value, "backend" -> Value, "ttl" -> Value, "max-entries" -> Value
+      ))
+    )),
+    "tables" -> Obj(Map("*" -> tableShape), free = true),
+    "cache" -> Obj(Map("enabled" -> Value, "ttl" -> Value, "directory" -> Value))
+  ))
+
+  /** Keys present in the config but not in the schema, as dotted paths. */
+  private[config] def unknownKeys(config: Config): List[String] = {
+    def walk(value: ConfigValue, shape: Shape, path: String): List[String] = (value, shape) match {
+      case (obj: ConfigObject, Obj(keys, free)) =>
+        obj.asScala.toList.sortBy(_._1).flatMap { case (key, child) =>
+          val childPath = if (path.isEmpty) key else s"$path.$key"
+          if (free) keys.get("*").toList.flatMap(walk(child, _, childPath))
+          else keys.get(key) match {
+            case Some(childShape) => walk(child, childShape, childPath)
+            case None             => List(childPath)
+          }
+        }
+
+      case (list: ConfigList, Arr(element)) =>
+        list.asScala.toList.zipWithIndex.flatMap { case (item, i) =>
+          walk(item, element, s"$path[$i]")
+        }
+
+      // A scalar where an object was expected is a type error, which the readers
+      // report with better context than this check could.
+      case _ => Nil
+    }
+
+    walk(config.root(), rootShape, "")
+  }
+
+  /** Fail on misspelled or unrecognised keys.
+    *
+    * Deliberately an error rather than a warning: the failures it prevents are silent
+    * ones, and a warning in a Spark executor log is not seen.
+    */
+  private def rejectUnknownKeys(config: Config): Unit = {
+    val unknown = unknownKeys(config)
+    if (unknown.nonEmpty) {
+      throw new IllegalArgumentException(
+        s"Unknown config ${if (unknown.size == 1) "key" else "keys"}: ${unknown.mkString(", ")}. " +
+          "Check for a typo — unrecognised keys are ignored, so the intended setting would " +
+          "silently not apply."
+      )
+    }
+  }
 }

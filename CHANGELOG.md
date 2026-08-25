@@ -60,6 +60,12 @@ and the published coordinate is settled.
 
 ### Fixed
 
+- **Misspelled config keys were silently ignored.** Every field was read with `hasPath`,
+  so a typo was not an error — it was an absent key and a silent default. `tokn` instead
+  of `token` under `type = bearer` produced no token and unauthenticated requests against
+  a live API, with nothing in the logs to explain it. Unknown keys are now rejected at
+  load, with the full dotted path of each (#234).
+
 - **`close()` could deadlock** — a cancelled reader's uncancelable finalizer parked forever
   offering its end-of-stream sentinel into a full queue, hanging the task rather than
   failing it. Fires whenever Spark stops early: a satisfied `LIMIT`, a failed task, a
