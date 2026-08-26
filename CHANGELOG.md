@@ -5,24 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-08-23
+## [1.0.0] - 2026-08-26
 
 First stable release. The version marks architectural stability rather than a burst of
-features: the source layer is now protocol-neutral, the Spark support policy is decided,
+features: the source layer is protocol-neutral, one jar covers the whole Spark 4.x line,
 and the published coordinate is settled.
 
 ### Breaking
 
-- **The artifact is renamed.** `io.github.neutrinic:apilytics_2.13` becomes
-  **`io.github.neutrinic:apilytics-spark-4-2_2.13`**. The Spark line now lives in the
-  artifact name so the version can stay ordinary semver describing this project's own
-  changes, and so moving Spark requires an explicit edit to the dependency coordinate that
-  no automated bump can cross (#219). The old coordinate stops receiving updates. **No code
-  or config changes are required** — only the dependency line.
-- **Spark 4.2 is required** (was 4.0/4.1). APIlytics tracks the current Spark release and
-  does not maintain a compatibility floor; pin an older release to stay on an older Spark
-  (#189).
+- **Unknown config keys are now rejected.** A config that loaded before because a
+  misspelled key was silently ignored will now fail to load, naming the key. That is the
+  point of the change — the ignored key meant the setting never applied — but it will
+  break configs that appeared to work (#234).
 - **Scala 2.13.18** minimum, required by SIP-51 given the dependency classpath.
+
+The coordinate is unchanged: **`io.github.neutrinic:apilytics_2.13`**, as in 0.8.0. An
+earlier plan to move the Spark line into the artifact name was reverted once one jar was
+shown to cover Spark 4.0 through 4.2 (#232). Spark support widened rather than narrowed,
+so no upgrade is required for existing users.
 
 ### Added
 
@@ -40,12 +40,10 @@ and the published coordinate is settled.
 
 - **Spark 4.0, 4.1 and 4.2 are all supported by one jar**, each built and tested in CI.
   The connector uses no API newer than 4.0, so the whole line works without version
-  branching. The Spark line has been removed from the artifact name accordingly:
-  `apilytics-spark-4-2` is again **`apilytics`**, with 1.x targeting Spark 4.x (#232).
+  branching. 1.x targets Spark 4.x; 2.x is reserved for Spark 5 (#232).
 - **jackson-databind is pinned per Spark line.** `jackson-module-scala` enforces a narrow
   databind range and each line ships a different one — 4.0 needs [2.18, 2.19), 4.1 needs
   [2.20, 2.21), 4.2 needs [2.21, 2.22) — so a single pin cannot serve them all (#232).
-
 - **Protocol-neutral source layer** (#191) — `core.source` defines how any protocol
   supplies tables and records, with REST as the first implementation. Spark-layer code no
   longer reaches into HTTP or OpenAPI types, which is what makes further protocols additive.
@@ -78,13 +76,6 @@ and the published coordinate is settled.
   fractional batch bound and was trimmed — then skipped by the next batch's `since` and
   lost rather than duplicated. Offsets are now fixed-width to the second, and timestamps
   are compared as instants (#36).
-
-- **Misspelled config keys were silently ignored.** Every field was read with `hasPath`,
-  so a typo was not an error — it was an absent key and a silent default. `tokn` instead
-  of `token` under `type = bearer` produced no token and unauthenticated requests against
-  a live API, with nothing in the logs to explain it. Unknown keys are now rejected at
-  load, with the full dotted path of each (#234).
-
 - **`close()` could deadlock** — a cancelled reader's uncancelable finalizer parked forever
   offering its end-of-stream sentinel into a full queue, hanging the task rather than
   failing it. Fires whenever Spark stops early: a satisfied `LIMIT`, a failed task, a
