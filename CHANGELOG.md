@@ -26,6 +26,18 @@ and the published coordinate is settled.
 
 ### Added
 
+- **Streaming reads.** REST endpoints can be consumed as a Structured Streaming
+  micro-batch source, so a materialized view over an API can refresh incrementally
+  instead of re-reading everything. Requires timestamp checkpointing: a pull-based API
+  cannot report how much is available without being asked, so the offset is the clock and
+  each batch filters on a "changed since" parameter. Cursor and offset checkpointing
+  cannot express that and stay batch-only, reported at analysis rather than at run
+  time (#36).
+- **`Trigger.AvailableNow` support**, which Declarative Pipelines uses for every run. The
+  end of a run is now fixed when it is prepared; reading the clock instead meant a run
+  meant to drain and stop chased records arriving while it worked. Verified end to end:
+  SDP streaming tables materialize from an API across repeated runs (#36).
+
 - **Spark 4.0, 4.1 and 4.2 are all supported by one jar**, each built and tested in CI.
   The connector uses no API newer than 4.0, so the whole line works without version
   branching. The Spark line has been removed from the artifact name accordingly:
@@ -59,6 +71,13 @@ and the published coordinate is settled.
   (#35).
 
 ### Fixed
+
+- **Streaming could silently drop records.** Offsets were rendered with `ISO_INSTANT`,
+  which emits the clock's own precision, and record timestamps were compared as strings.
+  `'.'` sorts below `'Z'`, so a second-precision record compared as *not* earlier than a
+  fractional batch bound and was trimmed — then skipped by the next batch's `since` and
+  lost rather than duplicated. Offsets are now fixed-width to the second, and timestamps
+  are compared as instants (#36).
 
 - **Misspelled config keys were silently ignored.** Every field was read with `hasPath`,
   so a typo was not an error — it was an absent key and a silent default. `tokn` instead

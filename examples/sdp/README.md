@@ -40,6 +40,10 @@ PySpark install does not.
 
 ## Limitations
 
-`CREATE STREAMING TABLE ... FROM STREAM` needs a micro-batch source, which APIlytics tables
-do not yet declare ([#36](https://github.com/Neutrinic/apilytics/issues/36)). Materialized
-views work.
+`CREATE STREAMING TABLE ... FROM STREAM api.default.<table>` works when the table is
+configured for timestamp checkpointing — see Streaming in the main README.
+
+**The first pipeline run writes no rows.** SDP triggers each run with
+`Trigger.AvailableNow`, and a fresh stream starts at *now*, so the first run spans an empty
+interval. It records the offset; subsequent runs pick up everything changed since. This is
+expected, not a failure.

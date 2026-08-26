@@ -16,6 +16,7 @@ version below is built and tested in CI.
 | SQL, filter / limit / aggregate pushdown | ✅ | ✅ | ✅ |
 | Variant mode | ✅ | ✅ | ✅ |
 | Parent-child joins, checkpointing | ✅ | ✅ | ✅ |
+| Streaming reads | ✅ | ✅ | ✅ |
 | Declarative Pipelines | — | ✅ | ✅ |
 
 Declarative Pipelines needs Spark's own SDP support, which arrived in 4.1.
@@ -121,7 +122,47 @@ Full example: [examples/sdp](examples/sdp/).
 SDP runs on Spark Connect and needs its Python client (`pyarrow`, `grpcio`, `grpcio-status`,
 `googleapis-common-protos`, `zstandard`). This image ships them.
 
-Streaming tables are not supported ([#36](https://github.com/Neutrinic/apilytics/issues/36)).
+`CREATE STREAMING TABLE ... FROM STREAM api.default.<table>` works too, for tables
+configured per [Streaming](#streaming) below.
+
+### Streaming
+
+Read an endpoint as a micro-batch source:
+
+```scala
+spark.readStream.table("api.default.issues")
+  .writeStream.format("console").start()
+```
+
+Requires timestamp checkpointing, because each batch asks the API for what changed:
+
+```hocon
+tables.issues {
+  endpoint = "/issues"
+  checkpoint {
+    mode            = timestamp
+    timestamp-param = "since"        # query parameter the API filters on
+    timestamp-path  = "/updated_at"  # where the timestamp lives in a record
+  }
+}
+```
+
+Both keys are required: the parameter asks the API for a window, the path bounds it.
+Tables without them stay batch-only and are rejected at analysis rather than at run time.
+
+A new stream starts from **now**, so only new records are delivered; use a batch query to
+load history. One consequence is worth knowing before you think it is broken: with
+`Trigger.AvailableNow` — which is what Declarative Pipelines uses — **the first run writes
+nothing**. It spans `[now, now]`. That run records the offset; every run after it picks up
+what changed since.
+
+Delivery is at-least-once: a record that becomes visible to the API after the batch
+covering its timestamp has run will be missed, so an API with delayed visibility needs a
+lag applied at the source.
+
+Record timestamps are parsed and compared as instants, so mixed precision between the
+offset and the API's own values is handled. ISO-8601 with `Z` or an offset is understood;
+epoch seconds and other formats are not, and such records are kept rather than dropped.
 
 ## Development Setup
 

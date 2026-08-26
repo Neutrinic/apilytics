@@ -1,0 +1,60 @@
+# CodeRabbit configuration.
+#
+# Kept in the repo rather than the dashboard so it is reviewable and versioned; this file
+# overrides the organisation settings for this repository.
+#
+# The aim is one substantive review when a PR opens, not a running commentary. Re-reviews
+# on every push produce mostly-restated findings, and the cost of a review is paid by the
+# human or agent reading it. Ask for another explicitly with `@coderabbitai review`.
+
+language: en-GB
+
+reviews:
+  # Only flag what is worth acting on.
+  profile: chill
+
+  # Never gate merges on the bot. Findings are advice; CI is the gate.
+  request_changes_workflow: false
+
+  high_level_summary: true
+  poem: false
+
+  auto_review:
+    enabled: true
+    # The setting that matters: no re-review on every push.
+    auto_incremental_review: false
+    drafts: false
+
+  # Walkthrough extras. These do not find defects — they restate the diff — and they are
+  # the bulk of the comment length, so everything that is not a finding is off.
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  assess_linked_issues: false
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  auto_apply_labels: false
+  suggested_reviewers: false
+  auto_assign_reviewers: false
+  in_progress_fortune: false
+  changed_files_summary: false
+
+  # Kept on: this is the section written for a coding agent to act on.
+  prompt_for_ai_agents: true
+
+  path_filters:
+    - "!target/**"
+    - "!**/*.lock"
+
+  path_instructions:
+    - path: "src/main/scala/**"
+      instructions: >-
+        This is a Spark DataSource V2 connector. Weight correctness bugs that are silent at
+        run time above style: data dropped or duplicated, resources not closed on the error
+        path, and assumptions about API response shape or timestamp precision that hold for
+        one provider but not others. Spark 4.0 is the compatibility floor, so flag any API
+        introduced after it.
+    - path: "src/test/scala/**"
+      instructions: >-
+        Flag tests that would pass even if the behaviour under test were removed, and
+        assertions loose enough to admit the bug they are named for.

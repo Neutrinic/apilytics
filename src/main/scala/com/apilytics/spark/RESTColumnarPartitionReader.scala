@@ -86,7 +86,7 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
         session
           .pages(ReadRequest(handle, checkpointParams, partition.pushedLimit, startState))
           .flatMap { page =>
-            val records   = page.records
+            val records   = withinStreamBound(page.records)
             val pageState = page.state
 
             // Determine checkpoint state for this page:
@@ -134,6 +134,48 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
     }
   }
 
+  /** Drop records at or after a streaming batch's end offset.
+    *
+    * The API filter is one-sided — "changed since X" — so a batch also receives records
+    * newer than its own end offset, which the next batch would deliver again. Trimming
+    * here is what makes consecutive batches disjoint.
+    *
+    * A record with no timestamp at `timestampPath` is kept: it cannot be shown to belong
+    * to a later batch, and dropping it would lose data outright rather than duplicate it.
+    */
+  private def withinStreamBound(records: List[Json]): List[Json] =
+    partition.streamBound match {
+      case None => records
+      case Some(bound) =>
+        Pointer.parse(bound.timestampPath).toOption match {
+          case None =>
+            logWarning(s"Invalid checkpoint.timestamp-path '${bound.timestampPath}'; " +
+              "cannot trim this batch, so records may be delivered again.")
+            records
+          case Some(ptr) =>
+            // Compare as instants. String order disagrees with time order across
+            // precisions ('.' sorts below 'Z'), and a record trimmed by that mistake is
+            // skipped by the next batch's `since` and lost rather than duplicated.
+            RESTColumnarPartitionReader.parseInstant(bound.endExclusive) match {
+              case None =>
+                logWarning(s"Batch end '${bound.endExclusive}' is not a parseable instant; " +
+                  "cannot trim this batch, so records may be delivered again.")
+                records
+              case Some(end) =>
+                records.filter { r =>
+                  ptr.get(r).toOption.flatMap(_.asString) match {
+                    case None => true // no timestamp: cannot place it in a later batch
+                    case Some(raw) =>
+                      RESTColumnarPartitionReader.parseInstant(raw) match {
+                        case Some(ts) => ts.isBefore(end)
+                        case None     => true // unparseable: keep rather than lose
+                      }
+                  }
+                }
+            }
+        }
+    }
+
   /** Inject saved timestamp as a query parameter for timestamp checkpoint mode. */
   private def injectTimestampParam(params: Map[String, String], startState: Option[CheckpointState]): Map[String, String] = {
     (partition.checkpointConfig, startState) match {
@@ -161,4 +203,22 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
       else Some(CheckpointState.TimestampValue(timestamps.max))
     }
   }
+}
+
+object RESTColumnarPartitionReader {
+
+  /** Parse an API timestamp into an instant.
+    *
+    * Accepts both `2026-01-15T10:00:00Z` and offset forms like `2026-01-15T11:00:00+01:00`,
+    * with or without fractional seconds. Returns None for anything else — epoch seconds,
+    * non-ISO formats — so the caller can decide, and every caller here keeps the record
+    * rather than dropping data it cannot place.
+    */
+  private[spark] def parseInstant(value: String): Option[java.time.Instant] =
+    try Some(java.time.Instant.parse(value))
+    catch {
+      case _: Exception =>
+        try Some(java.time.OffsetDateTime.parse(value).toInstant)
+        catch { case _: Exception => None }
+    }
 }
