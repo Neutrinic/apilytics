@@ -72,6 +72,13 @@ and the published coordinate is settled.
 
 ### Fixed
 
+- **Streaming could silently drop records.** Offsets were rendered with `ISO_INSTANT`,
+  which emits the clock's own precision, and record timestamps were compared as strings.
+  `'.'` sorts below `'Z'`, so a second-precision record compared as *not* earlier than a
+  fractional batch bound and was trimmed — then skipped by the next batch's `since` and
+  lost rather than duplicated. Offsets are now fixed-width to the second, and timestamps
+  are compared as instants (#36).
+
 - **Misspelled config keys were silently ignored.** Every field was read with `hasPath`,
   so a typo was not an error — it was an absent key and a silent default. `tokn` instead
   of `token` under `type = bearer` produced no token and unauthenticated requests against

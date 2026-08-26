@@ -147,7 +147,8 @@ tables.issues {
 }
 ```
 
-Tables without it stay batch-only and are rejected at analysis rather than at run time.
+Both keys are required: the parameter asks the API for a window, the path bounds it.
+Tables without them stay batch-only and are rejected at analysis rather than at run time.
 
 A new stream starts from **now**, so only new records are delivered; use a batch query to
 load history. One consequence is worth knowing before you think it is broken: with
@@ -159,8 +160,9 @@ Delivery is at-least-once: a record that becomes visible to the API after the ba
 covering its timestamp has run will be missed, so an API with delayed visibility needs a
 lag applied at the source.
 
-Timestamps are compared as strings, which is correct for fixed-width ISO-8601 UTC
-(`2026-01-15T10:30:00Z`) and wrong for epoch seconds or varying offsets.
+Record timestamps are parsed and compared as instants, so mixed precision between the
+offset and the API's own values is handled. ISO-8601 with `Z` or an offset is understood;
+epoch seconds and other formats are not, and such records are kept rather than dropped.
 
 ## Development Setup
 

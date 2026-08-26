@@ -153,8 +153,25 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
               "cannot trim this batch, so records may be delivered again.")
             records
           case Some(ptr) =>
-            records.filter { r =>
-              ptr.get(r).toOption.flatMap(_.asString).forall(_ < bound.endExclusive)
+            // Compare as instants. String order disagrees with time order across
+            // precisions ('.' sorts below 'Z'), and a record trimmed by that mistake is
+            // skipped by the next batch's `since` and lost rather than duplicated.
+            RESTColumnarPartitionReader.parseInstant(bound.endExclusive) match {
+              case None =>
+                logWarning(s"Batch end '${bound.endExclusive}' is not a parseable instant; " +
+                  "cannot trim this batch, so records may be delivered again.")
+                records
+              case Some(end) =>
+                records.filter { r =>
+                  ptr.get(r).toOption.flatMap(_.asString) match {
+                    case None => true // no timestamp: cannot place it in a later batch
+                    case Some(raw) =>
+                      RESTColumnarPartitionReader.parseInstant(raw) match {
+                        case Some(ts) => ts.isBefore(end)
+                        case None     => true // unparseable: keep rather than lose
+                      }
+                  }
+                }
             }
         }
     }
@@ -186,4 +203,22 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
       else Some(CheckpointState.TimestampValue(timestamps.max))
     }
   }
+}
+
+object RESTColumnarPartitionReader {
+
+  /** Parse an API timestamp into an instant.
+    *
+    * Accepts both `2026-01-15T10:00:00Z` and offset forms like `2026-01-15T11:00:00+01:00`,
+    * with or without fractional seconds. Returns None for anything else — epoch seconds,
+    * non-ISO formats — so the caller can decide, and every caller here keeps the record
+    * rather than dropping data it cannot place.
+    */
+  private[spark] def parseInstant(value: String): Option[java.time.Instant] =
+    try Some(java.time.Instant.parse(value))
+    catch {
+      case _: Exception =>
+        try Some(java.time.OffsetDateTime.parse(value).toInstant)
+        catch { case _: Exception => None }
+    }
 }

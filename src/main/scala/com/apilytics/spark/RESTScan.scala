@@ -344,12 +344,15 @@ class RESTScan(
   override def toMicroBatchStream(checkpointLocation: String): MicroBatchStream = {
     val cc = table.tableConfig
       .flatMap(_.checkpoint)
-      .filter(c => c.mode == CheckpointMode.Timestamp && c.timestampParam.isDefined)
+      .filter(c =>
+        c.mode == CheckpointMode.Timestamp && c.timestampParam.isDefined && c.timestampPath.isDefined
+      )
       .getOrElse(
         throw new IllegalStateException(
           s"Table '${table.tableName}' cannot be read as a stream. Streaming requires " +
-            "checkpoint { mode = timestamp, timestamp-param = \"...\" } so each batch can " +
-            "ask the API for records changed since the last offset."
+            "checkpoint { mode = timestamp, timestamp-param = \"...\", timestamp-path = \"...\" }. " +
+            "The parameter asks the API for a window; the path bounds it, without which " +
+            "every batch re-delivers the previous batch's tail."
         )
       )
 

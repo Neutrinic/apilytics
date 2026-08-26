@@ -71,6 +71,18 @@ class MicroBatchStreamSuite extends FunSuite {
   private def scanFor(t: RESTTable): RESTScan =
     new RESTScan(t, SchemaMapper.toArrowSchema(recordSchema), None, Map.empty, None)
 
+  private def idsFrom(part: RESTInputPartition): List[Int] = {
+    val reader = new RESTColumnarPartitionReader(part)
+    try {
+      var acc = List.empty[Int]
+      while (reader.next()) {
+        val b = reader.get()
+        acc ++= (0 until b.numRows()).map(i => b.column(0).getInt(i))
+      }
+      acc
+    } finally reader.close()
+  }
+
   // --- Capability ---
 
   test("a timestamp-checkpointed table advertises MICRO_BATCH_READ") {
@@ -92,6 +104,94 @@ class MicroBatchStreamSuite extends FunSuite {
     // re-read the endpoint in full.
     val caps = table(Some(checkpoint(param = None))).capabilities()
     assert(!caps.contains(TableCapability.MICRO_BATCH_READ))
+  }
+
+  test("timestamp mode without a record path does not advertise streaming") {
+    // The parameter asks for a window; the path is what bounds it. Without the path
+    // nothing can be trimmed and every batch re-delivers the previous batch's tail, so
+    // this is a broken configuration rather than a degraded one.
+    val caps = table(Some(checkpoint(path = None))).capabilities()
+    assert(!caps.contains(TableCapability.MICRO_BATCH_READ))
+  }
+
+  test("asking for a stream without a record path fails with a usable message") {
+    val e = intercept[IllegalStateException] {
+      scanFor(table(Some(checkpoint(path = None)))).toMicroBatchStream("/tmp/cp")
+    }
+    assert(e.getMessage.contains("timestamp-path"), e.getMessage)
+  }
+
+  // --- Timestamp precision ---
+
+  test("a second-precision record is kept against a fractional bound") {
+    // String order disagrees with time order across precisions: '.' sorts below 'Z', so
+    // "10:00:00Z" compares as NOT earlier than "10:00:00.5Z". A record trimmed by that
+    // mistake is then skipped by the next batch's `since` and lost, not duplicated.
+    server.stubFor(
+      get(urlPathEqualTo("/issues"))
+        .withQueryParam("since", equalTo("2026-01-15T09:00:00Z"))
+        .willReturn(okJson("""[{"id":1,"updated_at":"2026-01-15T10:00:00Z"}]"""))
+    )
+
+    val stream = scanFor(table(Some(checkpoint()))).toMicroBatchStream("/tmp/cp")
+    val part = stream
+      .planInputPartitions(
+        TimestampOffset("2026-01-15T09:00:00Z"),
+        TimestampOffset("2026-01-15T10:00:00.500Z")
+      )
+      .head
+      .asInstanceOf[RESTInputPartition]
+
+    assertEquals(idsFrom(part), List(1), "record before the bound was dropped")
+  }
+
+  test("a fractional record is trimmed against a second-precision bound") {
+    // The mirror case: "10:00:05.5Z" sorts below "10:00:05Z" as a string but is later in
+    // time, so string comparison would wrongly keep it.
+    server.stubFor(
+      get(urlPathEqualTo("/issues"))
+        .withQueryParam("since", equalTo("2026-01-15T09:00:00Z"))
+        .willReturn(okJson(
+          """[{"id":1,"updated_at":"2026-01-15T10:00:04Z"},
+            | {"id":2,"updated_at":"2026-01-15T10:00:05.500Z"}]""".stripMargin))
+    )
+
+    val stream = scanFor(table(Some(checkpoint()))).toMicroBatchStream("/tmp/cp")
+    val part = stream
+      .planInputPartitions(
+        TimestampOffset("2026-01-15T09:00:00Z"),
+        TimestampOffset("2026-01-15T10:00:05Z")
+      )
+      .head
+      .asInstanceOf[RESTInputPartition]
+
+    assertEquals(idsFrom(part), List(1), "record after the bound was kept")
+  }
+
+  test("offsets are emitted at fixed width, without fractional seconds") {
+    // ISO_INSTANT renders the clock's own precision (".478951900Z"), which is both an odd
+    // value to hand an API as `since` and the source of the misordering above.
+    val v = scanFor(table(Some(checkpoint())))
+      .toMicroBatchStream("/tmp/cp").latestOffset()
+      .asInstanceOf[TimestampOffset].value
+
+    assert(v.matches("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"""), s"not fixed width: $v")
+  }
+
+  test("an unparseable record timestamp is kept rather than dropped") {
+    server.stubFor(
+      get(urlPathEqualTo("/issues"))
+        .withQueryParam("since", equalTo("2026-01-15T09:00:00Z"))
+        .willReturn(okJson("""[{"id":1,"updated_at":"not-a-timestamp"}]"""))
+    )
+
+    val stream = scanFor(table(Some(checkpoint()))).toMicroBatchStream("/tmp/cp")
+    val part = stream
+      .planInputPartitions(TimestampOffset("2026-01-15T09:00:00Z"), TimestampOffset("2026-01-15T10:00:00Z"))
+      .head
+      .asInstanceOf[RESTInputPartition]
+
+    assertEquals(idsFrom(part), List(1))
   }
 
   test("a table with no checkpoint config does not advertise streaming") {

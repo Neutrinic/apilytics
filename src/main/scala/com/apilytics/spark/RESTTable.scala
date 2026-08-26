@@ -37,7 +37,15 @@ class RESTTable(
   private[spark] def supportsMicroBatch: Boolean =
     tableConfig
       .flatMap(_.checkpoint)
-      .exists(cc => cc.mode == CheckpointMode.Timestamp && cc.timestampParam.isDefined)
+      .exists(cc =>
+        cc.mode == CheckpointMode.Timestamp &&
+          // The query parameter asks the API for a window...
+          cc.timestampParam.isDefined &&
+          // ...and the record path is what bounds it. Without the path nothing can be
+          // trimmed, so every batch re-delivers the tail of the previous one. Streaming
+          // without it is not a degraded mode, it is a broken one.
+          cc.timestampPath.isDefined
+      )
 
   override def capabilities(): util.Set[TableCapability] = {
     val base = Set(TableCapability.BATCH_READ)

@@ -7,6 +7,7 @@ import org.apache.spark.sql.connector.read.streaming.{MicroBatchStream, Offset, 
 import org.apache.spark.sql.connector.read.{InputPartition, PartitionReaderFactory}
 
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.time.{Instant, ZoneOffset}
 
 /** Exclusive upper bound applied to a streaming batch.
@@ -15,8 +16,11 @@ import java.time.{Instant, ZoneOffset}
   * newer than the batch's end offset, which the next batch would return again. Trimming
   * them here is what keeps consecutive batches from overlapping.
   *
-  * Comparison is lexicographic, so it is correct only for fixed-width ISO-8601 UTC
-  * timestamps. That is the same assumption the batch checkpoint's high-water mark makes.
+  * Records are compared as instants, not as strings. String order disagrees with time
+  * order whenever the two sides differ in precision: `'.'` sorts below `'Z'`, so
+  * `2026-01-15T10:00:00Z` compares as *not* earlier than `2026-01-15T10:00:00.5Z`. A
+  * record trimmed that way is then skipped by the next batch's `since` and lost for good.
+  * API timestamp precision is not ours to control, so the comparison cannot assume it.
   */
 final case class StreamBound(timestampPath: String, endExclusive: String) extends Serializable
 
@@ -63,9 +67,17 @@ class RESTMicroBatchStream(
     with SupportsTriggerAvailableNow
     with Logging {
 
-  private val formatter = DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC)
+  /** Fixed-width, second precision.
+    *
+    * `ISO_INSTANT` renders whatever precision the clock has — `10:00:00.478951900Z` on a
+    * modern JVM — which is both an odd thing to hand an API as `?since=` and a value that
+    * misorders against second-precision data under string comparison. Truncating keeps the
+    * wire format stable and predictable.
+    */
+  private val formatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'").withZone(ZoneOffset.UTC)
 
-  private def now(): String = formatter.format(Instant.now())
+  private def now(): String = formatter.format(Instant.now().truncatedTo(ChronoUnit.SECONDS))
 
   /** Where a fresh stream starts: now, so only new records are delivered.
     *
@@ -111,13 +123,9 @@ class RESTMicroBatchStream(
     // Nothing can have happened in an empty interval, so skip the request entirely.
     if (from >= to) Array.empty
     else {
+      // timestamp-path is required to advertise streaming at all, so the bound is always
+      // available here; without it every batch would re-deliver the previous one's tail.
       val bound = checkpoint.timestampPath.map(StreamBound(_, to))
-      if (bound.isEmpty) {
-        logWarning(
-          "checkpoint.timestamp-path is not set, so records newer than this batch cannot " +
-            "be trimmed and will be delivered again by the next batch."
-        )
-      }
       scan.streamingPartitions(timestampParam, from, bound)
     }
   }
