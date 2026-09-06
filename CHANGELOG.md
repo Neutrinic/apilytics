@@ -70,6 +70,15 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **Streaming lost every record landing exactly on a batch boundary.** `since` is
+  exclusive on most APIs and the batch end was exclusive too, making the window
+  `(start, end)` — so a record whose timestamp equalled a boundary belonged to no batch:
+  trimmed from the one that fetched it, then skipped by the next batch's `since`. Silent,
+  permanent loss, once per boundary. Windows are now `(start, end]`. Against an API whose
+  `since` is inclusive this yields a duplicate per boundary instead, which is the
+  documented at-least-once behaviour — and a duplicate is recoverable where a loss is not
+  (#36).
+
 - **Streaming could silently drop records.** Offsets were rendered with `ISO_INSTANT`,
   which emits the clock's own precision, and record timestamps were compared as strings.
   `'.'` sorts below `'Z'`, so a second-precision record compared as *not* earlier than a

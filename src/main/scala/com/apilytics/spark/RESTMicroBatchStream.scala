@@ -10,11 +10,19 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.{Instant, ZoneOffset}
 
-/** Exclusive upper bound applied to a streaming batch.
+/** Inclusive upper bound applied to a streaming batch.
   *
   * The API filter is one-sided — `?since=<start>` — so a request also returns records
   * newer than the batch's end offset, which the next batch would return again. Trimming
   * them here is what keeps consecutive batches from overlapping.
+  *
+  * Inclusive, not exclusive, and the distinction is load-bearing. `since` is exclusive on
+  * most APIs, so an exclusive end makes the window `(start, end)` and a record landing
+  * exactly on a boundary belongs to no batch at all: trimmed here, then skipped by the
+  * next batch's `since`. Including the end makes the window `(start, end]`, which is
+  * contiguous. Against an API whose `since` is inclusive it instead yields one duplicate
+  * per boundary, which is the documented at-least-once behaviour — and duplicating a
+  * record is recoverable where losing it is not.
   *
   * Records are compared as instants, not as strings. String order disagrees with time
   * order whenever the two sides differ in precision: `'.'` sorts below `'Z'`, so
@@ -22,7 +30,7 @@ import java.time.{Instant, ZoneOffset}
   * record trimmed that way is then skipped by the next batch's `since` and lost for good.
   * API timestamp precision is not ours to control, so the comparison cannot assume it.
   */
-final case class StreamBound(timestampPath: String, endExclusive: String) extends Serializable
+final case class StreamBound(timestampPath: String, endInclusive: String) extends Serializable
 
 /** Streaming position, expressed as a timestamp.
   *
