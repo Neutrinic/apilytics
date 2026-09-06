@@ -168,6 +168,33 @@ class MicroBatchStreamSuite extends FunSuite {
     assertEquals(idsFrom(part), List(1), "record after the bound was kept")
   }
 
+  test("a record exactly on the batch boundary is delivered, not lost") {
+    // Found on a real cluster run: ids vanished at a fixed cadence matching the trigger
+    // interval. `since` is exclusive on most APIs, so an exclusive end made the window
+    // (start, end) and a record landing exactly on a boundary belonged to no batch —
+    // trimmed here, then skipped by the next batch's `since`. Permanent loss, silent.
+    server.stubFor(
+      get(urlPathEqualTo("/issues"))
+        .withQueryParam("since", equalTo("2026-01-15T10:00:00Z"))
+        .willReturn(okJson(
+          """[{"id":1,"updated_at":"2026-01-15T10:00:03Z"},
+            | {"id":2,"updated_at":"2026-01-15T10:00:05Z"},
+            | {"id":3,"updated_at":"2026-01-15T10:00:07Z"}]""".stripMargin))
+    )
+
+    val stream = scanFor(table(Some(checkpoint()))).toMicroBatchStream("/tmp/cp")
+    val part = stream
+      .planInputPartitions(
+        TimestampOffset("2026-01-15T10:00:00Z"),
+        TimestampOffset("2026-01-15T10:00:05Z")
+      )
+      .head
+      .asInstanceOf[RESTInputPartition]
+
+    // id=2 sits exactly on the end offset and must be in this batch; id=3 is beyond it.
+    assertEquals(idsFrom(part), List(1, 2), "boundary record was dropped")
+  }
+
   test("offsets are emitted at fixed width, without fractional seconds") {
     // ISO_INSTANT renders the clock's own precision (".478951900Z"), which is both an odd
     // value to hand an API as `since` and the source of the misordering above.
@@ -271,7 +298,7 @@ class MicroBatchStreamSuite extends FunSuite {
     assertEquals(parts.length, 1)
     val p = parts.head.asInstanceOf[RESTInputPartition]
     assertEquals(p.pushedParams.get("since"), Some("2026-01-15T10:00:00Z"))
-    assertEquals(p.streamBound.map(_.endExclusive), Some("2026-01-15T10:05:00Z"))
+    assertEquals(p.streamBound.map(_.endInclusive), Some("2026-01-15T10:05:00Z"))
   }
 
   test("an empty interval makes no request at all") {

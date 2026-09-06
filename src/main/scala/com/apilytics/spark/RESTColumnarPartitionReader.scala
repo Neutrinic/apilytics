@@ -156,9 +156,9 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
             // Compare as instants. String order disagrees with time order across
             // precisions ('.' sorts below 'Z'), and a record trimmed by that mistake is
             // skipped by the next batch's `since` and lost rather than duplicated.
-            RESTColumnarPartitionReader.parseInstant(bound.endExclusive) match {
+            RESTColumnarPartitionReader.parseInstant(bound.endInclusive) match {
               case None =>
-                logWarning(s"Batch end '${bound.endExclusive}' is not a parseable instant; " +
+                logWarning(s"Batch end '${bound.endInclusive}' is not a parseable instant; " +
                   "cannot trim this batch, so records may be delivered again.")
                 records
               case Some(end) =>
@@ -167,7 +167,7 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
                     case None => true // no timestamp: cannot place it in a later batch
                     case Some(raw) =>
                       RESTColumnarPartitionReader.parseInstant(raw) match {
-                        case Some(ts) => ts.isBefore(end)
+                        case Some(ts) => !ts.isAfter(end) // inclusive: an exclusive end loses boundary records
                         case None     => true // unparseable: keep rather than lose
                       }
                   }

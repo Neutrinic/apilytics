@@ -158,7 +158,9 @@ what changed since.
 
 Delivery is at-least-once: a record that becomes visible to the API after the batch
 covering its timestamp has run will be missed, so an API with delayed visibility needs a
-lag applied at the source.
+lag applied at the source. Batch windows are `(start, end]` — inclusive at the end — which
+suits the usual exclusive `since`. If your API's `since` is inclusive instead, expect one
+duplicate per batch boundary rather than a gap.
 
 Record timestamps are parsed and compared as instants, so mixed precision between the
 offset and the API's own values is handled. ISO-8601 with `Z` or an offset is understood;
