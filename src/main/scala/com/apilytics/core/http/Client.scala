@@ -29,6 +29,22 @@ object Client {
     * The cache should be created at catalog initialization and passed here
     * so it persists across queries.
     */
+  /** Ember client with its own retrying switched off.
+    *
+    * Ember retries internally by default, beneath both our retry loop and the rate
+    * limiter. That made `max-retries` untrue — attempts came out at 3 × (max-retries + 1)
+    * — and, worse, let requests escape the rate limit entirely: `rateLimiter.acquire`
+    * runs once per attempt we make, so a configured 60 requests per hour could issue 180
+    * against a flaky connection. Retrying belongs in one place, where the limiter can see
+    * it.
+    */
+  private def emberClient(httpConfig: HttpConfig): Resource[IO, org.http4s.client.Client[IO]] =
+    EmberClientBuilder
+      .default[IO]
+      .withTimeout(httpConfig.timeout)
+      .withRetryPolicy((_, _, _) => None)
+      .build
+
   def resource(
       httpConfig: HttpConfig,
       authConfig: AuthConfig,
@@ -37,7 +53,7 @@ object Client {
     // Defensive null check - responseCache may be null if config deserialization failed
     val cache = if (responseCache == null) ResponseCache.disabled else responseCache
     for {
-      httpClient <- EmberClientBuilder.default[IO].withTimeout(httpConfig.timeout).build
+      httpClient <- emberClient(httpConfig)
       rateLimiter <- Resource.eval(
         httpConfig.rateLimit match {
           case Some(rps) => RateLimiter(rps)
@@ -66,7 +82,7 @@ object Client {
     )
 
     for {
-      httpClient <- EmberClientBuilder.default[IO].withTimeout(httpConfig.timeout).build
+      httpClient <- emberClient(httpConfig)
       tokenManager <- Resource.eval(OAuth2TokenManager(clientId, clientSecret, tokenUrl, httpClient))
       rateLimiter <- Resource.eval(
         httpConfig.rateLimit match {

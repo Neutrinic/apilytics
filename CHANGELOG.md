@@ -70,6 +70,14 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **Retries multiplied requests and escaped the rate limiter.** Ember retries internally by
+  default, beneath both our retry loop and the limiter, so every request was issued
+  `3 × (max-retries + 1)` times — three times even with retries switched off. Because
+  `rateLimiter.acquire` runs once per attempt *we* make, those extra requests were never
+  counted: a source configured for 60 requests per hour could issue 180 against a flaky
+  connection, with nothing in the limiter's view to show it. Ember's retry policy is now
+  disabled so retrying happens in one place (#245).
+
 - **Colliding pushed filters silently dropped a predicate.** Two predicates resolving to
   the same query parameter — `created_at >= X AND created_at <= Y` against a single
   `since` — kept only one value, while reporting both as pushed. Spark removes a pushed
