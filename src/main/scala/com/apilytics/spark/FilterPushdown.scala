@@ -19,9 +19,35 @@ trait FilterPushdown extends Logging {
 
   def pushPredicates(predicates: Array[Predicate]): Array[Predicate] = {
     val results = predicates.map(p => p -> matchPredicate(p))
-    _pushedPredicates = results.collect { case (p, Some(_)) => p }
-    pushedParams = results.flatMap(_._2).toMap
-    val localFilters = results.collect { case (p, None) => p }
+
+    // A pushed predicate is a promise: Spark removes it from the plan and never re-checks
+    // it. A request carries one value per query parameter, so when two predicates resolve
+    // to the same parameter only one can actually be sent — `created_at >= X AND
+    // created_at <= Y` against a single `since` parameter being the ordinary case. Keeping
+    // the first and claiming both would drop a filter nobody applies, and the query would
+    // return rows outside the range rather than merely reading too many.
+    //
+    // The first claimant wins and the rest stay local. Declining all of them would be safe
+    // too, but needlessly gives up the narrowing the first one buys.
+    val claimed = scala.collection.mutable.Set.empty[String]
+    val pushed  = Array.newBuilder[(Predicate, String, String)]
+    val locals  = Array.newBuilder[Predicate]
+
+    results.foreach {
+      case (p, Some((param, value))) if claimed.add(param) => pushed += ((p, param, value))
+      case (p, Some((param, _))) =>
+        logInfo(
+          s"Filter ${formatPredicate(p)} matches parameter '$param', already carrying " +
+            "another predicate's value; Spark will apply this one."
+        )
+        locals += p
+      case (p, None) => locals += p
+    }
+
+    val pushedTriples = pushed.result()
+    _pushedPredicates = pushedTriples.map(_._1)
+    pushedParams = pushedTriples.map(t => t._2 -> t._3).toMap
+    val localFilters = locals.result()
 
     // Log filter pushdown decisions
     if (_pushedPredicates.nonEmpty || localFilters.nonEmpty) {
@@ -39,6 +65,9 @@ trait FilterPushdown extends Logging {
   }
 
   def pushedPredicates(): Array[Predicate] = _pushedPredicates
+
+  /** The query parameters this builder decided to send. Test-only accessor. */
+  private[spark] def pushedParamsForTest: Map[String, String] = pushedParams
 
   def pushLimit(limit: Int): Boolean = {
     pushedLimit = Some(limit)

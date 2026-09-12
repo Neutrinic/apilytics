@@ -70,6 +70,20 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **Colliding pushed filters silently dropped a predicate.** Two predicates resolving to
+  the same query parameter — `created_at >= X AND created_at <= Y` against a single
+  `since` — kept only one value, while reporting both as pushed. Spark removes a pushed
+  predicate from the plan and never re-checks it, so the discarded bound was applied
+  nowhere and the query returned rows outside the range. The first claimant now wins and
+  the rest stay local (#243).
+- **Retries could replay a partly-delivered stream.** The retry handler wrapped the
+  response body, not just its acquisition, so a transient failure after records had been
+  emitted would re-issue the request from the start. Not reachable through ember's current
+  error types, but it made widening the transient-error list unsafe. Retrying now stops at
+  the first byte handed to the consumer (#243).
+- **The README advertised aggregation pushdown for MIN, MAX and custom functions**, which
+  the planner declines by design — their result type is not decidable at plan time (#243).
+
 - **Streaming lost every record landing exactly on a batch boundary.** `since` is
   exclusive on most APIs and the batch end was exclusive too, making the window
   `(start, end)` — so a record whose timestamp equalled a boundary belonged to no batch:
