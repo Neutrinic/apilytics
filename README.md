@@ -310,7 +310,9 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI specs (Swag
 - **Authentication** - bearer token, basic auth, custom headers, OAuth2 client credentials
 - **Filter pushdown** - Spark SQL filters map to API query parameters
 - **Limit pushdown** - stops pagination early when a LIMIT clause is present
-- **Aggregation pushdown** - SUM, AVG, MIN, MAX, COUNT, and custom functions push to API endpoints
+- **Aggregation pushdown** - COUNT, SUM and AVG push to API endpoints. MIN, MAX and custom
+  functions are not pushed: their result type is not decidable at plan time, so Spark
+  computes them over a full scan
 - **Schema modes** - strict (default, typed columns) or variant (native VARIANT for schema-free queries)
 - **Schema flattening** - nested objects flatten to a configurable depth, deeper nesting falls back to STRING
 - **Arrow internals** - zero-copy path to Spark ColumnarBatch

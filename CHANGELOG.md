@@ -70,6 +70,29 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **Retries multiplied requests and escaped the rate limiter.** Ember retries internally by
+  default, beneath both our retry loop and the limiter, so every request was issued
+  `3 × (max-retries + 1)` times — three times even with retries switched off. Because
+  `rateLimiter.acquire` runs once per attempt *we* make, those extra requests were never
+  counted: a source configured for 60 requests per hour could issue 180 against a flaky
+  connection, with nothing in the limiter's view to show it. Ember's retry policy is now
+  disabled so retrying happens in one place (#245).
+
+- **Colliding pushed filters silently dropped a predicate.** Two predicates resolving to
+  the same query parameter — `created_at >= X AND created_at <= Y` against a single
+  `since` — kept only one value, while reporting both as pushed. Spark removes a pushed
+  predicate from the plan and never re-checks it, so the discarded bound was applied
+  nowhere and the query returned rows outside the range. The first claimant now wins and
+  the rest stay local (#243).
+- **Retries replayed a partly-delivered stream.** The retry handler wrapped the response
+  body, not just its acquisition, so a connection lost after records had been emitted
+  re-issued the request from the start — redelivering records the consumer already had and
+  splicing a partial record onto the new response. Measured against a socket that resets
+  mid-body: three requests where there should be one. Retrying now stops at the first byte
+  handed to the consumer; a failure before that point is still retried (#243).
+- **The README advertised aggregation pushdown for MIN, MAX and custom functions**, which
+  the planner declines by design — their result type is not decidable at plan time (#243).
+
 - **Streaming lost every record landing exactly on a batch boundary.** `since` is
   exclusive on most APIs and the batch end was exclusive too, making the window
   `(start, end)` — so a record whose timestamp equalled a boundary belonged to no batch:

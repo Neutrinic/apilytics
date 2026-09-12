@@ -1,6 +1,7 @@
 package com.apilytics.core.http
 
-import cats.effect.{IO, Resource}
+import cats.effect.{IO, Ref, Resource}
+import org.slf4j.LoggerFactory
 import com.apilytics.core.config.{AuthConfig, HttpConfig, ResponseFormat}
 import fs2.Stream
 import io.circe.Json
@@ -28,6 +29,22 @@ object Client {
     * The cache should be created at catalog initialization and passed here
     * so it persists across queries.
     */
+  /** Ember client with its own retrying switched off.
+    *
+    * Ember retries internally by default, beneath both our retry loop and the rate
+    * limiter. That made `max-retries` untrue — attempts came out at 3 × (max-retries + 1)
+    * — and, worse, let requests escape the rate limit entirely: `rateLimiter.acquire`
+    * runs once per attempt we make, so a configured 60 requests per hour could issue 180
+    * against a flaky connection. Retrying belongs in one place, where the limiter can see
+    * it.
+    */
+  private def emberClient(httpConfig: HttpConfig): Resource[IO, org.http4s.client.Client[IO]] =
+    EmberClientBuilder
+      .default[IO]
+      .withTimeout(httpConfig.timeout)
+      .withRetryPolicy((_, _, _) => None)
+      .build
+
   def resource(
       httpConfig: HttpConfig,
       authConfig: AuthConfig,
@@ -36,7 +53,7 @@ object Client {
     // Defensive null check - responseCache may be null if config deserialization failed
     val cache = if (responseCache == null) ResponseCache.disabled else responseCache
     for {
-      httpClient <- EmberClientBuilder.default[IO].withTimeout(httpConfig.timeout).build
+      httpClient <- emberClient(httpConfig)
       rateLimiter <- Resource.eval(
         httpConfig.rateLimit match {
           case Some(rps) => RateLimiter(rps)
@@ -65,7 +82,7 @@ object Client {
     )
 
     for {
-      httpClient <- EmberClientBuilder.default[IO].withTimeout(httpConfig.timeout).build
+      httpClient <- emberClient(httpConfig)
       tokenManager <- Resource.eval(OAuth2TokenManager(clientId, clientSecret, tokenUrl, httpClient))
       rateLimiter <- Resource.eval(
         httpConfig.rateLimit match {
@@ -162,12 +179,16 @@ object Client {
 
     /** Stream raw response body bytes with retry on connection errors.
       *
-      * Retries are only attempted before streaming begins (on connection/initial response).
-      * Once streaming starts, errors propagate immediately since we can't resume.
+      * Retries stop the moment the first byte reaches the consumer. There is no resume
+      * protocol here — a retry re-issues the request from the start — so retrying after
+      * bytes have been emitted would replay records the consumer already has, and for
+      * NDJSON or SSE would splice a half-written record onto a fresh response. `emitted`
+      * records that transition, and once set a transient failure is raised rather than
+      * retried: an error the caller can see beats silent duplication.
       *
-      * Connection scoping: Each retry attempt is properly scoped so the connection
-      * is released before the backoff sleep. Only the successful streaming response
-      * keeps the connection open for the duration of the stream.
+      * Connection scoping: each retry attempt is scoped so the connection is released
+      * before the backoff sleep. Only the successful streaming response keeps the
+      * connection open for the duration of the stream.
       */
     private def streamBodyWithRetry(
         baseReq: Request[IO],
@@ -175,14 +196,20 @@ object Client {
         attempt: Int = 0
     ): Stream[IO, Byte] = {
       Stream.eval(rateLimiter.acquire) >>
+        Stream.eval(Ref.of[IO, Boolean](false)).flatMap { emitted =>
         Stream.eval(applyAuth(baseReq)).flatMap { req =>
           // First, check the response status to decide if we should retry
           // Use .use for retry cases to properly scope the connection
           Stream.eval(underlying.run(req).allocated).flatMap { case (resp, release) =>
             resp.status.code match {
               case code if code >= 200 && code < 300 =>
-                // Success - stream body and release connection when done
-                resp.body.onFinalize(release)
+                // Success - stream body and release connection when done. The flag flips
+                // on the first chunk handed downstream, which is the point after which a
+                // retry would duplicate rather than recover.
+                resp.body.chunks
+                  .evalTap(_ => emitted.set(true))
+                  .flatMap(Stream.chunk)
+                  .onFinalize(release)
 
               case 429 if attempt < httpConfig.maxRetries =>
                 // Rate limited - release connection, sleep, then retry
@@ -218,11 +245,23 @@ object Client {
             }
           }
         }.handleErrorWith {
-          // Retry on network-level transient failures before streaming starts
+          // Retry transient network failures, but only while nothing has been emitted.
+          // Past that point the request cannot be replayed without duplicating records.
           case e if isTransientNetworkError(e) && attempt < httpConfig.maxRetries =>
-            val delay = exponentialBackoff(attempt)
-            Stream.exec(IO.sleep(delay)) ++ streamBodyWithRetry(baseReq, format, attempt + 1)
+            Stream.eval(emitted.get).flatMap {
+              case false =>
+                val delay = exponentialBackoff(attempt)
+                Stream.exec(IO.sleep(delay)) ++ streamBodyWithRetry(baseReq, format, attempt + 1)
+              case true =>
+                Stream.exec(IO(
+                  LoggerFactory.getLogger(getClass).warn(
+                    "Connection failed after records were already delivered; not retrying, " +
+                      "because re-issuing the request would replay them."
+                  )
+                )) ++ Stream.raiseError[IO](e)
+            }
           case e => Stream.raiseError[IO](e)
+        }
         }
     }
 
