@@ -76,11 +76,12 @@ so no upgrade is required for existing users.
   predicate from the plan and never re-checks it, so the discarded bound was applied
   nowhere and the query returned rows outside the range. The first claimant now wins and
   the rest stay local (#243).
-- **Retries could replay a partly-delivered stream.** The retry handler wrapped the
-  response body, not just its acquisition, so a transient failure after records had been
-  emitted would re-issue the request from the start. Not reachable through ember's current
-  error types, but it made widening the transient-error list unsafe. Retrying now stops at
-  the first byte handed to the consumer (#243).
+- **Retries replayed a partly-delivered stream.** The retry handler wrapped the response
+  body, not just its acquisition, so a connection lost after records had been emitted
+  re-issued the request from the start — redelivering records the consumer already had and
+  splicing a partial record onto the new response. Measured against a socket that resets
+  mid-body: three requests where there should be one. Retrying now stops at the first byte
+  handed to the consumer; a failure before that point is still retried (#243).
 - **The README advertised aggregation pushdown for MIN, MAX and custom functions**, which
   the planner declines by design — their result type is not decidable at plan time (#243).
 
