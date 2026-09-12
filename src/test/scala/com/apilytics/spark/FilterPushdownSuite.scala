@@ -35,18 +35,22 @@ class FilterPushdownSuite extends FunSuite {
     val upper = predicate("<=", "created_at", "2026-06-01")
     val local = b.pushPredicates(Array(lower, upper))
 
-    val sent   = b.pushedParamsForTest.get("since")
-    val pushed = b.pushedPredicates().length
-
-    // Whatever the connector decides, the predicates it claims must be the ones it sent.
+    // The invariant: never claim more predicates than the request can carry values for.
     assertEquals(
-      pushed + local.length, 2,
+      b.pushedPredicates().length + local.length, 2,
       "every predicate must be either pushed or returned for Spark to apply"
     )
-    assert(
-      pushed <= sent.size,
-      s"claimed $pushed predicates pushed but the request carries ${sent.size} value(s) for 'since'"
+    assertEquals(
+      b.pushedPredicates().length, b.pushedParamsForTest.get("since").size,
+      s"claimed ${b.pushedPredicates().length} predicates pushed but the request carries " +
+        s"${b.pushedParamsForTest.get("since").size} value(s) for 'since'"
     )
+
+    // And the specific outcome, so this cannot pass by pushing the wrong bound or by
+    // giving up on both. First claimant wins, which keeps the narrowing it buys.
+    assertEquals(b.pushedPredicates().toList, List(lower), "the first bound should be the pushed one")
+    assertEquals(local.toList, List(upper), "the colliding bound must go back to Spark")
+    assertEquals(b.pushedParamsForTest, Map("since" -> "2026-01-01"))
   }
 
   test("predicates on distinct parameters all push") {

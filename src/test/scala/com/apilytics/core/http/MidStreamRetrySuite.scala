@@ -15,8 +15,9 @@ import scala.concurrent.duration._
   * moment a record reaches the consumer, retrying stops being recovery and becomes silent
   * duplication, splicing a partial record onto a fresh response for NDJSON and SSE.
   *
-  * Retrying before anything was emitted must keep working, though, or a blip while
-  * connecting turns into a failed query. Both halves are pinned here.
+  * The line is the first *body byte*, not the response. Failing before anything is
+  * emitted must still retry, including after the headers have arrived: nothing has
+  * reached the consumer at that point, so re-issuing costs a request and loses nothing.
   *
   * This needs a socket rather than WireMock, whose faults replace the response instead of
   * killing it partway. It also needs the reset to arrive while the client is blocked on a
@@ -31,8 +32,13 @@ class MidStreamRetrySuite extends FunSuite {
     "HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nContent-Length: 1000\r\n\r\n"
   private val body = "{\"id\":1}\n{\"id\":2}\n"
 
-  /** Serves `writeBody` bytes (if any), waits for the client to block, then sends RST. */
-  private def resettingServer(connections: AtomicInteger, writeBody: Boolean): ServerSocket = {
+  private sealed trait Serve
+  private case object Nothing extends Serve
+  private case object HeadOnly extends Serve
+  private case object HeadAndRecords extends Serve
+
+  /** Writes as much as `serve` says, waits for the client to block, then sends RST. */
+  private def resettingServer(connections: AtomicInteger, serve: Serve): ServerSocket = {
     val server = new ServerSocket(0)
     val t = new Thread(() => {
       try while (!server.isClosed) {
@@ -40,13 +46,13 @@ class MidStreamRetrySuite extends FunSuite {
         connections.incrementAndGet()
         try {
           sock.getInputStream.read(new Array[Byte](4096)) // consume the request head
-          if (writeBody) {
+          if (serve != Nothing) {
             val out = sock.getOutputStream
             out.write(head.getBytes)
-            out.write(body.getBytes)
+            if (serve == HeadAndRecords) out.write(body.getBytes)
             out.flush()
-            // Long enough for the client to consume both records and block on the next
-            // read, so the reset lands as SocketException rather than a buffered EOF.
+            // Long enough for the client to consume whatever was sent and block on the
+            // next read, so the reset lands as SocketException rather than a buffered EOF.
             Thread.sleep(1500)
           }
           sock.setSoLinger(true, 0) // RST, not FIN
@@ -67,12 +73,12 @@ class MidStreamRetrySuite extends FunSuite {
         .getStreaming(Uri.unsafeFromString(s"http://localhost:$port/x"), Map.empty,
                       ResponseFormat.NDJSON)
         .compile.toList.attempt
-    }.timeout(60.seconds).unsafeRunSync()
+    }.timeout(90.seconds).unsafeRunSync()
   }
 
   test("a reset after records have been delivered is not retried") {
     val connections = new AtomicInteger(0)
-    val server = resettingServer(connections, writeBody = true)
+    val server = resettingServer(connections, HeadAndRecords)
     try {
       val result = read(server.getLocalPort, maxRetries = 2)
 
@@ -85,18 +91,32 @@ class MidStreamRetrySuite extends FunSuite {
     } finally server.close()
   }
 
-  test("a reset before anything is delivered is still retried") {
-    // The guard must not cost us ordinary transient recovery.
+  test("a reset after the headers but before any record is still retried") {
+    // The boundary that matters. Stopping at the response rather than at the first body
+    // byte would also pass the two tests either side of this one, while giving up a retry
+    // that costs nothing — no record has reached the consumer yet.
     val connections = new AtomicInteger(0)
-    val server = resettingServer(connections, writeBody = false)
+    val server = resettingServer(connections, HeadOnly)
     try {
       val result = read(server.getLocalPort, maxRetries = 2)
 
       assert(result.isLeft, "every attempt failed, so the read should fail")
-      assert(
-        connections.get() > 1,
-        s"only ${connections.get()} attempt(s); a failure before any record must be retried"
+      assertEquals(
+        connections.get(), 3,
+        s"only ${connections.get()} attempt(s); the headers arriving is not the consumer " +
+          "receiving anything, so this is still safe to retry"
       )
+    } finally server.close()
+  }
+
+  test("a reset before any response is retried") {
+    val connections = new AtomicInteger(0)
+    val server = resettingServer(connections, Nothing)
+    try {
+      val result = read(server.getLocalPort, maxRetries = 2)
+
+      assert(result.isLeft, "every attempt failed, so the read should fail")
+      assertEquals(connections.get(), 3, "a failure while connecting must be retried")
     } finally server.close()
   }
 }
