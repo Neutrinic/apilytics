@@ -35,18 +35,32 @@ val sparkVersion    = sys.props.getOrElse("sparkVersion", "4.2.0")
   * serves the whole Spark 4.x line — see the compatibility table in the README. */
 val sparkMajorMinor = sparkVersion.split('.').take(2).mkString(".")
 
-/** jackson-module-scala enforces a narrow databind range, and every Spark line ships a
-  * different module-scala. A single pin cannot satisfy more than one line: 4.0 demands
-  * [2.18, 2.19), 4.1 demands [2.20, 2.21), 4.2 demands [2.21, 2.22). Each entry is the
-  * newest patch inside the range that line accepts.
+/** jackson-databind pinned to whatever Spark's bundled jackson-module-scala accepts.
   *
-  * JacksonCompatibilitySuite asserts the chosen pin actually satisfies the Spark on the
-  * test classpath, so a wrong entry fails the build rather than surfacing as an unrelated
-  * NoClassDefFoundError in RDDOperationScope. */
-val jacksonDatabind = sparkMajorMinor match {
-  case "4.0" => "2.18.10"
-  case "4.1" => "2.20.2"
-  case _     => "2.21.5"
+  * module-scala enforces a narrow databind range and refuses to initialise outside it,
+  * taking Spark's error machinery down with it. The pin cannot be dropped: swagger-parser
+  * pulls 2.22.0, which is outside every Spark 4.x range.
+  *
+  * Keyed on the full version, not the line, because the requirement moves *within* a line:
+  * Spark 4.1.0 ships module-scala 2.20.0 wanting [2.20, 2.21), while 4.1.3 ships 2.21.2
+  * wanting [2.21, 2.22). Keying on "4.1" alone built fine against 4.1.0 and failed against
+  * 4.1.3.
+  *
+  * Verify a new entry rather than guessing — the range lives in the `jackson-module-scala`
+  * version of that Spark's spark-core POM:
+  *   curl -s https://repo1.maven.org/maven2/org/apache/spark/spark-core_2.13/<v>/spark-core_2.13-<v>.pom
+  *
+  * JacksonCompatibilitySuite asserts the pin satisfies the Spark on the test classpath, so
+  * a wrong entry fails loudly instead of surfacing as NoClassDefFoundError in
+  * RDDOperationScope, which is nowhere near the cause. */
+val jacksonDatabind = {
+  // sbt build files compile on Scala 2.12, so no toIntOption here.
+  val patch = scala.util.Try(sparkVersion.split('.')(2).takeWhile(_.isDigit).toInt).getOrElse(0)
+  sparkMajorMinor match {
+    case "4.0"               => "2.18.10" // module-scala 2.18.x throughout the line
+    case "4.1" if patch < 3  => "2.20.2"  // 4.1.0-4.1.2 ship module-scala 2.20.x
+    case _                   => "2.21.5"  // 4.1.3+ and 4.2.x ship module-scala 2.21.x
+  }
 }
 
 lazy val root = (project in file("."))

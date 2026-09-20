@@ -70,6 +70,13 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **The build was broken against Spark 4.1.3.** The jackson-databind pin was keyed on the
+  Spark line, assuming a line ships one `jackson-module-scala`. It does not: 4.1.0 ships
+  2.20.0 wanting `[2.20, 2.21)` while 4.1.3 ships 2.21.2 wanting `[2.21, 2.22)`. The pin is
+  now keyed on the full version, and the CI matrix covers the floor, the newest patch of
+  each line, and both sides of that shift — a matrix of one patch per line could not see
+  it (#246).
+
 - **Retries multiplied requests and escaped the rate limiter.** Ember retries internally by
   default, beneath both our retry loop and the limiter, so every request was issued
   `3 × (max-retries + 1)` times — three times even with retries switched off. Because

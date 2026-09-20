@@ -8,16 +8,21 @@ on:
 
 jobs:
   # One jar serves the whole Spark 4.x line, so every supported line is built and tested.
-  # This is not redundant: each Spark line ships a different jackson-module-scala with a
-  # narrow databind range, so a pin that satisfies one line breaks the others. Only the
-  # matrix catches that — it surfaces as a NoClassDefFoundError far from the cause.
+  #
+  # The versions are chosen, not arbitrary. Spark's bundled jackson-module-scala enforces a
+  # narrow databind range, and the range moves *within* a line as well as between them:
+  # 4.1.0 wants [2.20, 2.21) but 4.1.3 wants [2.21, 2.22). A matrix of one patch per line
+  # missed that entirely and the build was broken against 4.1.3 while CI stayed green.
+  #
+  # So: the floor (oldest supported patch), the newest patch of each line (what people
+  # actually run), and both sides of the 4.1 range shift.
   build:
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
-        spark: ["4.0.0", "4.1.0", "4.2.0"]
+        spark: ["4.0.0", "4.0.4", "4.1.0", "4.1.3", "4.2.0"]
 
     name: build (Spark ${{ matrix.spark }})
 
