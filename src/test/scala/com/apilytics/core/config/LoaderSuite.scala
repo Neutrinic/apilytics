@@ -922,6 +922,79 @@ class LoaderSuite extends FunSuite {
     )
   }
 
+  // --- Partition / pagination parameter collisions ---
+  //
+  // Both write the same query parameter and the paginator wins, so every partition walks
+  // the endpoint from its own first page to the end instead of covering a slice. Nothing
+  // errors — the query just returns the whole dataset once per partition.
+
+  test("enum partitioning on the pagination offset parameter is rejected") {
+    // The exact shape that returned 5404 rows for 1351 distinct records against PokeAPI,
+    // with four times the API calls charged against the rate limit.
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |pagination { style = offset, offset-param = "offset", results-path = "/results" }
+        |tables { pokemon {
+        |  endpoint = "/pokemon"
+        |  partition { type = "enum", param = "offset", values = ["0", "100"] }
+        |} }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("offset"), e.getMessage)
+    assert(e.getMessage.contains("partition.param"), e.getMessage)
+  }
+
+  test("date-range partitioning on a pagination parameter is rejected") {
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |pagination { style = cursor, cursor-param = "from" }
+        |tables { events {
+        |  endpoint = "/events"
+        |  partition { type = "date-range", column = "at", range = "1d"
+        |              start-param = "from", end-param = "to", format = "yyyy-MM-dd" }
+        |} }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("cursor-param"), e.getMessage)
+  }
+
+  test("a per-table pagination override is what gets checked") {
+    // Per-table pagination (#217) overrides the source-level block, so the collision has
+    // to be judged against the pagination that table actually uses.
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |pagination { style = offset, offset-param = "skip" }
+        |tables { t {
+        |  endpoint = "/t"
+        |  pagination { style = offset, offset-param = "start" }
+        |  partition { type = "enum", param = "start", values = ["0", "50"] }
+        |} }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("start"), e.getMessage)
+  }
+
+  test("partitioning on a parameter pagination does not control is allowed") {
+    // Guards against the check being so broad it rejects the normal case.
+    val cfg = Loader.load(ConfigFactory.parseString("""
+      |openapi = "s.yaml"
+      |auth { type = none }
+      |pagination { style = offset, offset-param = "offset", page-size-param = "limit" }
+      |tables { pokemon {
+      |  endpoint = "/pokemon"
+      |  partition { type = "enum", param = "type", values = ["fire", "water"] }
+      |} }
+      |""".stripMargin))
+
+    assert(cfg.tables("pokemon").partition.isDefined)
+  }
+
   // --- Spec location resolution ---
   //
   // A spec bundled next to its config must be findable wherever the pair is mounted,
