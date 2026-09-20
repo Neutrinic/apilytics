@@ -41,10 +41,14 @@ val sparkMajorMinor = sparkVersion.split('.').take(2).mkString(".")
   * taking Spark's error machinery down with it. The pin cannot be dropped: swagger-parser
   * pulls 2.22.0, which is outside every Spark 4.x range.
   *
-  * Keyed on the full version, not the line, because the requirement moves *within* a line:
-  * Spark 4.1.0 ships module-scala 2.20.0 wanting [2.20, 2.21), while 4.1.3 ships 2.21.2
-  * wanting [2.21, 2.22). Keying on "4.1" alone built fine against 4.1.0 and failed against
-  * 4.1.3.
+  * Keyed on the full version, not the line, because the requirement moves *within* a line.
+  * Spark 4.1.0 and 4.1.1 ship module-scala 2.20.0 wanting [2.20, 2.21); 4.1.2 moved to
+  * 2.21.2, wanting [2.21, 2.22). Keying on "4.1" alone built against 4.1.0 and failed
+  * against everything from 4.1.2 on.
+  *
+  * Read the boundary from the POMs rather than interpolating between two known versions —
+  * the first attempt at this put the shift at 4.1.3 because only 4.1.0 and 4.1.3 had been
+  * sampled, and 4.1.2 was silently wrong.
   *
   * Verify a new entry rather than guessing — the range lives in the `jackson-module-scala`
   * version of that Spark's spark-core POM:
@@ -55,11 +59,25 @@ val sparkMajorMinor = sparkVersion.split('.').take(2).mkString(".")
   * RDDOperationScope, which is nowhere near the cause. */
 val jacksonDatabind = {
   // sbt build files compile on Scala 2.12, so no toIntOption here.
-  val patch = scala.util.Try(sparkVersion.split('.')(2).takeWhile(_.isDigit).toInt).getOrElse(0)
-  sparkMajorMinor match {
-    case "4.0"               => "2.18.10" // module-scala 2.18.x throughout the line
-    case "4.1" if patch < 3  => "2.20.2"  // 4.1.0-4.1.2 ship module-scala 2.20.x
-    case _                   => "2.21.5"  // 4.1.3+ and 4.2.x ship module-scala 2.21.x
+  val patch = scala.util.Try(sparkVersion.split('.')(2).takeWhile(_.isDigit).toInt).getOrElse(-1)
+
+  (sparkMajorMinor, patch) match {
+    case ("4.0", p) if p >= 0          => "2.18.10" // module-scala 2.18.x across the line
+    case ("4.1", p) if p >= 0 && p < 2 => "2.20.2"  // 4.1.0-4.1.1 ship module-scala 2.20.0
+    case ("4.1", p) if p >= 2          => "2.21.5"  // 4.1.2 moved to 2.21.2 mid-line
+    case ("4.2", p) if p >= 0          => "2.21.5"
+    case _ =>
+      // Deliberately fatal rather than falling back to a guess. An unverified pin does not
+      // fail where you can see it: module-scala refuses to initialise and Spark surfaces
+      // NoClassDefFoundError in RDDOperationScope, nowhere near the cause. That is exactly
+      // how the 4.1.3 breakage hid (#246).
+      sys.error(
+        s"No jackson-databind pin is known for Spark '$sparkVersion'. Trying a new Spark " +
+          "is a one-line edit rather than a guess: read the jackson-module-scala version " +
+          s"from https://repo1.maven.org/maven2/org/apache/spark/spark-core_2.13/" +
+          s"$sparkVersion/spark-core_2.13-$sparkVersion.pom and add a case above with a " +
+          "databind version inside the range it enforces."
+      )
   }
 }
 
