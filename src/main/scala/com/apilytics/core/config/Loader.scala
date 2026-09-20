@@ -100,6 +100,9 @@ object Loader {
           case e: PartitionConfig.Enum      => List(e.param -> "partition.param")
           case d: PartitionConfig.DateRange => List(d.startParam -> "partition.start-param",
                                                     d.endParam   -> "partition.end-param")
+          // `type = "offset"` drives the pagination parameter on purpose, and bounds each
+          // window, which is exactly what the other two cannot do. Not a collision.
+          case _: PartitionConfig.Offset    => Nil
         }
 
         partitionParams.foreach { case (param, where) =>
@@ -324,6 +327,18 @@ object Loader {
                    else "yyyy-MM-dd'T'HH:mm:ss'Z'"
         )
 
+      case "offset" =>
+        def positive(key: String) = {
+          if (!config.hasPath(key)) throw new IllegalArgumentException(
+            s"Offset partition requires '$key'. Partition i covers offsets " +
+              "[i * size, (i + 1) * size), so both the window and how many are needed."
+          )
+          val v = config.getInt(key)
+          if (v < 1) throw new IllegalArgumentException(s"Offset partition '$key' must be >= 1, got: $v")
+          v
+        }
+        PartitionConfig.Offset(size = positive("size"), count = positive("count"))
+
       case "enum" =>
         val param = if (config.hasPath("param")) config.getString("param")
                     else throw new IllegalArgumentException(
@@ -506,7 +521,9 @@ object Loader {
 
   private val partitionShape = Obj(Map(
     "type" -> Value, "range" -> Value, "column" -> Value, "start-param" -> Value,
-    "end-param" -> Value, "format" -> Value, "param" -> Value, "values" -> Value
+    "end-param" -> Value, "format" -> Value, "param" -> Value, "values" -> Value,
+    // offset partitioning
+    "size" -> Value, "count" -> Value
   ))
 
   private val tableShape = Obj(Map(

@@ -995,6 +995,66 @@ class LoaderSuite extends FunSuite {
     assert(cfg.tables("pokemon").partition.isDefined)
   }
 
+  // --- Offset partitioning ---
+
+  test("offset partitioning parses into windows") {
+    val cfg = Loader.load(ConfigFactory.parseString("""
+      |openapi = "s.yaml"
+      |auth { type = none }
+      |pagination { style = offset, offset-param = "offset", results-path = "/results" }
+      |tables { t {
+      |  endpoint = "/t"
+      |  partition { type = "offset", size = 100, count = 4 }
+      |} }
+      |""".stripMargin))
+
+    assertEquals(cfg.tables("t").partition, Some(PartitionConfig.Offset(size = 100, count = 4)))
+  }
+
+  test("offset partitioning is not treated as a pagination collision") {
+    // It drives the pagination parameter deliberately, and bounds each window — which is
+    // precisely what enum and date-range partitioning cannot do.
+    val cfg = Loader.load(ConfigFactory.parseString("""
+      |openapi = "s.yaml"
+      |auth { type = none }
+      |pagination { style = offset, offset-param = "offset" }
+      |tables { t { endpoint = "/t", partition { type = "offset", size = 50, count = 2 } } }
+      |""".stripMargin))
+
+    assert(cfg.tables("t").partition.isDefined)
+  }
+
+  test("offset partitioning requires both size and count") {
+    for ((hocon, missing) <- List(
+           ("""partition { type = "offset", count = 4 }""", "size"),
+           ("""partition { type = "offset", size = 100 }""", "count"))) {
+      val e = intercept[IllegalArgumentException] {
+        Loader.load(ConfigFactory.parseString(s"""
+          |openapi = "s.yaml"
+          |auth { type = none }
+          |pagination { style = offset }
+          |tables { t { endpoint = "/t", $hocon } }
+          |""".stripMargin))
+      }
+      assert(e.getMessage.contains(missing), s"expected '$missing' in: ${e.getMessage}")
+    }
+  }
+
+  test("offset partition sizes below 1 are rejected") {
+    // A zero window would issue a request per partition and read nothing from any of them.
+    for (bad <- List("""size = 0, count = 4""", """size = 100, count = 0""")) {
+      val e = intercept[IllegalArgumentException] {
+        Loader.load(ConfigFactory.parseString(s"""
+          |openapi = "s.yaml"
+          |auth { type = none }
+          |pagination { style = offset }
+          |tables { t { endpoint = "/t", partition { type = "offset", $bad } } }
+          |""".stripMargin))
+      }
+      assert(e.getMessage.contains(">= 1"), e.getMessage)
+    }
+  }
+
   // --- Spec location resolution ---
   //
   // A spec bundled next to its config must be findable wherever the pair is mounted,

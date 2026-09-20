@@ -26,6 +26,12 @@ so no upgrade is required for existing users.
 
 ### Added
 
+- **Offset partitioning** — `partition { type = "offset", size = 400, count = 4 }` splits an
+  offset-paginated endpoint into windows read in parallel, for endpoints that offer no
+  natural key to split on. Partition `i` covers `[i * size, (i + 1) * size)`: it starts the
+  paginator at its own offset and stops it after one window. Verified against PokeAPI on a
+  two-node cluster: 1351 records across four partitions, no duplication (#248).
+
 - **Streaming reads.** REST endpoints can be consumed as a Structured Streaming
   micro-batch source, so a materialized view over an API can refresh incrementally
   instead of re-reading everything. Requires timestamp checkpointing: a pull-based API
