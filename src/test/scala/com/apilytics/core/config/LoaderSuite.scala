@@ -962,6 +962,25 @@ class LoaderSuite extends FunSuite {
     assert(e.getMessage.contains("cursor-param"), e.getMessage)
   }
 
+  test("date-range end-param colliding with a pagination parameter is rejected") {
+    // Covered separately from start-param: with only the start case, deleting the
+    // end-param branch of the check leaves every test passing.
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |pagination { style = offset, offset-param = "until" }
+        |tables { events {
+        |  endpoint = "/events"
+        |  partition { type = "date-range", column = "at", range = "1d"
+        |              start-param = "from", end-param = "until", format = "yyyy-MM-dd" }
+        |} }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("partition.end-param"), e.getMessage)
+    assert(e.getMessage.contains("until"), e.getMessage)
+  }
+
   test("a per-table pagination override is what gets checked") {
     // Per-table pagination (#217) overrides the source-level block, so the collision has
     // to be judged against the pagination that table actually uses.
