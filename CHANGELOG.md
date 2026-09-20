@@ -41,9 +41,11 @@ so no upgrade is required for existing users.
 - **Spark 4.0, 4.1 and 4.2 are all supported by one jar**, each built and tested in CI.
   The connector uses no API newer than 4.0, so the whole line works without version
   branching. 1.x targets Spark 4.x; 2.x is reserved for Spark 5 (#232).
-- **jackson-databind is pinned per Spark line.** `jackson-module-scala` enforces a narrow
-  databind range and each line ships a different one — 4.0 needs [2.18, 2.19), 4.1 needs
-  [2.20, 2.21), 4.2 needs [2.21, 2.22) — so a single pin cannot serve them all (#232).
+- **jackson-databind is pinned per Spark version.** `jackson-module-scala` enforces a
+  narrow databind range, and which range applies varies by patch, not just by line: 4.0.x
+  wants [2.18, 2.19), 4.1.0–4.1.2 want [2.20, 2.21), and 4.1.3 onward wants
+  [2.21, 2.22). One pin cannot serve them all, and an unrecognised Spark version fails the
+  build rather than resolving to a guess (#232, #246).
 - **Protocol-neutral source layer** (#191) — `core.source` defines how any protocol
   supplies tables and records, with REST as the first implementation. Spark-layer code no
   longer reaches into HTTP or OpenAPI types, which is what makes further protocols additive.
@@ -69,6 +71,14 @@ so no upgrade is required for existing users.
   (#35).
 
 ### Fixed
+
+- **The build was broken against Spark 4.1.3.** The jackson-databind pin was keyed on the
+  Spark line, assuming a line ships one `jackson-module-scala`. It does not: 4.1.0–4.1.2
+  ship 2.20.x wanting `[2.20, 2.21)` while 4.1.3 onward ships 2.21.x wanting
+  `[2.21, 2.22)`. The pin is
+  now keyed on the full version, and the CI matrix covers the floor, the newest patch of
+  each line, and both sides of that shift — a matrix of one patch per line could not see
+  it (#246).
 
 - **Retries multiplied requests and escaped the rate limiter.** Ember retries internally by
   default, beneath both our retry loop and the limiter, so every request was issued
