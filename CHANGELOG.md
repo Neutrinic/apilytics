@@ -132,6 +132,12 @@ so no upgrade is required for existing users.
   fractional batch bound and was trimmed — then skipped by the next batch's `since` and
   lost rather than duplicated. Offsets are now fixed-width to the second, and timestamps
   are compared as instants (#36).
+- **Streaming dropped records from second-precision APIs.** A batch ended at the current
+  second, so records written later in that second — stamped with it, but not yet visible
+  when the batch ran — equalled the batch end and were then excluded by the next batch's
+  `since`. On a three-node cluster against a second-precision feed that was 273 of 1192
+  records. Batches now end at the last fully elapsed second, for at most a second of
+  added latency (#250).
 - **`close()` could deadlock** — a cancelled reader's uncancelable finalizer parked forever
   offering its end-of-stream sentinel into a full queue, hanging the task rather than
   failing it. Fires whenever Spark stops early: a satisfied `LIMIT`, a failed task, a

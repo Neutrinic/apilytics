@@ -166,6 +166,10 @@ Record timestamps are parsed and compared as instants, so mixed precision betwee
 offset and the API's own values is handled. ISO-8601 with `Z` or an offset is understood;
 epoch seconds and other formats are not, and such records are kept rather than dropped.
 
+Each batch ends at the last *fully elapsed* second, so a stream runs up to a second behind
+the clock. That is what makes second-precision APIs safe: a batch never closes a second
+that records are still being stamped with.
+
 ## Development Setup
 
 For local development or contributing:
