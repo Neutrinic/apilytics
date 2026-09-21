@@ -376,7 +376,10 @@ tables.pokemon {
 }
 ```
 
-Requires offset pagination. `size × count` should cover the endpoint; partitions past the
+Requires offset pagination over a non-streaming response — the other styles take the next
+page from the response, so a start offset means nothing to them and every partition would
+read the same rows. Configs that ask for it anyway are rejected at load. `size × count`
+should cover the endpoint; partitions past the
 end return nothing, and rows beyond it are not read — so an endpoint that has grown since
 the config was written is truncated rather than duplicated.
 

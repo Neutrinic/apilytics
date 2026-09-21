@@ -151,7 +151,13 @@ object Paginator {
     val initialOffset: Int = startState match {
       case Some(CheckpointState.OffsetValue(v)) => v.toInt
       case _ =>
-        params.get(offsetParam).flatMap(v => scala.util.Try(v.trim.toInt).toOption).getOrElse(0)
+        // A negative offset parses fine but is not a place to start reading, so it
+        // falls back to zero along with the values that do not parse at all.
+        params
+          .get(offsetParam)
+          .flatMap(v => scala.util.Try(v.trim.toInt).toOption)
+          .filter(_ >= 0)
+          .getOrElse(0)
     }
 
     Stream.unfoldEval[IO, Int, (Json, Option[CheckpointState])](initialOffset) { offset =>

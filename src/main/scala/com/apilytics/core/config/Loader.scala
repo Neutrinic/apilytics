@@ -105,6 +105,37 @@ object Loader {
           case _: PartitionConfig.Offset    => Nil
         }
 
+        // Validate: offset partitioning only works if the reader honours the offset.
+        //
+        // The partition puts a start offset in the request and expects the paginator to
+        // walk from there. Only `style = offset` over plain JSON does. Cursor and
+        // link-header pagination follow the response instead, `style = none` fetches one
+        // page, and the streaming formats bypass pagination altogether — under any of
+        // those the offset is ignored and every partition replays the same records, the
+        // same duplication this partition type was added to avoid (#248).
+        partition match {
+          case _: PartitionConfig.Offset =>
+            val format = sc.http.responseFormat
+            if (pagination.style != PaginationStyle.Offset) {
+              throw new IllegalArgumentException(
+                s"Table '$name' partitions by offset, but its pagination style is " +
+                  s"'${pagination.style}'. Only 'offset' pagination reads a start offset " +
+                  "from the request; the others derive the next page from the response, so " +
+                  "every partition would read the same records. Use 'style = offset', or " +
+                  "remove the partition block."
+              )
+            }
+            if (format != ResponseFormat.Json) {
+              throw new IllegalArgumentException(
+                s"Table '$name' partitions by offset, but the source reads '$format', " +
+                  "which streams records without pagination. The start offset is never " +
+                  "sent, so every partition would read the same records. Remove the " +
+                  "partition block."
+              )
+            }
+          case _ => ()
+        }
+
         partitionParams.foreach { case (param, where) =>
           paginationParams.get(param).foreach { pagWhere =>
             throw new IllegalArgumentException(
@@ -337,7 +368,19 @@ object Loader {
           if (v < 1) throw new IllegalArgumentException(s"Offset partition '$key' must be >= 1, got: $v")
           v
         }
-        PartitionConfig.Offset(size = positive("size"), count = positive("count"))
+        val size  = positive("size")
+        val count = positive("count")
+        // Offsets are Int end to end: `i * size` when planning, then `offset + pageSize`
+        // while the paginator walks a window. Bounding the whole range keeps every one of
+        // those inside Int rather than wrapping negative and requesting the wrong window.
+        if (size.toLong * count.toLong > Int.MaxValue) {
+          throw new IllegalArgumentException(
+            s"Offset partition covers size * count = ${size.toLong * count.toLong} records, " +
+              s"past the largest offset that fits in an Int (${Int.MaxValue}). " +
+              "Reduce 'size' or 'count'."
+          )
+        }
+        PartitionConfig.Offset(size = size, count = count)
 
       case "enum" =>
         val param = if (config.hasPath("param")) config.getString("param")

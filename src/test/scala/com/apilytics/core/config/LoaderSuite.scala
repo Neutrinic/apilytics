@@ -1074,6 +1074,53 @@ class LoaderSuite extends FunSuite {
     }
   }
 
+  test("offset partitioning is rejected unless pagination reads the offset") {
+    // Cursor and link-header pagination take the next page from the response and
+    // `none` fetches one page, so the start offset each partition sends is ignored
+    // and all of them read the same records.
+    for (style <- List("cursor", "link_header", "none")) {
+      val e = intercept[IllegalArgumentException] {
+        Loader.load(ConfigFactory.parseString(s"""
+          |openapi = "s.yaml"
+          |auth { type = none }
+          |pagination { style = $style, cursor-param = "c", cursor-path = "/next" }
+          |tables { t { endpoint = "/t", partition { type = "offset", size = 50, count = 2 } } }
+          |""".stripMargin))
+      }
+      assert(e.getMessage.contains("pagination style"), s"style=$style: ${e.getMessage}")
+    }
+  }
+
+  test("offset partitioning is rejected on a streaming response format") {
+    // Covered separately from the style check: streaming formats bypass pagination
+    // entirely, so `style = offset` passes the first check and the offset is still
+    // never sent. Deleting the format branch leaves the style tests passing.
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |http { response-format = "ndjson" }
+        |pagination { style = offset, offset-param = "offset" }
+        |tables { t { endpoint = "/t", partition { type = "offset", size = 50, count = 2 } } }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("without pagination"), e.getMessage)
+  }
+
+  test("offset partition range beyond Int.MaxValue is rejected") {
+    // `i * size` is Int arithmetic when planning partitions: size 1073741824 over three
+    // partitions puts the third start at -2147483648, and the paginator honours it.
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |pagination { style = offset }
+        |tables { t { endpoint = "/t", partition { type = "offset", size = 1073741824, count = 3 } } }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("Int"), e.getMessage)
+  }
+
   // --- Spec location resolution ---
   //
   // A spec bundled next to its config must be findable wherever the pair is mounted,

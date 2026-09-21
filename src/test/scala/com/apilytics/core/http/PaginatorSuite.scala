@@ -288,6 +288,36 @@ class PaginatorSuite extends CatsEffectSuite {
       }
   }
 
+  test("a negative caller offset falls back to zero") {
+    // It parses, unlike the malformed values, so without a range check it would be
+    // sent to the API as the first offset.
+    val page  = parse("""[{"id": 1}]""").toOption.get
+    val empty = parse("""[]""").toOption.get
+    var capturedParams: List[Map[String, String]] = Nil
+    var callIndex = 0
+    val responses = List(page, empty)
+    val client = new Client.RestClient(null, dummyHttp, dummyAuth, None, RateLimiter.unlimited, ResponseCache.disabled) {
+      override def get(uri: Uri, params: Map[String, String]): IO[ApiResponse] = IO {
+        capturedParams = capturedParams :+ params
+        val json = responses(callIndex)
+        callIndex += 1
+        ApiResponse(json, 200, Map.empty)
+      }
+    }
+
+    val config = PaginationConfig(
+      style = PaginationStyle.Offset,
+      offsetParam = Some("offset"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 10
+    )
+
+    Paginator.pages(client, Uri.unsafeFromString("http://test"), Map("offset" -> "-1"), config)
+      .compile.toList.map { _ =>
+        assertEquals(capturedParams.head.get("offset"), Some("0"))
+      }
+  }
+
   test("single page (no pagination) returns None checkpoint state") {
     val json = parse("""[{"id": 1}]""").toOption.get
     val client = mockClient(List((json, Map.empty)))
