@@ -922,6 +922,205 @@ class LoaderSuite extends FunSuite {
     )
   }
 
+  // --- Partition / pagination parameter collisions ---
+  //
+  // Both write the same query parameter and the paginator wins, so every partition walks
+  // the endpoint from its own first page to the end instead of covering a slice. Nothing
+  // errors — the query just returns the whole dataset once per partition.
+
+  test("enum partitioning on the pagination offset parameter is rejected") {
+    // The exact shape that returned 5404 rows for 1351 distinct records against PokeAPI,
+    // with four times the API calls charged against the rate limit.
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |pagination { style = offset, offset-param = "offset", results-path = "/results" }
+        |tables { pokemon {
+        |  endpoint = "/pokemon"
+        |  partition { type = "enum", param = "offset", values = ["0", "100"] }
+        |} }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("offset"), e.getMessage)
+    assert(e.getMessage.contains("partition.param"), e.getMessage)
+  }
+
+  test("date-range partitioning on a pagination parameter is rejected") {
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |pagination { style = cursor, cursor-param = "from" }
+        |tables { events {
+        |  endpoint = "/events"
+        |  partition { type = "date-range", column = "at", range = "1d"
+        |              start-param = "from", end-param = "to", format = "yyyy-MM-dd" }
+        |} }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("cursor-param"), e.getMessage)
+  }
+
+  test("date-range end-param colliding with a pagination parameter is rejected") {
+    // Covered separately from start-param: with only the start case, deleting the
+    // end-param branch of the check leaves every test passing.
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |pagination { style = offset, offset-param = "until" }
+        |tables { events {
+        |  endpoint = "/events"
+        |  partition { type = "date-range", column = "at", range = "1d"
+        |              start-param = "from", end-param = "until", format = "yyyy-MM-dd" }
+        |} }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("partition.end-param"), e.getMessage)
+    assert(e.getMessage.contains("until"), e.getMessage)
+  }
+
+  test("a per-table pagination override is what gets checked") {
+    // Per-table pagination (#217) overrides the source-level block, so the collision has
+    // to be judged against the pagination that table actually uses.
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |pagination { style = offset, offset-param = "skip" }
+        |tables { t {
+        |  endpoint = "/t"
+        |  pagination { style = offset, offset-param = "start" }
+        |  partition { type = "enum", param = "start", values = ["0", "50"] }
+        |} }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("start"), e.getMessage)
+  }
+
+  test("partitioning on a parameter pagination does not control is allowed") {
+    // Guards against the check being so broad it rejects the normal case.
+    val cfg = Loader.load(ConfigFactory.parseString("""
+      |openapi = "s.yaml"
+      |auth { type = none }
+      |pagination { style = offset, offset-param = "offset", page-size-param = "limit" }
+      |tables { pokemon {
+      |  endpoint = "/pokemon"
+      |  partition { type = "enum", param = "type", values = ["fire", "water"] }
+      |} }
+      |""".stripMargin))
+
+    assert(cfg.tables("pokemon").partition.isDefined)
+  }
+
+  // --- Offset partitioning ---
+
+  test("offset partitioning parses into windows") {
+    val cfg = Loader.load(ConfigFactory.parseString("""
+      |openapi = "s.yaml"
+      |auth { type = none }
+      |pagination { style = offset, offset-param = "offset", results-path = "/results" }
+      |tables { t {
+      |  endpoint = "/t"
+      |  partition { type = "offset", size = 100, count = 4 }
+      |} }
+      |""".stripMargin))
+
+    assertEquals(cfg.tables("t").partition, Some(PartitionConfig.Offset(size = 100, count = 4)))
+  }
+
+  test("offset partitioning is not treated as a pagination collision") {
+    // It drives the pagination parameter deliberately, and bounds each window — which is
+    // precisely what enum and date-range partitioning cannot do.
+    val cfg = Loader.load(ConfigFactory.parseString("""
+      |openapi = "s.yaml"
+      |auth { type = none }
+      |pagination { style = offset, offset-param = "offset" }
+      |tables { t { endpoint = "/t", partition { type = "offset", size = 50, count = 2 } } }
+      |""".stripMargin))
+
+    assert(cfg.tables("t").partition.isDefined)
+  }
+
+  test("offset partitioning requires both size and count") {
+    for ((hocon, missing) <- List(
+           ("""partition { type = "offset", count = 4 }""", "size"),
+           ("""partition { type = "offset", size = 100 }""", "count"))) {
+      val e = intercept[IllegalArgumentException] {
+        Loader.load(ConfigFactory.parseString(s"""
+          |openapi = "s.yaml"
+          |auth { type = none }
+          |pagination { style = offset }
+          |tables { t { endpoint = "/t", $hocon } }
+          |""".stripMargin))
+      }
+      assert(e.getMessage.contains(missing), s"expected '$missing' in: ${e.getMessage}")
+    }
+  }
+
+  test("offset partition sizes below 1 are rejected") {
+    // A zero window would issue a request per partition and read nothing from any of them.
+    for (bad <- List("""size = 0, count = 4""", """size = 100, count = 0""")) {
+      val e = intercept[IllegalArgumentException] {
+        Loader.load(ConfigFactory.parseString(s"""
+          |openapi = "s.yaml"
+          |auth { type = none }
+          |pagination { style = offset }
+          |tables { t { endpoint = "/t", partition { type = "offset", $bad } } }
+          |""".stripMargin))
+      }
+      assert(e.getMessage.contains(">= 1"), e.getMessage)
+    }
+  }
+
+  test("offset partitioning is rejected unless pagination reads the offset") {
+    // Cursor and link-header pagination take the next page from the response and
+    // `none` fetches one page, so the start offset each partition sends is ignored
+    // and all of them read the same records.
+    for (style <- List("cursor", "link_header", "none")) {
+      val e = intercept[IllegalArgumentException] {
+        Loader.load(ConfigFactory.parseString(s"""
+          |openapi = "s.yaml"
+          |auth { type = none }
+          |pagination { style = $style, cursor-param = "c", cursor-path = "/next" }
+          |tables { t { endpoint = "/t", partition { type = "offset", size = 50, count = 2 } } }
+          |""".stripMargin))
+      }
+      assert(e.getMessage.contains("pagination style"), s"style=$style: ${e.getMessage}")
+    }
+  }
+
+  test("offset partitioning is rejected on a streaming response format") {
+    // Covered separately from the style check: streaming formats bypass pagination
+    // entirely, so `style = offset` passes the first check and the offset is still
+    // never sent. Deleting the format branch leaves the style tests passing.
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |http { response-format = "ndjson" }
+        |pagination { style = offset, offset-param = "offset" }
+        |tables { t { endpoint = "/t", partition { type = "offset", size = 50, count = 2 } } }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("without pagination"), e.getMessage)
+  }
+
+  test("offset partition range beyond Int.MaxValue is rejected") {
+    // `i * size` is Int arithmetic when planning partitions: size 1073741824 over three
+    // partitions puts the third start at -2147483648, and the paginator honours it.
+    val e = intercept[IllegalArgumentException] {
+      Loader.load(ConfigFactory.parseString("""
+        |openapi = "s.yaml"
+        |auth { type = none }
+        |pagination { style = offset }
+        |tables { t { endpoint = "/t", partition { type = "offset", size = 1073741824, count = 3 } } }
+        |""".stripMargin))
+    }
+    assert(e.getMessage.contains("Int"), e.getMessage)
+  }
+
   // --- Spec location resolution ---
   //
   // A spec bundled next to its config must be findable wherever the pair is mounted,

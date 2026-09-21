@@ -141,10 +141,23 @@ object Paginator {
     val pageSize = limit.map(l => math.min(l, config.maxPageSize)).getOrElse(config.maxPageSize)
     val resultsPointer = config.resultsPath.flatMap(p => Pointer.parse(p).toOption)
 
-    // Resume from checkpoint offset if available
+    // Where to start walking. A checkpoint wins, then an offset the caller already put in
+    // the request, then zero.
+    //
+    // Honouring the caller's offset is what makes offset partitioning possible: each
+    // partition asks for its own window. Before this, the value was overwritten on the
+    // first request, so a partition starting at 200 still read from 0 — every partition
+    // covering the whole endpoint rather than a slice (#248).
     val initialOffset: Int = startState match {
       case Some(CheckpointState.OffsetValue(v)) => v.toInt
-      case _ => 0
+      case _ =>
+        // A negative offset parses fine but is not a place to start reading, so it
+        // falls back to zero along with the values that do not parse at all.
+        params
+          .get(offsetParam)
+          .flatMap(v => scala.util.Try(v.trim.toInt).toOption)
+          .filter(_ >= 0)
+          .getOrElse(0)
     }
 
     Stream.unfoldEval[IO, Int, (Json, Option[CheckpointState])](initialOffset) { offset =>

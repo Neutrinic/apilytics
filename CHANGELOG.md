@@ -26,6 +26,12 @@ so no upgrade is required for existing users.
 
 ### Added
 
+- **Offset partitioning** — `partition { type = "offset", size = 400, count = 4 }` splits an
+  offset-paginated endpoint into windows read in parallel, for endpoints that offer no
+  natural key to split on. Partition `i` covers `[i * size, (i + 1) * size)`: it starts the
+  paginator at its own offset and stops it after one window. Verified against PokeAPI on a
+  two-node cluster: 1351 records across four partitions, no duplication (#248).
+
 - **Streaming reads.** REST endpoints can be consumed as a Structured Streaming
   micro-batch source, so a materialized view over an API can refresh incrementally
   instead of re-reading everything. Requires timestamp checkpointing: a pull-based API
@@ -71,6 +77,14 @@ so no upgrade is required for existing users.
   (#35).
 
 ### Fixed
+
+- **Partitioning on a parameter pagination controls returned every record once per
+  partition.** Both write the same query parameter and the paginator wins, so each
+  partition walked the endpoint from its own first page to the end rather than covering a
+  slice. Nothing errored: against PokeAPI with four `offset` partitions the query returned
+  5404 rows for 1351 distinct records, and spent four times the API calls against the rate
+  limit. Now rejected at config load, for enum `param` and date-range
+  `start-param`/`end-param`, against whichever pagination that table actually uses (#248).
 
 - **The build was broken against Spark 4.1.3.** The jackson-databind pin was keyed on the
   Spark line, assuming a line ships one `jackson-module-scala`. It does not: 4.1.0–4.1.2

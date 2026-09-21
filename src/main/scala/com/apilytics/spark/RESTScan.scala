@@ -124,11 +124,53 @@ class RESTScan(
     table.tableConfig.flatMap(_.partition) match {
       case Some(config: PartitionConfig.DateRange) => planDateRangePartitions(config)
       case Some(config: PartitionConfig.Enum)      => planEnumPartitions(config)
+      case Some(config: PartitionConfig.Offset)    => planOffsetPartitions(config)
       case None =>
         // No partitioning configured - single partition gets full rate limit
         val effectiveRateLimit = table.sourceConfig.http.rateLimit
         Array(makePartition(pushedParams, effectiveRateLimit))
     }
+  }
+
+  /** Create one partition per offset window.
+    *
+    * Partition `i` starts the paginator at `i * size` and stops it after `size` records.
+    * Both halves matter: a start without a bound leaves every partition running to the end
+    * of the endpoint, returning the whole dataset once per partition (#248).
+    *
+    * A pushed LIMIT narrows the window rather than replacing it — Spark still applies the
+    * limit itself afterwards, so reading less than the window is safe and reading the whole
+    * window when the limit is larger is correct.
+    */
+  private def planOffsetPartitions(config: PartitionConfig.Offset): Array[InputPartition] = {
+    val pagination  = table.tableConfig.flatMap(_.pagination).getOrElse(table.sourceConfig.pagination)
+    val offsetParam = pagination.offsetParam.getOrElse("offset")
+    val shares      = rateLimitShares(config.count)
+
+    logInfo(
+      s"Partitioning by offset into ${config.count} windows of ${config.size} records " +
+        s"via '$offsetParam', covering offsets 0 to ${config.count * config.size}"
+    )
+
+    (0 until config.count).map { i =>
+      val start  = i * config.size
+      val window = pushedLimit.map(l => math.min(l, config.size)).getOrElse(config.size)
+
+      RESTInputPartition(
+        handle = table.handle,
+        tableConfig = table.tableConfig,
+        sourceConfig = table.sourceConfig,
+        baseUrl = table.baseUrl,
+        arrowSchemaJson = arrowSchema.toJson,
+        pushedParams = pushedParams + (offsetParam -> start.toString),
+        pushedLimit = Some(window),
+        effectiveRateLimit = shares.map(_(i)),
+        schemaMode = table.sourceConfig.schema.mode,
+        responseFormat = table.sourceConfig.http.responseFormat,
+        tableName = table.tableName,
+        checkpointConfig = table.tableConfig.flatMap(_.checkpoint)
+      )
+    }.toArray
   }
 
   /** Create multiple partitions for enum-based parallel reads. */

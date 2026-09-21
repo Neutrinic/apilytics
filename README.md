@@ -318,7 +318,7 @@ APIlytics is a Spark DataSource V2 catalog plugin that reads OpenAPI specs (Swag
 - **Arrow internals** - zero-copy path to Spark ColumnarBatch
 - **Parent-child joins** - chain API calls (e.g., fetch issues then comments for each), [see below](#parent-child-joins)
 - **Batch joins** - reduce API calls from O(n) to O(n/batch_size) for bulk lookups
-- **Parallel partitioning** - date-range or enum partitioning for concurrent reads
+- **Parallel partitioning** - offset, date-range or enum partitioning for concurrent reads, [see below](#parallel-partitioning)
 - **Rate limiting** - configurable requests per second, divided across partitions ([see below](#rate-limiting))
 - **Retry with backoff** - exponential backoff for transient failures (429, 5xx)
 - **Checkpoint support** - incremental reads via cursor, offset, or timestamp tracking
@@ -359,6 +359,47 @@ Two things catch people out, both of which produce **zero rows with no error** i
 
 The parent key arrives as a column named after the path parameter — `{type_name}` gives
 `_parent_type_name`.
+
+### Parallel partitioning
+
+Split a table across executors. Three strategies, and which one applies depends on what the
+endpoint offers to split on.
+
+**Offset** — for an endpoint that offers nothing but rows. Partition `i` covers
+`[i * size, (i + 1) * size)`:
+
+```hocon
+tables.pokemon {
+  endpoint  = "/api/v2/pokemon"
+  data-path = "/results"
+  partition { type = "offset", size = 400, count = 4 }
+}
+```
+
+Requires offset pagination over a non-streaming response — the other styles take the next
+page from the response, so a start offset means nothing to them and every partition would
+read the same rows. Configs that ask for it anyway are rejected at load. `size × count`
+should cover the endpoint; partitions past the
+end return nothing, and rows beyond it are not read — so an endpoint that has grown since
+the config was written is truncated rather than duplicated.
+
+**Enum** — when a query parameter splits the data naturally:
+
+```hocon
+partition { type = "enum", param = "kind", values = ["fire", "water", "grass"] }
+```
+
+**Date range** — splits a time window into chunks, driven by pushed date filters:
+
+```hocon
+partition { type = "date-range", column = "created_at", range = "7 days"
+            start-param = "since", end-param = "until" }
+```
+
+Enum and date-range partitioning must not use a parameter that pagination already controls.
+The paginator would overwrite it and every partition would read the whole endpoint, so that
+combination is rejected at config load. Offset partitioning is the exception: it drives the
+pagination parameter deliberately, and bounds each window.
 
 ### Rate limiting
 

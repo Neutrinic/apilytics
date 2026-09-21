@@ -79,6 +79,78 @@ object Loader {
       }
     }
 
+    // Validate: a partition must not drive a parameter that pagination already drives.
+    //
+    // Both write the same query parameter, and the paginator wins — so every partition
+    // walks the endpoint from its own first page to the end instead of covering a slice.
+    // Nothing errors: the query returns the full dataset once per partition. Measured
+    // against PokeAPI with four offset partitions, that was 5404 rows of which 1351 were
+    // distinct, and four times the API calls charged against the rate limit.
+    sc.tables.foreach { case (name, tc) =>
+      tc.partition.foreach { partition =>
+        val pagination = tc.pagination.getOrElse(sc.pagination)
+        val paginationParams: Map[String, String] =
+          List(
+            pagination.offsetParam.map(_ -> "offset-param"),
+            pagination.pageSizeParam.map(_ -> "page-size-param"),
+            pagination.cursorParam.map(_ -> "cursor-param")
+          ).flatten.toMap
+
+        val partitionParams = partition match {
+          case e: PartitionConfig.Enum      => List(e.param -> "partition.param")
+          case d: PartitionConfig.DateRange => List(d.startParam -> "partition.start-param",
+                                                    d.endParam   -> "partition.end-param")
+          // `type = "offset"` drives the pagination parameter on purpose, and bounds each
+          // window, which is exactly what the other two cannot do. Not a collision.
+          case _: PartitionConfig.Offset    => Nil
+        }
+
+        // Validate: offset partitioning only works if the reader honours the offset.
+        //
+        // The partition puts a start offset in the request and expects the paginator to
+        // walk from there. Only `style = offset` over plain JSON does. Cursor and
+        // link-header pagination follow the response instead, `style = none` fetches one
+        // page, and the streaming formats bypass pagination altogether — under any of
+        // those the offset is ignored and every partition replays the same records, the
+        // same duplication this partition type was added to avoid (#248).
+        partition match {
+          case _: PartitionConfig.Offset =>
+            val format = sc.http.responseFormat
+            if (pagination.style != PaginationStyle.Offset) {
+              throw new IllegalArgumentException(
+                s"Table '$name' partitions by offset, but its pagination style is " +
+                  s"'${pagination.style}'. Only 'offset' pagination reads a start offset " +
+                  "from the request; the others derive the next page from the response, so " +
+                  "every partition would read the same records. Use 'style = offset', or " +
+                  "remove the partition block."
+              )
+            }
+            if (format != ResponseFormat.Json) {
+              throw new IllegalArgumentException(
+                s"Table '$name' partitions by offset, but the source reads '$format', " +
+                  "which streams records without pagination. The start offset is never " +
+                  "sent, so every partition would read the same records. Remove the " +
+                  "partition block."
+              )
+            }
+          case _ => ()
+        }
+
+        partitionParams.foreach { case (param, where) =>
+          paginationParams.get(param).foreach { pagWhere =>
+            throw new IllegalArgumentException(
+              s"Table '$name' partitions on '$param' via $where, but pagination already " +
+                s"uses that parameter as $pagWhere. The paginator overwrites it, so every " +
+                "partition would read the whole endpoint rather than a slice — returning " +
+                "each record once per partition and spending the rate limit as many times. " +
+                "Partition on a parameter pagination does not control, or remove the " +
+                "partition block."
+            )
+          }
+        }
+      }
+    }
+
     // Warn when auth credentials are configured over plaintext HTTP
     warnPlaintextCredentials(sc)
 
@@ -286,6 +358,30 @@ object Loader {
                    else "yyyy-MM-dd'T'HH:mm:ss'Z'"
         )
 
+      case "offset" =>
+        def positive(key: String) = {
+          if (!config.hasPath(key)) throw new IllegalArgumentException(
+            s"Offset partition requires '$key'. Partition i covers offsets " +
+              "[i * size, (i + 1) * size), so both the window and how many are needed."
+          )
+          val v = config.getInt(key)
+          if (v < 1) throw new IllegalArgumentException(s"Offset partition '$key' must be >= 1, got: $v")
+          v
+        }
+        val size  = positive("size")
+        val count = positive("count")
+        // Offsets are Int end to end: `i * size` when planning, then `offset + pageSize`
+        // while the paginator walks a window. Bounding the whole range keeps every one of
+        // those inside Int rather than wrapping negative and requesting the wrong window.
+        if (size.toLong * count.toLong > Int.MaxValue) {
+          throw new IllegalArgumentException(
+            s"Offset partition covers size * count = ${size.toLong * count.toLong} records, " +
+              s"past the largest offset that fits in an Int (${Int.MaxValue}). " +
+              "Reduce 'size' or 'count'."
+          )
+        }
+        PartitionConfig.Offset(size = size, count = count)
+
       case "enum" =>
         val param = if (config.hasPath("param")) config.getString("param")
                     else throw new IllegalArgumentException(
@@ -468,7 +564,9 @@ object Loader {
 
   private val partitionShape = Obj(Map(
     "type" -> Value, "range" -> Value, "column" -> Value, "start-param" -> Value,
-    "end-param" -> Value, "format" -> Value, "param" -> Value, "values" -> Value
+    "end-param" -> Value, "format" -> Value, "param" -> Value, "values" -> Value,
+    // offset partitioning
+    "size" -> Value, "count" -> Value
   ))
 
   private val tableShape = Obj(Map(

@@ -236,6 +236,27 @@ object PartitionConfig {
       /** List of enum values to partition by (e.g., ["pending", "shipped"]). */
       values: List[String]
   ) extends PartitionConfig
+
+  /** Split an offset-paginated endpoint into fixed windows of records.
+    *
+    * Partition `i` covers offsets `[i * size, (i + 1) * size)`: it starts the paginator
+    * there and stops it after `size` records. The bound is what makes this correct —
+    * setting only a start leaves every partition running to the end of the endpoint, which
+    * is why partitioning on the pagination parameter directly is rejected (#248).
+    *
+    * Unlike enum and date-range partitioning, this needs no natural key in the data, so it
+    * is the option for an endpoint that offers nothing to split on but rows.
+    *
+    * `count * size` should cover the endpoint. Partitions past the end return nothing, and
+    * records beyond `count * size` are not read — so an endpoint that grew since the config
+    * was written is truncated rather than silently duplicated.
+    */
+  final case class Offset(
+      /** Records per partition. */
+      size: Int,
+      /** How many partitions, and therefore how much of the endpoint is covered. */
+      count: Int
+  ) extends PartitionConfig
 }
 
 sealed trait JoinStrategy extends Serializable
