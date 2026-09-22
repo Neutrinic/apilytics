@@ -22,8 +22,11 @@ jobs:
       - name: Setup sbt
         uses: sbt/setup-sbt@v1
 
+      # Compile against the oldest Spark 1.x supports. The compiler then guarantees the
+      # artifact calls no API that only exists in a later 4.x, and the POM declares the
+      # oldest Spark rather than the newest (#253).
       - name: Publish to Maven Central
-        run: sbt ci-release
+        run: sbt -DsparkVersion=4.0.0 ci-release
         env:
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
