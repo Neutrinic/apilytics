@@ -35,6 +35,37 @@ val sparkVersion    = sys.props.getOrElse("sparkVersion", "4.2.0")
   * serves the whole Spark 4.x line — see the compatibility table in the README. */
 val sparkMajorMinor = sparkVersion.split('.').take(2).mkString(".")
 
+/** Libraries every supported Spark distribution already ships.
+  *
+  * Excluded from our dependencies so the published POM names only what a Spark
+  * classpath lacks. Declaring them anyway does not change what runs — Spark's jars load
+  * first — but it puts a second, different version beside Spark's, which breaks the moment
+  * anything loads user jars first, and it means our tests exercise versions production
+  * never sees. With them excluded, compile and test use Spark's own copies.
+  *
+  * Checked against the jars directories of Spark 4.0.4, 4.1.3 and 4.2.0. Not excluded:
+  * jakarta.activation / validation / xml.bind 2.x, whose artifact names match Spark's but
+  * whose packages do not (`javax.*` versus Spark's `jakarta.*`), so nothing overlaps; and
+  * cats-kernel, where Spark's copy is too old for http4s.
+  */
+val onSparkClasspath = Seq(
+  ExclusionRule("com.fasterxml.jackson.core"),
+  ExclusionRule("com.fasterxml.jackson.dataformat"),
+  ExclusionRule("com.fasterxml.jackson.datatype"),
+  ExclusionRule("com.google.guava"),
+  ExclusionRule("com.google.code.findbugs"),
+  ExclusionRule("com.google.errorprone"),
+  ExclusionRule("com.google.j2objc"),
+  ExclusionRule("org.checkerframework"),
+  ExclusionRule("commons-io"),
+  ExclusionRule("commons-codec"),
+  ExclusionRule("org.apache.commons", "commons-lang3"),
+  ExclusionRule("org.apache.httpcomponents"),
+  ExclusionRule("org.yaml", "snakeyaml"),
+  ExclusionRule("org.slf4j"),
+  ExclusionRule("joda-time"),
+)
+
 /** jackson-databind pinned to whatever Spark's bundled jackson-module-scala accepts.
   *
   * module-scala enforces a narrow databind range and refuses to initialise outside it,
@@ -95,22 +126,22 @@ lazy val root = (project in file("."))
       "org.apache.spark" %% "spark-catalyst"      % sparkVersion % "provided",
 
       // HTTP + JSON
-      "org.http4s"       %% "http4s-ember-client" % "0.23.36",
-      "org.http4s"       %% "http4s-circe"        % "0.23.36",
+      // Their logging (log4s) asks for slf4j 1.7; Spark always ships 2.x, which keeps
+      // the 1.7 API, so it is excluded along with the rest of `onSparkClasspath`.
+      "org.http4s"       %% "http4s-ember-client" % "0.23.36" excludeAll (onSparkClasspath: _*),
+      "org.http4s"       %% "http4s-circe"        % "0.23.36" excludeAll (onSparkClasspath: _*),
       "io.circe"         %% "circe-core"          % "0.14.16",
       "io.circe"         %% "circe-generic"       % "0.14.16",
       "io.circe"         %% "circe-parser"        % "0.14.16",
       "io.circe"         %% "circe-pointer"       % "0.14.16",
 
-      // OpenAPI. 2.1.45 is what fixes #188: its chain carries jackson-databind
-      // 2.22.0 and rhino 1.7.15.1, both free of the CVEs that forced the old pins,
-      // so consumers inherit safe versions without us publishing any constraint.
-      "io.swagger.parser.v3" % "swagger-parser"   % "2.1.45",
+      // OpenAPI. Its chain also drags in libraries every Spark distribution already
+      // ships, which are excluded below: see `onSparkClasspath`.
+      "io.swagger.parser.v3" % "swagger-parser"   % "2.1.45" excludeAll (onSparkClasspath: _*),
 
-      // Arrow — keep in lockstep with the version Spark bundles, since
-      // ArrowColumnVector hands our buffers straight to Spark's own Arrow.
-      "org.apache.arrow"  % "arrow-vector"        % "19.0.0",
-      "org.apache.arrow"  % "arrow-memory-netty"  % "19.0.0",
+      // Arrow is deliberately not declared: it comes from spark-sql, so we compile
+      // against the Arrow the target Spark ships. ArrowColumnVector hands our buffers
+      // straight to Spark's own Arrow, so there must only ever be Spark's copy.
 
       // Config
       "com.typesafe"      % "config"              % "1.4.9",
@@ -126,28 +157,13 @@ lazy val root = (project in file("."))
 
     // Build-scoped only, and deliberately not published.
     //
-    // swagger-parser's chain wants jackson-databind 2.22.0, which is outside the
-    // [2.21.0, 2.22.0) window Spark's jackson-module-scala enforces (#185). Our
-    // assembly bundles jackson, so it has to sit inside that window.
-    //
-    // Consumers are a different case and need no constraint from us: 2.22.0 carries
-    // the CVE fixes, and on a cluster Spark's own jackson-databind takes precedence
-    // anyway. Forcing 2.21.5 on them is not achievable cleanly regardless — sbt
-    // resolves highest-wins, so a published lower bound would simply lose.
+    // jackson now reaches the build only through Spark, but test dependencies
+    // (wiremock) carry their own and would evict Spark's upward, out of the narrow
+    // databind window Spark's jackson-module-scala enforces (#185). Holding databind
+    // at the pin keeps the test classpath a classpath Spark can actually start on.
     // JacksonCompatibilitySuite fails the build if this drifts out of range.
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonDatabind,
-
-      // Netty reaches compile scope through arrow-memory-netty-buffer-patch, which
-      // asks for a 4.1.x that carries a large pile of HIGH CVEs. Spark already puts
-      // 4.2.x on the runtime classpath and the suite passes against it, so Arrow is
-      // fine on the 4.2 line — pin it there for the compile graph too.
-      //
-      // This replaces a suppression that had been pinned to netty 4.1.114: bumping
-      // http4s moved netty to 4.1.119, the filePath regex silently stopped matching,
-      // and every one of those CVEs came back and failed the build.
-      "io.netty" % "netty-buffer" % "4.2.17.Final",
-      "io.netty" % "netty-common" % "4.2.17.Final",
     ),
 
     scalacOptions ++= Seq(

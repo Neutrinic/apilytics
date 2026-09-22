@@ -78,6 +78,14 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **The published POM duplicated libraries Spark already ships.** Arrow was declared
+  directly, and swagger-parser and http4s brought in jackson, guava, commons-*,
+  snakeyaml, slf4j, httpclient and Netty: 35 of 94 resolved jars, mostly at versions
+  different from Spark's. Spark's copies normally load first, which hid it; with
+  `userClassPathFirst=true` the duplicates collided, failing with
+  `LinkageError: loader constraint violation ... org.slf4j.Logger`. Arrow now comes from
+  Spark, and the rest are excluded, so `--packages` resolves only what a Spark classpath
+  lacks and the test suite runs against Spark's own versions (#255).
 - **Partitioning on a parameter pagination controls returned every record once per
   partition.** Both write the same query parameter and the paginator wins, so each
   partition walked the endpoint from its own first page to the end rather than covering a
