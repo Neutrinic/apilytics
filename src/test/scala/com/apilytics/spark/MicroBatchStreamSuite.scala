@@ -279,6 +279,21 @@ class MicroBatchStreamSuite extends FunSuite {
     assertEquals(later.value, pinned.value, "end moved during an AvailableNow run")
   }
 
+  test("a batch never ends in the second still in progress") {
+    // At 10:00:05.300 an end of 10:00:05 would close a second that second-precision records
+    // are still being written into — all stamped 10:00:05, none visible yet, and then
+    // excluded by the next batch's `since=10:00:05`. Measured on the cluster: 273 of 1192
+    // records lost. The end has to be the last second that has fully elapsed.
+    val cc     = checkpoint()
+    val clock  = () => java.time.Instant.parse("2026-01-15T10:00:05.300Z")
+    val stream = new RESTMicroBatchStream(scanFor(table(Some(cc))), cc, "since", clock)
+
+    assertEquals(stream.latestOffset().asInstanceOf[TimestampOffset].value, "2026-01-15T10:00:04Z")
+    assertEquals(stream.initialOffset().asInstanceOf[TimestampOffset].value, "2026-01-15T10:00:04Z")
+    stream.prepareForTriggerAvailableNow()
+    assertEquals(stream.latestOffset().asInstanceOf[TimestampOffset].value, "2026-01-15T10:00:04Z")
+  }
+
   test("without AvailableNow the end still tracks the clock") {
     val stream = scanFor(table(Some(checkpoint()))).toMicroBatchStream("/tmp/cp")
     val first = stream.latestOffset().asInstanceOf[TimestampOffset]
