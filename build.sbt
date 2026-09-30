@@ -185,6 +185,10 @@ lazy val root = (project in file("."))
     // Assembly settings
     assembly / assemblyJarName := "apilytics.jar",
     assembly / assemblyMergeStrategy := {
+      // Service registrations are how Spark finds format("apilytics") by its short name;
+      // discarding them with the rest of META-INF left the assembly unable to resolve it
+      // (#257). Merge them rather than keep one, since dependencies register services too.
+      case PathList("META-INF", "services", _ @ _*) => MergeStrategy.filterDistinctLines
       case PathList("META-INF", xs @ _*)           => MergeStrategy.discard
       case "module-info.class"                     => MergeStrategy.discard
       case "META-INF/versions/9/module-info.class" => MergeStrategy.discard

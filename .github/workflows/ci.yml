@@ -50,6 +50,12 @@ jobs:
       - name: Assembly
         run: sbt -DsparkVersion=${{ matrix.spark }} assembly
 
+      # The assembly is what --jars, the Docker image and platform uploads use. Spark finds
+      # format("apilytics") through this registration, and a merge strategy once dropped it.
+      - name: Assembly registers the data source
+        run: |
+          unzip -p target/scala-2.13/apilytics.jar META-INF/services/org.apache.spark.sql.sources.DataSourceRegister             | grep -qx 'com.apilytics.spark.RESTDataSource'
+
   # Vulnerability gate for our dependencies. Matches by package coordinates (purl)
   # against OSV, so identity is exact — unlike dependency-check, which guesses CPEs
   # from jar evidence and misfires (every suppression we carry is a misidentification).
