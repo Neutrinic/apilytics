@@ -123,6 +123,21 @@ class RESTDataSourceSuite extends FunSuite {
     assertEquals(titles, Seq("first", "third"))
   }
 
+  test("readStream.format() plans a V2 micro-batch source for a streamable table") {
+    // Runs everywhere, unlike the end-to-end test below, because it writes no checkpoint.
+    // It is the one that matters: implementing StreamSourceProvider makes load() build the
+    // legacy relation eagerly, and a sourceSchema that threw made every table unstreamable
+    // before any batch ran.
+    val df = spark.readStream.format("apilytics")
+      .option("config", configPath.toAbsolutePath.toString)
+      .option("table", "events")
+      .load()
+
+    assert(df.isStreaming)
+    val nodes = df.queryExecution.analyzed.collect { case p => p.getClass.getSimpleName }
+    assert(nodes.contains("StreamingRelationV2"), s"expected the V2 streaming source, got: $nodes")
+  }
+
   test("a streamable table can be read with readStream.format()") {
     // Spark's local checkpoint writer needs Hadoop's native helpers on Windows. CI and the
     // lab run this on Linux.

@@ -1,7 +1,7 @@
 package com.apilytics.spark
 
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
-import org.apache.spark.sql.connector.catalog.{Identifier, Table, TableProvider}
+import org.apache.spark.sql.connector.catalog.{Identifier, Table, TableCapability, TableProvider}
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.execution.streaming.Source
@@ -52,18 +52,28 @@ class RESTDataSource extends TableProvider with DataSourceRegister with StreamSo
 
   // Streaming for a table that cannot stream.
   //
-  // Streamable tables advertise MICRO_BATCH_READ and never reach these methods: Spark reads
-  // them through the V2 table above. For one that cannot, Spark falls back to this legacy
-  // interface; without it the error is "Data source apilytics does not support streamed
-  // reading", which is wrong about apilytics and silent about the fix. These exist only to
-  // say which table, and what its config needs.
+  // Streamable tables advertise MICRO_BATCH_READ and Spark reads them through the V2 table
+  // above. For one that cannot, Spark falls back to this legacy interface; without it the
+  // error is "Data source apilytics does not support streamed reading", which is wrong
+  // about apilytics and silent about the fix.
+  //
+  // sourceSchema must still answer for streamable tables. Because this class implements
+  // StreamSourceProvider, readStream.load() builds the legacy relation eagerly, calling
+  // sourceSchema, before it picks the V2 path. Throwing there unconditionally made every
+  // table unstreamable. createSource is reached only when V2 is not used, so it always
+  // throws.
 
+  @annotation.nowarn("cat=deprecation")
   override def sourceSchema(
       sqlContext: SQLContext,
       schema: Option[StructType],
       providerName: String,
       parameters: Map[String, String]
-  ): (String, StructType) = throw notStreamable(parameters)
+  ): (String, StructType) = {
+    val table = resolve(parameters.asJava)
+    if (!table.capabilities().contains(TableCapability.MICRO_BATCH_READ)) throw notStreamable(parameters)
+    (shortName(), table.schema())
+  }
 
   override def createSource(
       sqlContext: SQLContext,
