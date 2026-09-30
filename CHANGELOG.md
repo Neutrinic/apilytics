@@ -78,6 +78,12 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **A reader could start reading before it was fully constructed.** The reader base class
+  started its producer fiber in its own constructor, which runs before a subclass's fields
+  are assigned, so the producer could see a null Arrow schema. It surfaced as an
+  intermittent `NullPointerException` in tests; on a cluster it would be an occasional
+  failed task, mostly hidden by task retries. The producer now starts on the first read
+  (#262).
 - **The published POM duplicated libraries Spark already ships.** Arrow was declared
   directly, and swagger-parser and http4s brought in jackson, guava, commons-*,
   snakeyaml, slf4j, httpclient and Netty: 35 of 94 resolved jars, mostly at versions
