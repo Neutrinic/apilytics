@@ -84,14 +84,25 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **A reader could start reading before it was fully constructed.** The reader base class
+  started its producer fiber in its own constructor, which runs before a subclass's fields
+  are assigned, so the producer could see a null Arrow schema. It surfaced as an
+  intermittent `NullPointerException` in tests; on a cluster it would be an occasional
+  failed task, mostly hidden by task retries. The producer now starts on the first read
+  (#262).
 - **The published POM duplicated libraries Spark already ships.** Arrow was declared
   directly, and swagger-parser and http4s brought in jackson, guava, commons-*,
   snakeyaml, slf4j, httpclient and Netty: 35 of 94 resolved jars, mostly at versions
   different from Spark's. Spark's copies normally load first, which hid it; with
   `userClassPathFirst=true` the duplicates collided, failing with
   `LinkageError: loader constraint violation ... org.slf4j.Logger`. Arrow now comes from
-  Spark, and the rest are excluded, so `--packages` resolves only what a Spark classpath
-  lacks and the test suite runs against Spark's own versions (#255).
+  Spark, and libraries `spark-sql` itself depends on are excluded, so `--packages` does not
+  bring a second copy of them and the test suite runs against Spark's own versions (#255).
+  The first cut excluded by what the Apache distribution contains, which also dropped
+  jackson-dataformat-yaml, snakeyaml, httpclient and joda-time: vendor runtimes omit them,
+  and on Dataproc Serverless YAML specs failed with `NoClassDefFoundError: YAMLFactory`.
+  Those ship with apilytics, and `sbt checkRuntimeClasspath` in CI parses specs without
+  test-only libraries, which had supplied the YAML module to every unit test (#259).
 - **Partitioning on a parameter pagination controls returned every record once per
   partition.** Both write the same query parameter and the paginator wins, so each
   partition walked the endpoint from its own first page to the end rather than covering a
