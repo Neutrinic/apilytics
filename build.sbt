@@ -35,7 +35,7 @@ val sparkVersion    = sys.props.getOrElse("sparkVersion", "4.2.0")
   * serves the whole Spark 4.x line — see the compatibility table in the README. */
 val sparkMajorMinor = sparkVersion.split('.').take(2).mkString(".")
 
-/** Libraries every supported Spark distribution already ships.
+/** Libraries `spark-sql` itself depends on, so any Spark distribution that runs SQL has them.
   *
   * Excluded from our dependencies so the published POM names only what a Spark
   * classpath lacks. Declaring them anyway does not change what runs — Spark's jars load
@@ -43,14 +43,18 @@ val sparkMajorMinor = sparkVersion.split('.').take(2).mkString(".")
   * anything loads user jars first, and it means our tests exercise versions production
   * never sees. With them excluded, compile and test use Spark's own copies.
   *
-  * Checked against the jars directories of Spark 4.0.4, 4.1.3 and 4.2.0. Not excluded:
-  * jakarta.activation / validation / xml.bind 2.x, whose artifact names match Spark's but
-  * whose packages do not (`javax.*` versus Spark's `jakarta.*`), so nothing overlaps; and
+  * The test is `spark-sql`'s resolved dependency tree, not what a distribution happens to
+  * contain. Apache's distribution also carries jackson-dataformat-yaml, snakeyaml,
+  * httpclient and joda-time, through optional modules (Kubernetes, Hive); vendor runtimes
+  * leave them out — Dataproc Serverless 3.0 has no jackson-dataformat-yaml — so those ship
+  * with us (#259).
+  *
+  * Also not excluded: jakarta.activation / validation / xml.bind 2.x, whose artifact names
+  * match Spark's but whose packages do not (`javax.*` versus Spark's `jakarta.*`); and
   * cats-kernel, where Spark's copy is too old for http4s.
   */
 val onSparkClasspath = Seq(
   ExclusionRule("com.fasterxml.jackson.core"),
-  ExclusionRule("com.fasterxml.jackson.dataformat"),
   ExclusionRule("com.fasterxml.jackson.datatype"),
   ExclusionRule("com.google.guava"),
   ExclusionRule("com.google.code.findbugs"),
@@ -60,10 +64,7 @@ val onSparkClasspath = Seq(
   ExclusionRule("commons-io"),
   ExclusionRule("commons-codec"),
   ExclusionRule("org.apache.commons", "commons-lang3"),
-  ExclusionRule("org.apache.httpcomponents"),
-  ExclusionRule("org.yaml", "snakeyaml"),
   ExclusionRule("org.slf4j"),
-  ExclusionRule("joda-time"),
 )
 
 /** jackson-databind pinned to whatever Spark's bundled jackson-module-scala accepts.
@@ -137,7 +138,16 @@ lazy val root = (project in file("."))
 
       // OpenAPI. Its chain also drags in libraries every Spark distribution already
       // ships, which are excluded below: see `onSparkClasspath`.
-      "io.swagger.parser.v3" % "swagger-parser"   % "2.1.45" excludeAll (onSparkClasspath: _*),
+      "io.swagger.parser.v3" % "swagger-parser"   % "2.1.45"
+        excludeAll ((onSparkClasspath :+ ExclusionRule("com.fasterxml.jackson.dataformat")): _*),
+
+      // YAML specs need jackson-dataformat-yaml, which `spark-sql` does not bring (#259).
+      // Declared directly rather than taken from swagger-parser (2.22) so it matches the
+      // jackson line of the Spark we build against — a jackson module newer than the core
+      // beneath it can call methods that core lacks — and without its own jackson-core and
+      // databind, so it runs on Spark's rather than bringing a second copy.
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonDatabind
+        excludeAll ExclusionRule("com.fasterxml.jackson.core"),
 
       // Arrow is deliberately not declared: it comes from spark-sql, so we compile
       // against the Arrow the target Spark ships. ArrowColumnVector hands our buffers
