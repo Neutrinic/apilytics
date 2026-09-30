@@ -47,6 +47,9 @@ jobs:
       - name: Test
         run: sbt -DsparkVersion=${{ matrix.spark }} test
 
+      - name: Runtime classpath
+        run: sbt -DsparkVersion=${{ matrix.spark }} checkRuntimeClasspath
+
       - name: Assembly
         run: sbt -DsparkVersion=${{ matrix.spark }} assembly
 
