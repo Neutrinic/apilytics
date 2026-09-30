@@ -26,6 +26,12 @@ so no upgrade is required for existing users.
 
 ### Added
 
+- **`format("apilytics")`** — the catalog's tables as a data source, for platforms that own
+  the catalog namespace. On Databricks, every catalog name on Unity Catalog compute resolves
+  to Unity Catalog and a `spark.sql.catalog.*` plugin is never loaded (#129).
+  `spark.read.format("apilytics").option("config", ...).option("table", ...)`, `readStream`,
+  and `CREATE TEMPORARY VIEW ... USING apilytics` all return the same table as the catalog,
+  including pushdown and streaming (#257).
 - **Offset partitioning** — `partition { type = "offset", size = 400, count = 4 }` splits an
   offset-paginated endpoint into windows read in parallel, for endpoints that offer no
   natural key to split on. Partition `i` covers `[i * size, (i + 1) * size)`: it starts the

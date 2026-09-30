@@ -46,6 +46,28 @@ spark.conf.set("spark.sql.catalog.api.config", "/path/to/config.conf")
 spark.sql("SELECT * FROM api.default.issues LIMIT 5").show()
 ```
 
+#### Without a catalog: `format("apilytics")`
+
+Some platforms own the catalog namespace. On Databricks, every catalog name on Unity Catalog
+compute resolves to Unity Catalog, so the catalog above is never loaded there. The same
+tables are available as a data source instead:
+
+```python
+issues = (spark.read.format("apilytics")
+          .option("config", "/path/to/config.conf")
+          .option("table", "issues")
+          .load())
+```
+
+```sql
+CREATE TEMPORARY VIEW issues USING apilytics
+OPTIONS (config '/path/to/config.conf', table 'issues');
+```
+
+It is the same table the catalog serves, with the same pushdown, partitioning and streaming
+(`spark.readStream.format("apilytics")`). What it gives up is discovery: there is no
+`SHOW TABLES`, so name the table you want. Use the catalog wherever the platform allows it.
+
 ### Docker
 
 Try Apilytics instantly with Docker - no Java, Scala, or build tools required:

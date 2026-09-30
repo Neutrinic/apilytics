@@ -390,12 +390,7 @@ class RESTScan(
         c.mode == CheckpointMode.Timestamp && c.timestampParam.isDefined && c.timestampPath.isDefined
       )
       .getOrElse(
-        throw new IllegalStateException(
-          s"Table '${table.tableName}' cannot be read as a stream. Streaming requires " +
-            "checkpoint { mode = timestamp, timestamp-param = \"...\", timestamp-path = \"...\" }. " +
-            "The parameter asks the API for a window; the path bounds it, without which " +
-            "every batch re-delivers the previous batch's tail."
-        )
+        throw new IllegalStateException(RESTScan.notStreamable(table.tableName))
       )
 
     new RESTMicroBatchStream(this, cc, cc.timestampParam.get)
@@ -404,4 +399,15 @@ class RESTScan(
   /** Report statistics to Spark for query optimization. */
   override def estimateStatistics(): Statistics =
     ScanStatistics.estimate(pushedLimit, table.sourceConfig.pagination, readSchema())
+}
+
+object RESTScan {
+
+  /** Why a table cannot be read as a stream, and what its config needs. Shared by the
+    * catalog path and `format("apilytics")`, which reach the same limit by different routes. */
+  private[spark] def notStreamable(tableName: String): String =
+    s"Table '$tableName' cannot be read as a stream. Streaming requires " +
+      "checkpoint { mode = timestamp, timestamp-param = \"...\", timestamp-path = \"...\" }. " +
+      "The parameter asks the API for a window; the path bounds it, without which " +
+      "every batch re-delivers the previous batch's tail."
 }
