@@ -84,8 +84,13 @@ so no upgrade is required for existing users.
   different from Spark's. Spark's copies normally load first, which hid it; with
   `userClassPathFirst=true` the duplicates collided, failing with
   `LinkageError: loader constraint violation ... org.slf4j.Logger`. Arrow now comes from
-  Spark, and the rest are excluded, so `--packages` resolves only what a Spark classpath
-  lacks and the test suite runs against Spark's own versions (#255).
+  Spark, and libraries `spark-sql` itself depends on are excluded, so `--packages` does not
+  bring a second copy of them and the test suite runs against Spark's own versions (#255).
+  The first cut excluded by what the Apache distribution contains, which also dropped
+  jackson-dataformat-yaml, snakeyaml, httpclient and joda-time: vendor runtimes omit them,
+  and on Dataproc Serverless YAML specs failed with `NoClassDefFoundError: YAMLFactory`.
+  Those ship with apilytics, and `sbt checkRuntimeClasspath` in CI parses specs without
+  test-only libraries, which had supplied the YAML module to every unit test (#259).
 - **Partitioning on a parameter pagination controls returned every record once per
   partition.** Both write the same query parameter and the paginator wins, so each
   partition walked the endpoint from its own first page to the end rather than covering a

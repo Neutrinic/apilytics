@@ -113,6 +113,12 @@ val jacksonDatabind = {
   }
 }
 
+/** Parse example specs on the classpath a Spark user has: `spark-sql`'s dependencies plus
+  * ours, with no test-only libraries. `test` can't see a missing runtime dependency when a
+  * test library supplies it, which is how the YAML module went missing unnoticed (#259).
+  */
+lazy val checkRuntimeClasspath = taskKey[Unit]("Parse example specs without test-only libraries")
+
 lazy val root = (project in file("."))
   .settings(
     // The artifact name carries the Spark line, the version stays semver for our own
@@ -217,6 +223,28 @@ lazy val root = (project in file("."))
       }
     },
     assembly / test := {},
+
+    // Compile / fullClasspath is spark-sql (provided) plus our compile dependencies and
+    // classes. The check itself is a plain main in the test classes directory; nothing else
+    // from Test is added, so munit, WireMock and their transitive jars stay out.
+    checkRuntimeClasspath := {
+      val _    = (Test / compile).value
+      val cp   = ((Compile / fullClasspath).value.files :+ (Test / classDirectory).value)
+        .map(_.getAbsolutePath.replace('\\', '/'))
+        .mkString(java.io.File.pathSeparator)
+      // Passed through an argument file: the classpath exceeds Windows' command-line limit.
+      val argFile = target.value / "runtime-classpath-check.args"
+      IO.write(argFile, "-cp \"" + cp + "\"\n")
+      val specs = Seq("examples/pokeapi/pokeapi-config.conf", "examples/slack/slack-config.conf")
+      // The Slack config substitutes a token; only the spec is parsed, nothing is requested.
+      val exit = scala.sys.process.Process(
+        Seq("java", "@" + argFile.getAbsolutePath, "com.apilytics.RuntimeClasspathCheck") ++ specs,
+        None,
+        "SLACK_BOT_TOKEN" -> "unused-by-the-check"
+      ).!
+      if (exit != 0) sys.error("Specs failed to parse on the runtime classpath: a dependency " +
+        "the tests get from a test library is missing from what we publish.")
+    },
   )
 
 // OWASP dependency check
