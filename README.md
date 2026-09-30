@@ -8,8 +8,9 @@
 
 Turn any REST API with an OpenAPI spec into queryable Apache Spark tables.
 
-Runs on **Spark 4.0, 4.1 and 4.2** — Scala 2.13, Java 17. One jar covers the line; every
-version below is built and tested in CI.
+Runs on **Spark 4.0, 4.1 and 4.2** — Scala 2.13, Java 17 or 21. One jar covers the line;
+every version below is built and tested in CI. The jar is self-contained: its dependencies
+are bundled and relocated, so they cannot clash with the libraries a Spark platform ships.
 
 | | 4.0 | 4.1 | 4.2 |
 |---|:--:|:--:|:--:|

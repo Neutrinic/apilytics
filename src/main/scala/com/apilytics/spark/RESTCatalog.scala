@@ -33,6 +33,8 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.catalogName = name
+    // Fail here, on the driver, rather than hang in an executor (#264).
+    com.apilytics.core.runtime.Preflight.verify()
     val configPath = options.get("config")
     require(configPath != null, s"Catalog '$name' requires 'config' option pointing to a HOCON config file")
     this.config = Loader.load(configPath)

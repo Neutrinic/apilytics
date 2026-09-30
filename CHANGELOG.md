@@ -90,19 +90,20 @@ so no upgrade is required for existing users.
   intermittent `NullPointerException` in tests; on a cluster it would be an occasional
   failed task, mostly hidden by task retries. The producer now starts on the first read
   (#262).
-- **The published POM duplicated libraries Spark already ships.** Arrow was declared
-  directly, and swagger-parser and http4s brought in jackson, guava, commons-*,
-  snakeyaml, slf4j, httpclient and Netty: 35 of 94 resolved jars, mostly at versions
-  different from Spark's. Spark's copies normally load first, which hid it; with
-  `userClassPathFirst=true` the duplicates collided, failing with
-  `LinkageError: loader constraint violation ... org.slf4j.Logger`. Arrow now comes from
-  Spark, and libraries `spark-sql` itself depends on are excluded, so `--packages` does not
-  bring a second copy of them and the test suite runs against Spark's own versions (#255).
-  The first cut excluded by what the Apache distribution contains, which also dropped
-  jackson-dataformat-yaml, snakeyaml, httpclient and joda-time: vendor runtimes omit them,
-  and on Dataproc Serverless YAML specs failed with `NoClassDefFoundError: YAMLFactory`.
-  Those ship with apilytics, and `sbt checkRuntimeClasspath` in CI parses specs without
-  test-only libraries, which had supplied the YAML module to every unit test (#259).
+- **apilytics' dependencies clashed with the copies Spark platforms ship.** Whichever copy
+  of a library loads first wins, and that broke apilytics in four ways: jackson (#185);
+  duplicate jars under `userClassPathFirst=true`, failing with
+  `LinkageError: loader constraint violation ... org.slf4j.Logger` (#255); a YAML module
+  missing on Dataproc Serverless, `NoClassDefFoundError: YAMLFactory` (#259); and on
+  Databricks DBR 18 an older, repackaged cats that stopped http4s initialising, which
+  **hung** the read until the platform killed the executor (#264). The published jar now
+  bundles its dependencies relocated under `com.apilytics.shaded`, and its POM declares only
+  Spark, so `--packages` resolves a single jar and no platform copy can stand in for ours.
+  Libraries `spark-sql` itself depends on (jackson core, guava, commons-*, slf4j) are
+  shared with Spark rather than bundled. If a clash ever does get through, apilytics now
+  checks its HTTP stack on the driver and in each task and fails at once, naming the
+  library, rather than hanging. CI verifies that every bundled class is relocated, and
+  runs the published jar on `spark-sql`'s dependencies alone (#264).
 - **Partitioning on a parameter pagination controls returned every record once per
   partition.** Both write the same query parameter and the paginator wins, so each
   partition walked the endpoint from its own first page to the end rather than covering a

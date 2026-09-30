@@ -17,6 +17,7 @@ class ParentChildPartitionReaderFactory extends PartitionReaderFactory {
     )
 
   override def createColumnarReader(partition: InputPartition): PartitionReader[ColumnarBatch] = {
+    com.apilytics.core.runtime.Preflight.verify() // fail the task, not hang it (#264)
     partition match {
       case p: ParentChildInputPartition => new ParentChildColumnarPartitionReader(p)
       case _ => throw new IllegalArgumentException(s"Unexpected partition type: ${partition.getClass}")

@@ -9,6 +9,7 @@ class ExplodedArrayPartitionReaderFactory extends PartitionReaderFactory {
   override def supportColumnarReads(partition: InputPartition): Boolean = true
 
   override def createColumnarReader(partition: InputPartition): PartitionReader[ColumnarBatch] = {
+    com.apilytics.core.runtime.Preflight.verify() // fail the task, not hang it (#264)
     val p = partition.asInstanceOf[ExplodedArrayInputPartition]
     new ExplodedArrayColumnarPartitionReader(p)
   }
