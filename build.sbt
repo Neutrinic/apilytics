@@ -1,3 +1,4 @@
+import scala.jdk.CollectionConverters._
 ThisBuild / organization := "io.github.neutrinic"
 // No `version` here on purpose. sbt-ci-release derives it from the git tag via dynver,
 // and a literal setting silently outranks that: releases would carry whatever was written
@@ -67,6 +68,31 @@ val onSparkClasspath = Seq(
   ExclusionRule("org.slf4j"),
 )
 
+/** Every package apilytics bundles, relocated under `com.apilytics.shaded` (#264).
+  *
+  * Spark platforms ship their own copies of common libraries, and whichever copy loads
+  * first wins. Unshaded, that broke apilytics four times: jackson (#185), duplicates under
+  * userClassPathFirst (#255), a YAML module Dataproc Serverless lacks (#259), and an older
+  * cats on Databricks DBR 18 that made http4s fail to initialise (#264). Relocated, no
+  * platform copy can stand in for ours, whatever its version.
+  *
+  * What stays shared is what `spark-sql` itself depends on (`onSparkClasspath`): Spark
+  * guarantees those, and they are excluded rather than bundled. `checkShadedJar` fails the
+  * build if a bundled class is left outside `com/apilytics`, so a new dependency cannot be
+  * published unrelocated by forgetting to list it here.
+  */
+val shadedPackages = Seq(
+  // Typelevel stack: the HTTP client, streaming, JSON and their foundations
+  "cats", "algebra", "fs2", "scodec", "shapeless", "io.circe", "org.http4s", "org.typelevel",
+  "org.log4s", "com.comcast", "com.twitter.hpack",
+  // OpenAPI parsing and what it brings
+  "io.swagger", "com.github.fge", "com.google.i18n", "org.mozilla", "joptsimple",
+  "com.fasterxml.jackson.dataformat", "org.yaml", "org.apache.http", "org.apache.commons.logging",
+  "org.joda", "javax.activation", "javax.validation", "javax.xml.bind",
+  // Config
+  "com.typesafe.config",
+)
+
 /** jackson-databind pinned to whatever Spark's bundled jackson-module-scala accepts.
   *
   * module-scala enforces a narrow databind range and refuses to initialise outside it,
@@ -118,6 +144,7 @@ val jacksonDatabind = {
   * test library supplies it, which is how the YAML module went missing unnoticed (#259).
   */
 lazy val checkRuntimeClasspath = taskKey[Unit]("Parse example specs without test-only libraries")
+lazy val checkShadedJar = taskKey[Unit]("Fail if the published jar bundles unrelocated classes")
 
 lazy val root = (project in file("."))
   .settings(
@@ -204,6 +231,11 @@ lazy val root = (project in file("."))
       // Service registrations are how Spark finds format("apilytics") by its short name;
       // discarding them with the rest of META-INF left the assembly unable to resolve it
       // (#257). Merge them rather than keep one, since dependencies register services too.
+      // jackson-dataformat-yaml registers its factory with jackson's service discovery. That
+      // jackson is Spark's, unrelocated, so the registration would hand our shaded YAML
+      // factory to any code in the JVM discovering formats. apilytics never discovers them.
+      case PathList("META-INF", "services", name) if name.startsWith("com.fasterxml.jackson") =>
+        MergeStrategy.discard
       case PathList("META-INF", "services", _ @ _*) => MergeStrategy.filterDistinctLines
       case PathList("META-INF", xs @ _*)           => MergeStrategy.discard
       case "module-info.class"                     => MergeStrategy.discard
@@ -227,13 +259,57 @@ lazy val root = (project in file("."))
       }
     },
     assembly / test := {},
+    assembly / assemblyShadeRules :=
+      shadedPackages.map(p => ShadeRule.rename(s"$p.**" -> s"com.apilytics.shaded.$p.@1").inAll),
 
-    // Compile / fullClasspath is spark-sql (provided) plus our compile dependencies and
-    // classes. The check itself is a plain main in the test classes directory; nothing else
-    // from Test is added, so munit, WireMock and their transitive jars stay out.
+    // The published jar is the shaded one, and its POM declares only Spark: everything else
+    // is inside the jar, relocated, so a resolver must not fetch unshaded copies beside it.
+    Compile / packageBin := assembly.value,
+    pomPostProcess := { (node: scala.xml.Node) =>
+      import scala.xml.{Elem, NodeSeq}
+      import scala.xml.transform.{RewriteRule, RuleTransformer}
+      new RuleTransformer(new RewriteRule {
+        override def transform(n: scala.xml.Node): NodeSeq = n match {
+          case e: Elem if e.label == "dependency" && (e \ "scope").text != "provided" => NodeSeq.Empty
+          case other => other
+        }
+      }).transform(node).head
+    },
+
+    // Every class in the published jar is ours or relocated under com/apilytics/shaded.
+    // Anything else is a bundled library that escaped shading and can clash again.
+    checkShadedJar := {
+      val jar = assembly.value
+      val zip = new java.util.zip.ZipFile(jar)
+      val escaped =
+        try zip.entries().asScala.map(_.getName)
+          .filter(n => n.endsWith(".class") && !n.startsWith("com/apilytics/") && n != "module-info.class")
+          .toList
+        finally zip.close()
+      if (escaped.nonEmpty) sys.error(
+        s"${escaped.size} bundled classes are not relocated, e.g. ${escaped.take(5).mkString(", ")}. " +
+          "Add their package to shadedPackages in build.sbt."
+      )
+    },
+
+    // What a platform actually runs: the published (shaded) jar and `spark-sql`'s own
+    // dependencies, nothing else. Test classes are added only for the check's plain main;
+    // munit, WireMock and their jars stay out (#259, #264).
     checkRuntimeClasspath := {
-      val _    = (Test / compile).value
-      val cp   = ((Compile / fullClasspath).value.files :+ (Test / classDirectory).value)
+      val _         = (Test / compile).value
+      val shaded    = assembly.value
+      val ours      = (Runtime / fullClasspath).value.files.toSet
+      // Spark's own dependency tree; scala-library is in ours too, but Spark always has it.
+      val sparkOnly = (Compile / fullClasspath).value.files.filter(f =>
+        f.isFile && (!ours.contains(f) || f.getName.startsWith("scala-library") || f.getName.startsWith("scala-reflect"))
+      )
+      // Plus any real platform jars given with -DplatformJars=a.jar,b.jar, loaded first. A
+      // platform's copy can differ from the published artifact of the same version: DBR 18's
+      // cats-core 2.11.0 comes from a repackaged build, and the Maven one does not reproduce
+      // its failure. Real jars are not committed; this is for checking against one locally.
+      val given     = sys.props.get("platformJars").toSeq.flatMap(_.split(",")).filter(_.nonEmpty).map(file)
+      val copies    = given
+      val cp = (copies ++ sparkOnly :+ shaded :+ (Test / classDirectory).value)
         .map(_.getAbsolutePath.replace('\\', '/'))
         .mkString(java.io.File.pathSeparator)
       // Passed through an argument file: the classpath exceeds Windows' command-line limit.
@@ -246,8 +322,8 @@ lazy val root = (project in file("."))
         None,
         "SLACK_BOT_TOKEN" -> "unused-by-the-check"
       ).!
-      if (exit != 0) sys.error("Specs failed to parse on the runtime classpath: a dependency " +
-        "the tests get from a test library is missing from what we publish.")
+      if (exit != 0) sys.error("The published jar failed on a platform-like classpath: a " +
+        "dependency is missing, or a platform copy of a library shadows ours.")
     },
   )
 

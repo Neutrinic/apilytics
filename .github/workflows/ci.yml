@@ -47,7 +47,10 @@ jobs:
       - name: Test
         run: sbt -DsparkVersion=${{ matrix.spark }} test
 
-      - name: Runtime classpath
+      - name: Published jar is fully relocated
+        run: sbt -DsparkVersion=${{ matrix.spark }} checkShadedJar
+
+      - name: Published jar runs on a platform-like classpath
         run: sbt -DsparkVersion=${{ matrix.spark }} checkRuntimeClasspath
 
       - name: Assembly

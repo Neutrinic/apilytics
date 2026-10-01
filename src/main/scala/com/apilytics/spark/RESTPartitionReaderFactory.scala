@@ -16,6 +16,7 @@ class RESTPartitionReaderFactory extends PartitionReaderFactory {
   }
 
   override def createColumnarReader(partition: InputPartition): PartitionReader[ColumnarBatch] = {
+    com.apilytics.core.runtime.Preflight.verify() // fail the task, not hang it (#264)
     partition match {
       case p: RESTInputPartition => new RESTColumnarPartitionReader(p)
       case other => throw new IllegalArgumentException(
@@ -27,6 +28,7 @@ class RESTPartitionReaderFactory extends PartitionReaderFactory {
   // Only aggregate partitions reach this: supportColumnarReads returns false for them
   // and true for everything else, so a RESTInputPartition is always read columnar (#211).
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] = {
+    com.apilytics.core.runtime.Preflight.verify() // fail the task, not hang it (#264)
     partition match {
       case p: CountInputPartition       => new CountPartitionReader(p)
       case p: AggregationInputPartition => new AggregationPartitionReader(p)
