@@ -12,7 +12,7 @@ RUN microdnf update -y && \
     microdnf clean all && \
     ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
     ln -sf /usr/bin/python3.11 /usr/bin/python && \
-    python3 -m pip install --no-cache-dir jupyter pandas
+    python3 -m pip install --no-cache-dir jupyter "pandas<3.0.0"
 
 # Install Almond (Scala kernel for Jupyter)
 ARG ALMOND_VERSION=0.14.5
