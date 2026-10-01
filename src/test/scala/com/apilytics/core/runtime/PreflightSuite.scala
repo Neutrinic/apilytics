@@ -2,6 +2,8 @@ package com.apilytics.core.runtime
 
 import munit.FunSuite
 
+import scala.concurrent.duration._
+
 /** A clash must become an immediate error naming the library, never a hang (#264). */
 class PreflightSuite extends FunSuite {
 
@@ -28,6 +30,18 @@ class PreflightSuite extends FunSuite {
       Probe("second", () => throw new NoSuchMethodError("c.D"))
     ))
     assert(msg.exists(_.contains("first failed")), msg.toString)
+  }
+
+  test("a probe that never finishes is reported as a failure, not waited on forever") {
+    // A clash fatal inside a cats-effect fiber does not throw; the fiber dies and its
+    // caller waits indefinitely. The check must report that, not become the hang.
+    val never = new java.util.concurrent.CountDownLatch(1)
+    val started = System.nanoTime()
+    val msg = Preflight.firstFailure(Seq(Probe("stuck", () => never.await())), 200.millis)
+    val waited = (System.nanoTime() - started) / 1000000
+
+    assert(msg.exists(_.contains("stuck did not finish initialising within 200 milliseconds")), msg.toString)
+    assert(waited < 5000, s"took ${waited}ms; the probe was waited on past its timeout")
   }
 
   test("out-of-memory and similar are rethrown, not reworded as a classpath problem") {
