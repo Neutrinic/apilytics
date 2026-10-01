@@ -94,6 +94,10 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **Retries escaped the rate limit.** A JSON request took one rate-limit permit before its
+  first attempt, and its retries after 429, 5xx or network errors took none. So a burst of
+  failures was retried above `http.rate-limit`, which is exactly when an API is asking for
+  less. Every attempt now takes a permit (#279).
 - **An unreachable host took minutes per request to fail.** ember's timeout does not
   cover opening the connection, so each attempt waited for the operating system's TCP
   connect timeout, about two minutes on Linux. On EMR Serverless without a VPC, where
