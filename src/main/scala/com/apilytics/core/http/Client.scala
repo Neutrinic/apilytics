@@ -61,19 +61,19 @@ object Client {
       timeout: FiniteDuration
   ): org.http4s.client.Client[IO] =
     org.http4s.client.Client[IO] { req =>
-      // Host and path only: query parameters can carry credentials.
-      val target = req.uri.authority.map(_.renderString).getOrElse("") + req.uri.path.renderString
-      Resource
-        .makeFull[IO, (org.http4s.Response[IO], IO[Unit])] { poll =>
-          poll(client.run(req).allocated).timeoutTo(
-            timeout,
-            IO.raiseError(new java.net.SocketTimeoutException(
-              s"No response from $target within $timeout: the host could not be reached, " +
-                "or sent no response headers in time"
-            ))
-          )
-        }(_._2)
-        .map(_._1)
+      // Host and path only: user info and query parameters can carry credentials.
+      val target = req.uri.authority.map(_.copy(userInfo = None).renderString).getOrElse("") +
+        req.uri.path.renderString
+      // Raced as Resources so the caller can still cancel a stalled acquisition, and a
+      // response that arrives as the timeout fires is released rather than leaked.
+      client.run(req).race(Resource.eval(IO.sleep(timeout))).flatMap {
+        case Left(response) => Resource.pure[IO, org.http4s.Response[IO]](response)
+        case Right(_) =>
+          Resource.eval(IO.raiseError[org.http4s.Response[IO]](new java.net.SocketTimeoutException(
+            s"No response from $target within $timeout: the host could not be reached, " +
+              "or sent no response headers in time"
+          )))
+      }
     }
 
   def resource(
