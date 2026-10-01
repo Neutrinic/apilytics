@@ -1,0 +1,167 @@
+name: Documentation
+
+# Publishes docs/ to GitHub Pages, one site per minor release with a version selector (#272).
+#
+# The site describes the released jar, so it deploys on release tags, not on every push to main:
+# docs for an unreleased version would be wrong for everyone using the one on Maven Central.
+# A manual run republishes a given release tag, for example after a failed deploy, or publishes
+# main when only documentation has changed since the latest release: nothing under src/,
+# build.sbt or project/, so the docs still describe exactly the released jar. It refuses main
+# as soon as main carries unreleased code.
+#
+# Versions are kept by mike on the gh-pages branch: v1.0.3 deploys to 1.0/, and moves the
+# `latest` alias only if it is the newest release, so a patch to an older line never takes it.
+# The Pages source stays "GitHub Actions": the gh-pages tree is uploaded as the Pages artifact.
+#
+# Pull requests that touch the docs only build them, in strict mode, so a broken link, page or
+# snippet fails the PR instead of the release.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "A release tag, e.g. v1.0.0, or main for documentation changed since the latest release"
+        required: true
+  pull_request:
+    paths:
+      - "docs/**"
+      - "overrides/**"
+      - "examples/**"
+      - "zensical.toml"
+      - ".github/workflows/docs.yml"
+      - ".github/scripts/stamp_docs_version.py"
+
+permissions:
+  contents: read
+
+# One deployment at a time, and never cancel one halfway: mike commits to gh-pages.
+concurrency:
+  group: docs-${{ github.event_name == 'pull_request' && github.ref || 'pages' }}
+  cancel-in-progress: false
+
+env:
+  # Pinned: Zensical is pre-1.0 and its output may change between releases. The mike fork is
+  # Zensical's bridge until it versions natively; pinned to a commit for the same reason.
+  ZENSICAL: zensical==0.0.67
+  MIKE: git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac
+
+jobs:
+  build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - run: pip install "$ZENSICAL"
+
+      # The version belongs in docs/snippets only, where the release stamps it. A coordinate
+      # anywhere else in the docs would go stale on the next release.
+      - run: |
+          if grep -rnE 'apilytics_2\.13:[0-9]|"apilytics" % "[0-9]|\*\*APIlytics [0-9]' docs --include='*.md' | grep -v '^docs/snippets/'; then
+            echo "::error::name the version through a snippet in docs/snippets, not inline"
+            exit 1
+          fi
+
+      # Prove the stamping still works on the snippets as they are, then put them back, so the
+      # build below checks the committed docs.
+      - run: |
+          python .github/scripts/stamp_docs_version.py v9.9.9
+          git diff --stat -- docs/snippets
+          git checkout -- docs/snippets
+
+      - run: zensical build --strict --clean
+
+  publish:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # mike commits to gh-pages
+    steps:
+      - if: github.event_name == 'workflow_dispatch' && !startsWith(inputs.ref, 'v') && inputs.ref != 'main'
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          echo "::error::'$REF' is neither a release tag nor main"
+          exit 1
+
+      - uses: actions/checkout@v7
+        with:
+          # A manual run builds what it was asked for, not the branch it was started from.
+          ref: >-
+            ${{ github.event_name == 'workflow_dispatch' && (inputs.ref == 'main' && 'refs/heads/main'
+            || format('refs/tags/{0}', inputs.ref)) || '' }}
+          # mike needs gh-pages, and the version checks need the tags and history.
+          fetch-depth: 0
+
+      # Which release these docs describe: the tag itself, or for main the latest release, and
+      # then only if nothing that ships in the jar has changed since it.
+      - env:
+          REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+        run: |
+          if [ "$REF" != main ]; then
+            tag="$REF"
+          else
+            tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)
+            shipped=$(git diff --name-only "$tag" HEAD -- src build.sbt project)
+            if [ -n "$shipped" ]; then
+              echo "::error::main has changes that ship in the jar since $tag, so its docs would describe an unreleased version:"
+              echo "$shipped"
+              exit 1
+            fi
+            echo "main has only documentation changes since $tag; publishing them as $tag"
+          fi
+          newest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          minor=$(echo "${tag#v}" | cut -d. -f1,2)
+          echo "PUBLISH_TAG=$tag" >> "$GITHUB_ENV"
+          echo "DOCS_VERSION=$minor" >> "$GITHUB_ENV"
+          if [ "$tag" = "$newest" ]; then echo "DOCS_ALIAS=latest" >> "$GITHUB_ENV"; fi
+          echo "publishing $tag as docs version $minor${newest:+ (newest release: $newest)}"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - run: pip install "$ZENSICAL" "$MIKE"
+
+      # The docs name the version in one place, docs/snippets/. Set it from the tag being
+      # published, so a release can never deploy docs that name the previous version.
+      - run: python .github/scripts/stamp_docs_version.py "$PUBLISH_TAG"
+
+      - run: zensical build --strict --clean
+
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages:gh-pages || true
+          mike deploy --push --update-aliases "$DOCS_VERSION" $DOCS_ALIAS
+          # The site root redirects to `latest`, which only the newest release moves.
+          if [ -n "$DOCS_ALIAS" ]; then mike set-default --push latest; fi
+
+      - run: git worktree add pages gh-pages
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: pages
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v6
+      - uses: actions/deploy-pages@v5
+        id: deployment

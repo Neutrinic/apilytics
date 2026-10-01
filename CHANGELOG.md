@@ -26,6 +26,14 @@ so no upgrade is required for existing users.
 
 ### Added
 
+- **A documentation site**, neutrinic.github.io/apilytics, published on each release:
+  - one version per minor release, with a version selector
+  - the README's user documentation, now split into pages
+  - examples included from `examples/`, which CI loads
+  - the README cut back to a quick start and a link
+
+  It counts page views with a cookie-free Scarf pixel, which its Privacy page discloses
+  (#272).
 - **`format("apilytics")`** — the catalog's tables as a data source, for platforms that own
   the catalog namespace. On Databricks, every catalog name on Unity Catalog compute resolves
   to Unity Catalog and a `spark.sql.catalog.*` plugin is never loaded (#129).
