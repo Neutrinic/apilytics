@@ -94,6 +94,12 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **OAuth2 client credentials didn't work in Spark reads.** Every reader built its HTTP
+  client without a token manager, so `auth.type = oauth2_client` with `client-id`,
+  `client-secret` and `token-url` failed on the first request, asking for a pre-fetched
+  token. Tokens are now fetched, renewed and refreshed on a 401 in table scans, COUNT
+  pushdown and aggregate pushdown alike. An `oauth2_client` config missing part of the
+  credentials now fails when it loads, naming what's missing (#276).
 - **Retries escaped the rate limit.** A JSON request took one rate-limit permit before its
   first attempt, and its retries after 429, 5xx or network errors took none. So a burst of
   failures was retried above `http.rate-limit`, which is exactly when an API is asking for
