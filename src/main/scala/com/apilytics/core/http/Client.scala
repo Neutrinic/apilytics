@@ -137,15 +137,38 @@ object Client {
       case None     => Auth(authConfig)
     }
 
+    // Whose responses these are. The response cache is shared by every source in the JVM,
+    // so a key of path and parameters alone let two catalogs requesting the same path, on
+    // different hosts or with different credentials, be served each other's responses
+    // (#278). The credentials are hashed, so no secret is held in a key or written to the
+    // cache's debug log.
+    private val credentialScope: String = {
+      val a = authConfig
+      val identity = List(
+        a.authType.toString, a.token, a.username, a.password, a.headerName, a.headerValue,
+        a.clientId, a.clientSecret, a.tokenUrl
+      ).map(_.toString).mkString("\u0000")
+      java.security.MessageDigest.getInstance("SHA-256")
+        .digest(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        .take(8).map("%02x".format(_)).mkString
+    }
+
+    private def cacheKey(uri: Uri): String = {
+      val origin = uri.scheme.map(_.value + "://").getOrElse("") +
+        uri.authority.map(_.copy(userInfo = None).renderString).getOrElse("")
+      s"$origin#$credentialScope${uri.path.renderString}"
+    }
+
     def get(uri: Uri, params: Map[String, String] = Map.empty): IO[ApiResponse] = {
       val fullUri = params.foldLeft(uri) { case (u, (k, v)) =>
         u.withQueryParam(k, v)
       }
       val baseReq = Request[IO](uri = fullUri)
       val endpoint = uri.path.renderString
+      val cached = cacheKey(uri)
 
       // Check cache first
-      responseCache.get(endpoint, params).flatMap {
+      responseCache.get(cached, params).flatMap {
         case Some(cached) =>
           IO.pure(cached)
         case None =>
@@ -156,7 +179,7 @@ object Client {
             }.flatTap { response =>
               // Only cache successful responses
               if (response.status >= 200 && response.status < 300) {
-                responseCache.put(endpoint, params, response)
+                responseCache.put(cached, params, response)
               } else IO.unit
             }
       }
