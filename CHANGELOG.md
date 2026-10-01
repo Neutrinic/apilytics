@@ -223,6 +223,14 @@ so no upgrade is required for existing users.
   (DependencyCheck 13) (#268).
 - Docker images are based on UBI 9.8 rather than UBI 8.10, with Almond 0.14.5 and a
   Scala 2.13.18 kernel (#268).
+- Docker images run as the non-root user `spark` (uid 185) rather than root, and Jupyter
+  no longer needs `--allow-root`. The working directory, where spark-sql and Thrift
+  create `metastore_db` and `spark-warehouse`, is now `/home/spark`. A `spark-events`
+  volume created by an earlier version of the compose cluster is owned by root and is
+  not writable by the new user. Either remove it with `docker compose down -v`, or keep
+  its history by changing its owner once:
+  `docker run --rm -u 0 -v apilytics-spark_spark-events:/e --entrypoint chown apilytics-spark-spark-master -R 185:185 /e`
+  (#270).
 - OWASP dependency-check is now advisory and weekly rather than a merge gate. It identifies
   dependencies by guessing CPEs, and every suppression carried was a misidentification;
   OSV (#199) does the gating instead (#200).
