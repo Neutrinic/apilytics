@@ -60,7 +60,7 @@ case $role in
         # Start Jupyter notebook with PySpark
         # Configure both pokeapi and github catalogs
         export PYSPARK_DRIVER_PYTHON=jupyter
-        export PYSPARK_DRIVER_PYTHON_OPTS="notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/opt/spark/examples/notebooks"
+        export PYSPARK_DRIVER_PYTHON_OPTS="notebook --ip=0.0.0.0 --port=8888 --no-browser --notebook-dir=/opt/spark/examples/notebooks"
 
         exec ${SPARK_HOME}/bin/pyspark \
             --master ${SPARK_MASTER_URL:-local[*]} \

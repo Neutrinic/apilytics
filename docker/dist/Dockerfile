@@ -31,13 +31,24 @@ RUN microdnf update -y && \
       "pyarrow>=18.0.0" "grpcio>=1.48.1" "grpcio-status>=1.48.1" \
       "googleapis-common-protos>=1.65.0" "zstandard>=0.25.0"
 
-# Install Almond (Scala kernel for Jupyter)
+# Everything runs as `spark` (uid 185, as in Apache Spark's own images), not root.
+# shadow-utils provides useradd, which UBI minimal lacks.
+RUN microdnf install -y shadow-utils && microdnf clean all && \
+    groupadd --gid 185 spark && \
+    useradd --uid 185 --gid 185 --create-home --home-dir /home/spark --shell /bin/sh spark
+
+# Install Almond (Scala kernel for Jupyter) as the spark user: the kernel's launcher is
+# private to the user who installs it, and resolves its jars from their coursier cache.
 ARG ALMOND_VERSION=0.14.5
 ARG SCALA_KERNEL_VERSION=2.13.18
+USER spark
+WORKDIR /tmp
 RUN curl -Lo coursier https://git.io/coursier-cli && \
     chmod +x coursier && \
     ./coursier launch --fork almond:${ALMOND_VERSION} --scala ${SCALA_KERNEL_VERSION} -- --install && \
     rm coursier
+USER root
+WORKDIR /
 
 # Environment variables
 ENV JAVA_HOME=/usr/lib/jvm/java-${JDK_VERSION}-openjdk
@@ -70,6 +81,11 @@ COPY examples/ /opt/apilytics/examples/
 COPY docker/dist/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-WORKDIR /opt/spark
+# The spark user writes logs (Thrift), and notebooks saved from Jupyter land in the
+# examples. Its home is the working directory, where spark-sql and Thrift create
+# metastore_db and spark-warehouse.
+RUN chown -R spark:spark ${SPARK_HOME}/logs ${SPARK_HOME}/work /opt/apilytics
+USER spark
+WORKDIR /home/spark
 
 ENTRYPOINT ["/entrypoint.sh"]
