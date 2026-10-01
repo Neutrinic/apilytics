@@ -49,7 +49,7 @@ Declarative Pipelines needs Spark's own support for them, which arrived in 4.1.
     - **limits** stop pagination early
     - **COUNT, SUM and AVG** push to API endpoints. MIN, MAX and custom functions don't, because their result type can't be decided at plan time, so Spark computes them over a full scan.
 - **Schema modes**: strict (typed columns, the default) or variant (a native VARIANT column). Nested objects flatten to a configurable depth. See [Schema](configuration/schema.md).
-- **Parent-child joins**: chain API calls, such as fetching issues and then each issue's comments. See [Parent-child joins](using/joins.md).
+- **Parent-child joins**: chain API calls, such as fetching issues and then each issue's comments. Batch joins cut the calls for bulk lookups. See [Parent-child joins](using/joins.md).
 - **Parallel partitioning**: offset, date-range or enum partitioning for concurrent reads. See [Partitioning](using/partitioning.md).
 - **Rate limiting**: a ceiling on requests per second, divided across partitions. See [Rate limiting](using/rate-limiting.md).
 - **Retries with backoff**: exponential backoff for transient failures (429 and 5xx).
