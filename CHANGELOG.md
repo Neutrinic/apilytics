@@ -84,6 +84,12 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **An unreachable host took minutes per request to fail.** ember's timeout does not
+  cover opening the connection, so each attempt waited for the operating system's TCP
+  connect timeout, about two minutes on Linux. On EMR Serverless without a VPC, where
+  public APIs are unreachable, one task took 14 minutes to fail. Acquiring each response,
+  including connecting, is now bounded by `http.timeout`, for data and OAuth2 token
+  requests alike, and the error names the host it could not reach (#266).
 - **A reader could start reading before it was fully constructed.** The reader base class
   started its producer fiber in its own constructor, which runs before a subclass's fields
   are assigned, so the producer could see a null Arrow schema. It surfaced as an
