@@ -31,7 +31,7 @@ nothing if unset.
 | `bearer` | `Authorization: Bearer <token>`. |
 | `basic` | `Authorization: Basic`, from `username` and `password`. |
 | `header` | A custom header, from `header-name` and `header-value`. |
-| `oauth2_client` | Currently needs a pre-fetched access token in `token`, sent as a bearer token. Fetching and refreshing it from `client-id`, `client-secret` and `token-url` isn't wired into Spark reads yet ([#276](https://github.com/Neutrinic/apilytics/issues/276)). |
+| `oauth2_client` | A bearer token from an OAuth2 client-credentials flow, using `client-id`, `client-secret` and `token-url`. It's fetched before the first request, renewed before it expires, and fetched again if the API answers 401. Each task fetches its own token. Keep both the client ID and the secret in environment variables. A pre-fetched `token` without a `token-url` is sent as it is. |
 
 ## Practices
 

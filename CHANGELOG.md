@@ -94,6 +94,12 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **OAuth2 client credentials didn't work in Spark reads.** Every reader built its HTTP
+  client without a token manager, so `auth.type = oauth2_client` with `client-id`,
+  `client-secret` and `token-url` failed on the first request, asking for a pre-fetched
+  token. Tokens are now fetched, renewed and refreshed on a 401 in table scans, COUNT
+  pushdown and aggregate pushdown alike. An `oauth2_client` config missing part of the
+  credentials now fails when it loads, naming what's missing (#276).
 - **Batch joins couldn't run.** The loader requires a `join-strategy = batch` endpoint
   without a path placeholder, but the table required one to name its parent key column,
   so every batch join the loader accepted failed when the table was built. A batch join

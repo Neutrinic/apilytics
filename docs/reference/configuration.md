@@ -38,7 +38,7 @@ tasks.
 | `token` | | For `bearer`. |
 | `username`, `password` | | For `basic`. |
 | `header-name`, `header-value` | | For `header`. |
-| `client-id`, `client-secret`, `token-url` | | For `oauth2_client`. |
+| `client-id`, `client-secret`, `token-url` | | For `oauth2_client`: the client-credentials flow. All three are required unless a pre-fetched `token` is given instead. |
 
 Credentials sent over plain `http://`, in `base-url` or `token-url`, are logged as a
 security warning. See [Credentials](../configuration/credentials.md).
