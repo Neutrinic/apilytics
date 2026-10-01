@@ -216,8 +216,13 @@ so no upgrade is required for existing users.
 
 ### Changed
 
-- Dependencies refreshed: Arrow 19.0.0, http4s 0.23.36, circe 0.14.16, fs2 3.13.0,
-  swagger-parser 2.1.45, netty 4.2.17, typesafe-config 1.4.9.
+- Dependencies refreshed: http4s 0.23.38, cats-effect 3.7.1, fs2 3.14.0, circe 0.14.16,
+  swagger-parser 2.1.48, typesafe-config 1.4.9. Arrow and netty are no longer declared:
+  they come from Spark (#268).
+- Build: sbt 1.13.0, sbt-assembly 2.5.0, sbt-ci-release 1.12.1, sbt-dependency-check 2.0.0
+  (DependencyCheck 13) (#268).
+- Docker images are based on UBI 9.8 rather than UBI 8.10, with Almond 0.14.5 and a
+  Scala 2.13.18 kernel (#268).
 - OWASP dependency-check is now advisory and weekly rather than a merge gate. It identifies
   dependencies by guessing CPEs, and every suppression carried was a misidentification;
   OSV (#199) does the gating instead (#200).

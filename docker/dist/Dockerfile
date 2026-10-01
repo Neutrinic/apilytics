@@ -4,7 +4,7 @@
 # Usage:
 #   docker run -it neutrinic/apilytics "SELECT name FROM api.default.pokemon LIMIT 5"
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.10
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8
 LABEL maintainer="Apilytics"
 LABEL org.opencontainers.image.source="https://github.com/Neutrinic/apilytics"
 LABEL org.opencontainers.image.description="Query REST APIs with Spark SQL"
@@ -21,18 +21,19 @@ ARG JDK_VERSION=21
 # them `spark-pipelines` fails at import, so Spark Declarative Pipelines cannot run at all
 # — SDP is Connect-only. Classic PySpark does not need them, which is why the gap went
 # unnoticed.
+# curl is not installed: UBI 9's curl-minimal provides it, and the full package conflicts.
 RUN microdnf update -y && \
-    microdnf install -y java-${JDK_VERSION}-openjdk-devel tar gzip curl procps python3.11 python3.11-pip && \
+    microdnf install -y java-${JDK_VERSION}-openjdk-devel tar gzip procps-ng python3.11 python3.11-pip && \
     microdnf clean all && \
     ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
     ln -sf /usr/bin/python3.11 /usr/bin/python && \
-    pip3 install --no-cache-dir jupyter "pandas<3.0.0" \
+    python3 -m pip install --no-cache-dir jupyter "pandas<3.0.0" \
       "pyarrow>=18.0.0" "grpcio>=1.48.1" "grpcio-status>=1.48.1" \
       "googleapis-common-protos>=1.65.0" "zstandard>=0.25.0"
 
 # Install Almond (Scala kernel for Jupyter)
-ARG ALMOND_VERSION=0.14.0-RC15
-ARG SCALA_KERNEL_VERSION=2.13.14
+ARG ALMOND_VERSION=0.14.5
+ARG SCALA_KERNEL_VERSION=2.13.18
 RUN curl -Lo coursier https://git.io/coursier-cli && \
     chmod +x coursier && \
     ./coursier launch --fork almond:${ALMOND_VERSION} --scala ${SCALA_KERNEL_VERSION} -- --install && \

@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.10
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8
 LABEL maintainer="APIlytics"
 
 ARG SPARK_VERSION=4.2.0
@@ -6,16 +6,17 @@ ARG SCALA_VERSION=2.13
 ARG JDK_VERSION=21
 
 # Install dependencies (including Python for PySpark/Jupyter)
+# curl is not installed: UBI 9's curl-minimal provides it, and the full package conflicts.
 RUN microdnf update -y && \
-    microdnf install -y java-${JDK_VERSION}-openjdk-devel tar gzip curl procps python3.11 python3.11-pip && \
+    microdnf install -y java-${JDK_VERSION}-openjdk-devel tar gzip procps-ng python3.11 python3.11-pip && \
     microdnf clean all && \
     ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
     ln -sf /usr/bin/python3.11 /usr/bin/python && \
-    pip3 install --no-cache-dir jupyter pandas
+    python3 -m pip install --no-cache-dir jupyter "pandas<3.0.0"
 
 # Install Almond (Scala kernel for Jupyter)
-ARG ALMOND_VERSION=0.14.0-RC15
-ARG SCALA_KERNEL_VERSION=2.13.14
+ARG ALMOND_VERSION=0.14.5
+ARG SCALA_KERNEL_VERSION=2.13.18
 RUN curl -Lo coursier https://git.io/coursier-cli && \
     chmod +x coursier && \
     ./coursier launch --fork almond:${ALMOND_VERSION} --scala ${SCALA_KERNEL_VERSION} -- --install && \
