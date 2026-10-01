@@ -1,0 +1,99 @@
+# Documentation site, built by .github/workflows/docs.yml and published to GitHub Pages (#252).
+[project]
+site_name = "APIlytics"
+site_description = "Query REST APIs with Spark SQL: any API with an OpenAPI spec becomes Spark tables"
+site_url = "https://neutrinic.github.io/apilytics/"
+repo_url = "https://github.com/Neutrinic/apilytics"
+repo_name = "Neutrinic/apilytics"
+edit_uri = "edit/main/docs/"
+copyright = "Apache License 2.0"
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = [
+    "getting-started/quick-start.md",
+    "getting-started/installation.md",
+  ] },
+  { "Using APIlytics" = [
+    "using/catalogs.md",
+    "using/streaming.md",
+    "using/pipelines.md",
+    "using/jdbc.md",
+    "using/joins.md",
+    "using/partitioning.md",
+    "using/rate-limiting.md",
+  ] },
+  { "Configuration" = [
+    "configuration/index.md",
+    "configuration/credentials.md",
+    "configuration/schema.md",
+    "configuration/response-formats.md",
+    "configuration/checkpoints.md",
+  ] },
+  { "Troubleshooting" = "troubleshooting.md" },
+  { "Privacy" = "privacy.md" },
+  { "Development" = "development.md" },
+]
+
+[project.theme]
+language = "en"
+# The Scarf page-view notice and pixel live in overrides/partials/copyright.html.
+custom_dir = "overrides"
+features = [
+  "content.code.copy",
+  "content.tabs.link",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+
+# One site per minor release, deployed by mike to the gh-pages branch, with a version selector.
+[project.extra.version]
+provider = "mike"
+default = "latest"
+
+# `latest` is a full copy rather than a symlink, so the Pages artifact cannot drop it.
+[project.plugins.mike]
+alias_type = "copy"
+
+# Snippets are included into pages, not published as pages of their own.
+[project.plugins.exclude]
+glob = ["snippets/*"]
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+def_list = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.details = {}
+pymdownx.highlight.anchor_linenums = true
+pymdownx.inlinehilite = {}
+# Snippets come from docs/snippets (the version) and examples/, which CI loads in
+# ExampleConfigsSuite, so an example on the site cannot silently go stale.
+pymdownx.snippets = { base_path = ["docs/snippets", "examples"], check_paths = true }
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true
