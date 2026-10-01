@@ -6,13 +6,19 @@ http {
 }
 ```
 
-`rate-limit` is a **ceiling, not a target**. The limit is divided across partitions at
-planning time, so 15 requests per second over 4 partitions becomes `4+4+4+3`, and each
-partition throttles itself to its own share.
+`rate-limit` is a **budget for one scan**, divided between its partitions. At planning
+time, 15 requests per second over 4 partitions becomes `4+4+4+3`, and each partition
+throttles itself to its own share.
 
 What that guarantees, and what it doesn't:
 
-- **The limit is never exceeded.** The shares always add up to exactly the configured value.
+- **A scan's first attempts stay within the limit.** The shares add up to exactly the
+  configured value.
+- **Retries aren't throttled.** A retried request doesn't wait for a new permit, so a burst
+  of 429 or 5xx responses can briefly exceed the limit. Tracked in
+  [#279](https://github.com/Neutrinic/apilytics/issues/279).
+- **Concurrent scans each get the whole budget.** Two queries reading the same API at once
+  can together send twice the limit.
 - **It isn't coordinated across executors.** There's no shared token bucket; each
   partition simply obeys its share.
 - **You may use less than you configured.** The division assumes every partition runs at

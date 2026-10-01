@@ -4,36 +4,40 @@ Query the [PokeAPI](https://pokeapi.co) as Spark SQL tables — no authenticatio
 
 ## Quick Start
 
+Run these from the repository root:
+
 ```bash
-# Build the fat JAR
+# Build the jar
 sbt assembly
 
 # Start the Spark cluster
-cd docker/spark
-docker compose -f compose.spark.yaml up -d
+docker compose -f docker/spark/compose.spark.yaml up -d
 
-# Launch spark-shell with PokeAPI config
-.\scripts\spark-shell.ps1 pokeapi        # Windows
+# Launch spark-shell with the PokeAPI config
 ./scripts/spark-shell.sh pokeapi         # Linux/macOS
+.\scripts\spark-shell.ps1 pokeapi        # Windows
+```
+
+The helper script builds the jar if it's missing, but doesn't start the cluster, so start
+that first. Or skip the build entirely with the Docker image:
+
+```bash
+docker run -it --rm ghcr.io/neutrinic/apilytics:latest "SHOW TABLES IN api.default"
 ```
 
 ## Tables
 
-The OpenAPI spec (`pokeapi-spec.yaml`) defines 3 list endpoints and 1 detail endpoint. With `array-handling = both`, this produces both base tables and exploded views for array fields:
+`SHOW TABLES IN api.default` lists ten:
 
-| Table | Description |
+| Table | Where it comes from |
 |---|---|
-| `listPokemon` | Base table — count, next, previous, results (as JSON string) |
-| `listPokemon_results` | Exploded view — one row per Pokemon with name and url |
-| `listTypes` | Base table — all Pokemon types |
-| `listTypes_results` | Exploded view — one row per type |
-| `listAbilities` | Base table — all abilities |
-| `listAbilities_results` | Exploded view — one row per ability |
-| `getPokemon` | Detail endpoint — stats, moves, abilities, types, sprites |
-| `getPokemon_stats` | Exploded view — one row per stat |
-| `getPokemon_moves` | Exploded view — one row per move |
-| `getPokemon_abilities` | Exploded view — one row per ability |
-| `getPokemon_types` | Exploded view — one row per type |
+| `pokemon`, `types`, `abilities` | Configured in `pokeapi-config.conf`, with `data-path = "/results"`, so each row is one record: `name` and `url`. |
+| `type_pokemon` | Configured: a parent-child join, one call per row of `types`. See the comments in the config. |
+| `listPokemon`, `listTypes`, `listAbilities` | Discovered from the spec's operation IDs. Each row is a page envelope: `count`, `next`, `previous` and `results`. |
+| `listPokemon_results`, `listTypes_results`, `listAbilities_results` | Exploded views of `results`, one row per element, from `array-handling = both`. Columns are prefixed: `results_name`, `results_url`. |
+
+The spec's detail endpoint, `/api/v2/pokemon/{id}`, isn't listed: endpoints with a path
+placeholder are only reachable as the child of a parent-child join.
 
 ## Example Queries
 

@@ -19,7 +19,11 @@ FROM api.default.type_pokemon LIMIT 5;
 | `parent-table` | The table whose rows drive the calls. |
 | `parent-key` | The parent column substituted into the path. |
 | `data-path` | Where the child records sit in the response, when they are nested. |
-| `join-strategy` | `nested_loop` makes one call per parent row. `batch` is for APIs that accept a list: it sends up to `batch-size` parent keys (100 by default) in one call, joined by `batch-separator` (`,` by default) into the `batch-param` query parameter. That cuts the number of calls for bulk lookups. |
+| `join-strategy` | `nested_loop` makes one call per parent row. |
+
+`join-strategy = batch`, which would send many parent keys in one call for APIs that accept
+a list, doesn't work yet: the config loads, but the table fails when it's built
+([#277](https://github.com/Neutrinic/apilytics/issues/277)). Use `nested_loop`.
 
 The parent key comes back as a column named `_parent_` followed by the path parameter's
 name: `{type_name}` gives `_parent_type_name`.

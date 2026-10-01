@@ -1,8 +1,22 @@
 # Checkpoints
 
-A checkpoint makes repeated batch reads incremental. On the first run, all the data is
-fetched, and the final pagination state is saved. Later runs resume from that state and
-fetch only new data.
+A checkpoint makes repeated batch reads resume where the last one stopped. On the first
+run, all the data is fetched, and the final pagination state is saved. Later runs resume
+from that state.
+
+!!! warning "A resume point, not a delivery guarantee"
+    The state is saved when a read ends, **including when it fails or is cancelled**. It
+    tracks what was fetched, not what Spark successfully wrote downstream. So a failed run
+    can move the checkpoint past records that were never delivered. In `cursor` mode,
+    the saved cursor is the one that fetched the last page, so the next run reads that
+    page again. Tracked in [#280](https://github.com/Neutrinic/apilytics/issues/280).
+
+    [Streaming](../using/streaming.md) tracks progress more carefully. Spark keeps the
+    stream's offsets itself, and commits a batch only after the sink has finished it. That
+    tracks the *source*, though. Whether the output can hold duplicates depends on the
+    sink: a batch replayed after a failure is written again, so a sink that is neither
+    transactional nor idempotent, such as Kafka or a plain `foreachBatch`, can receive it
+    twice. Deduplicate by batch ID, or write idempotently.
 
 ```hocon
 tables {

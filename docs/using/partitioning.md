@@ -36,12 +36,34 @@ partition { type = "enum", param = "kind", values = ["fire", "water", "grass"] }
 
 ## Date range
 
-Splits a time window into chunks, driven by pushed-down date filters:
+Splits a time window into chunks. The window comes from the query: both of its bounds
+have to be pushed down to the API, through filters on `start-param` and `end-param`.
 
 ```hocon
-partition { type = "date-range", column = "created_at", range = "7 days"
-            start-param = "since", end-param = "until" }
+tables.events {
+  endpoint = "/events"
+  filters = [
+    { param = "since", column = "created_at", operators = ["gte"] }
+    { param = "until", column = "created_at", operators = ["lt"] }
+  ]
+  partition { type = "date-range", column = "created_at", range = "7 days"
+              start-param = "since", end-param = "until" }
+}
 ```
+
+Here `created_at` is a string column holding ISO-8601 timestamps, so the literals in the
+query are sent as written:
+
+```sql
+-- Four partitions, one per week
+SELECT * FROM api.default.events
+WHERE created_at >= '2026-01-01T00:00:00Z' AND created_at < '2026-01-29T00:00:00Z';
+```
+
+If either bound isn't pushed down, because the query doesn't filter on it or no filter
+maps it to its parameter, the read falls back to a single partition and logs a warning.
+The bounds are written in `format`, `yyyy-MM-dd'T'HH:mm:ss'Z'` by default, so a pushed
+value has to parse in that format.
 
 ## Parameters pagination already uses
 
