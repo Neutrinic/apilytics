@@ -44,6 +44,37 @@ object Client {
       .withTimeout(httpConfig.timeout)
       .withRetryPolicy((_, _, _) => None)
       .build
+      .map(boundedAcquire(_, httpConfig.timeout))
+
+  /** Bounds acquiring each response — connecting, sending, reading headers — by `timeout`.
+    *
+    * ember's own timeout does not cover opening the connection, so a request to a host
+    * that drops packets waits for the operating system's TCP connect timeout: about two
+    * minutes on Linux. On EMR Serverless, which has no internet access without a VPC, that
+    * made each attempt take two minutes and a task with retries take 14 minutes to fail
+    * (#266). A timeout here raises SocketTimeoutException, which the retry handler already
+    * treats as transient, so retries and backoff are unchanged — only bounded. The response
+    * body is not covered: it streams after acquisition, under ember's idle timeout.
+    */
+  private[http] def boundedAcquire(
+      client: org.http4s.client.Client[IO],
+      timeout: FiniteDuration
+  ): org.http4s.client.Client[IO] =
+    org.http4s.client.Client[IO] { req =>
+      // Host and path only: query parameters can carry credentials.
+      val target = req.uri.authority.map(_.renderString).getOrElse("") + req.uri.path.renderString
+      Resource
+        .makeFull[IO, (org.http4s.Response[IO], IO[Unit])] { poll =>
+          poll(client.run(req).allocated).timeoutTo(
+            timeout,
+            IO.raiseError(new java.net.SocketTimeoutException(
+              s"No response from $target within $timeout: the host could not be reached, " +
+                "or sent no response headers in time"
+            ))
+          )
+        }(_._2)
+        .map(_._1)
+    }
 
   def resource(
       httpConfig: HttpConfig,
