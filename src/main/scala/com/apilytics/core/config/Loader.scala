@@ -166,7 +166,7 @@ object Loader {
       case "oauth2_client" => AuthType.OAuth2Client
       case other           => throw new IllegalArgumentException(s"Unknown auth type: $other")
     }
-    AuthConfig(
+    val auth = AuthConfig(
       authType = authType,
       token = optional(config, "token"),
       username = optional(config, "username"),
@@ -177,6 +177,24 @@ object Loader {
       clientSecret = optional(config, "client-secret"),
       tokenUrl = optional(config, "token-url")
     )
+
+    // Validate: oauth2_client needs either the client-credentials flow or a pre-fetched
+    // token. Checked here so the driver fails at load, naming what is missing, rather
+    // than every executor task failing on its first request.
+    if (authType == AuthType.OAuth2Client && auth.token.isEmpty) {
+      val missing = List(
+        "client-id"     -> auth.clientId,
+        "client-secret" -> auth.clientSecret,
+        "token-url"     -> auth.tokenUrl
+      ).collect { case (key, None) => key }
+      if (missing.nonEmpty) {
+        throw new IllegalArgumentException(
+          s"auth.type = oauth2_client is missing ${missing.mkString(", ")}. It needs " +
+            "client-id, client-secret and token-url to fetch tokens, or a pre-fetched token."
+        )
+      }
+    }
+    auth
   }
 
   private def readPagination(config: Config): PaginationConfig = {

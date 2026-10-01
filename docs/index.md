@@ -43,7 +43,7 @@ Declarative Pipelines needs Spark's own support for them, which arrived in 4.1.
 
 - **OpenAPI parsing**: Swagger 2.0 and OpenAPI 3.0/3.1. GET endpoints that return arrays become tables.
 - **Pagination**: cursor, offset and link-header styles, with configurable page sizes.
-- **Authentication**: bearer token, basic auth and custom headers. See [Credentials](configuration/credentials.md).
+- **Authentication**: bearer token, basic auth, custom headers and OAuth2 client credentials. See [Credentials](configuration/credentials.md).
 - **Pushdown**:
     - **filters** map to API query parameters
     - **limits** stop pagination early

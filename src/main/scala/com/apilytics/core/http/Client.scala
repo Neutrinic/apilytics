@@ -2,7 +2,7 @@ package com.apilytics.core.http
 
 import cats.effect.{IO, Ref, Resource}
 import org.slf4j.LoggerFactory
-import com.apilytics.core.config.{AuthConfig, HttpConfig, ResponseFormat}
+import com.apilytics.core.config.{AuthConfig, AuthType, HttpConfig, ResponseFormat}
 import fs2.Stream
 import io.circe.Json
 import org.http4s.{Header, MediaType, Request, Uri}
@@ -76,6 +76,15 @@ object Client {
       }
     }
 
+  /** The client every reader uses.
+    *
+    * `oauth2_client` with a `token-url` gets a token manager here, so tokens are fetched
+    * and refreshed for whichever reader asks: the table scan, COUNT pushdown and aggregate
+    * pushdown all build their client through this. Before #276 only `resourceWithOAuth2`
+    * created one and no reader called it, so the documented config failed on the first
+    * request asking for a pre-fetched token. A pre-fetched `token` with no `token-url`
+    * is still sent as a static bearer token.
+    */
   def resource(
       httpConfig: HttpConfig,
       authConfig: AuthConfig,
@@ -84,45 +93,44 @@ object Client {
     // Defensive null check - responseCache may be null if config deserialization failed
     val cache = if (responseCache == null) ResponseCache.disabled else responseCache
     for {
-      httpClient <- emberClient(httpConfig)
+      httpClient   <- emberClient(httpConfig)
+      tokenManager <- oauth2TokenManager(authConfig, httpClient)
       rateLimiter <- Resource.eval(
         httpConfig.rateLimit match {
           case Some(rps) => RateLimiter(rps)
           case None      => IO.pure(RateLimiter.unlimited)
         }
       )
-    } yield new RestClient(httpClient, httpConfig, authConfig, None, rateLimiter, cache)
+    } yield new RestClient(httpClient, httpConfig, authConfig, tokenManager, rateLimiter, cache)
   }
 
-  /** Create a client with OAuth2 token manager for dynamic token refresh. */
+  /** A client that must use the OAuth2 token flow: fails unless `token-url` is set. */
   def resourceWithOAuth2(
       httpConfig: HttpConfig,
       authConfig: AuthConfig,
       responseCache: ResponseCache = ResponseCache.disabled
-  ): Resource[IO, RestClient] = {
-    // Defensive null check - responseCache may be null if config deserialization failed
-    val cache = if (responseCache == null) ResponseCache.disabled else responseCache
-    val clientId = authConfig.clientId.getOrElse(
-      throw new IllegalArgumentException("OAuth2 client credentials requires client-id")
-    )
-    val clientSecret = authConfig.clientSecret.getOrElse(
-      throw new IllegalArgumentException("OAuth2 client credentials requires client-secret")
-    )
-    val tokenUrl = authConfig.tokenUrl.getOrElse(
-      throw new IllegalArgumentException("OAuth2 client credentials requires token-url")
-    )
+  ): Resource[IO, RestClient] =
+    // Fails inside the Resource, like `resource`'s own checks, not when this is called.
+    if (authConfig.tokenUrl.isEmpty)
+      Resource.eval(IO.raiseError(new IllegalArgumentException("OAuth2 client credentials requires token-url")))
+    else
+      resource(httpConfig, authConfig.copy(authType = AuthType.OAuth2Client), responseCache)
 
-    for {
-      httpClient <- emberClient(httpConfig)
-      tokenManager <- Resource.eval(OAuth2TokenManager(clientId, clientSecret, tokenUrl, httpClient))
-      rateLimiter <- Resource.eval(
-        httpConfig.rateLimit match {
-          case Some(rps) => RateLimiter(rps)
-          case None      => IO.pure(RateLimiter.unlimited)
-        }
-      )
-    } yield new RestClient(httpClient, httpConfig, authConfig, Some(tokenManager), rateLimiter, cache)
-  }
+  private def oauth2TokenManager(
+      authConfig: AuthConfig,
+      httpClient: Http4sClient[IO]
+  ): Resource[IO, Option[OAuth2TokenManager]] =
+    (authConfig.authType, authConfig.tokenUrl) match {
+      case (AuthType.OAuth2Client, Some(tokenUrl)) =>
+        val clientId = authConfig.clientId.getOrElse(
+          throw new IllegalArgumentException("OAuth2 client credentials requires client-id")
+        )
+        val clientSecret = authConfig.clientSecret.getOrElse(
+          throw new IllegalArgumentException("OAuth2 client credentials requires client-secret")
+        )
+        Resource.eval(OAuth2TokenManager(clientId, clientSecret, tokenUrl, httpClient)).map(Some(_))
+      case _ => Resource.pure(None)
+    }
 
   class RestClient(
       underlying: Http4sClient[IO],
