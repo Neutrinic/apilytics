@@ -1189,4 +1189,32 @@ class LoaderSuite extends FunSuite {
     val result = Loader.load(conf.toString)
     assertEquals(result.openapi, dir.resolve("bundled-spec.yaml").toFile.getPath)
   }
+
+  private def oauth2(keys: String) = ConfigFactory.parseString(
+    s"""
+      |openapi = "https://example.com/openapi.json"
+      |auth {
+      |  type = oauth2_client
+      |  $keys
+      |}
+      |""".stripMargin)
+
+  test("oauth2_client with client credentials loads") {
+    val auth = Loader.load(oauth2(
+      """client-id = "id", client-secret = "s", token-url = "https://auth.example.com/token""""
+    )).auth
+    assertEquals(auth.tokenUrl, Some("https://auth.example.com/token"))
+  }
+
+  test("oauth2_client with only a pre-fetched token loads") {
+    assertEquals(Loader.load(oauth2("""token = "t"""")).auth.token, Some("t"))
+  }
+
+  test("oauth2_client missing part of the client credentials fails at load, naming it") {
+    // Before #276 this loaded, then every executor task failed on its first request.
+    val ex = intercept[IllegalArgumentException](
+      Loader.load(oauth2("""client-id = "id", client-secret = "s""""))
+    )
+    assert(ex.getMessage.contains("missing token-url"), ex.getMessage)
+  }
 }
