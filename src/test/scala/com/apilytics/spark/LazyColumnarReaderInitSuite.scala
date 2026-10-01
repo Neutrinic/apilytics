@@ -52,6 +52,36 @@ class LazyColumnarReaderInitSuite extends FunSuite {
     } finally reader.close()
   }
 
+  test("a session acquired before startup fails is released exactly once") {
+    // buildStream throws on the caller's thread, before the producer exists. The session is
+    // already open, and close() cannot reach it because startup never completed, so start()
+    // has to release it itself.
+    var released = 0
+    val trackedSource = new RecordSource {
+      override def session: Resource[IO, RecordSession] =
+        Resource.make(IO.pure(new RecordSession {
+          override def pages(request: ReadRequest): fs2.Stream[IO, RecordPage] = fs2.Stream.empty
+        }))(_ => IO(released += 1))
+    }
+    val reader = new LazyColumnarReader {
+      override protected val allocator: RootAllocator = new RootAllocator()
+      override protected val arrowSchema: ArrowSchema =
+        new ArrowSchema(List(Field.nullable("id", new ArrowType.Int(32, true))).asJava)
+      override protected def recordSource: RecordSource = trackedSource
+      override protected def buildStream(
+          session: RecordSession
+      ): fs2.Stream[IO, (ColumnarBatch, VectorSchemaRoot)] =
+        throw new IllegalStateException("startup failed")
+    }
+
+    val e = intercept[IllegalStateException](reader.next())
+    assertEquals(e.getMessage, "startup failed")
+    assertEquals(released, 1, "the session was not released when startup failed")
+
+    reader.close()
+    assertEquals(released, 1, "close() released the session a second time")
+  }
+
   test("a reader closed before its first next() starts nothing and closes cleanly") {
     val reader = new SchemaTouchingReader
     reader.close()
