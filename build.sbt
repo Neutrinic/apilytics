@@ -162,8 +162,8 @@ lazy val root = (project in file("."))
       // HTTP + JSON
       // Their logging (log4s) asks for slf4j 1.7; Spark always ships 2.x, which keeps
       // the 1.7 API, so it is excluded along with the rest of `onSparkClasspath`.
-      "org.http4s"       %% "http4s-ember-client" % "0.23.36" excludeAll (onSparkClasspath: _*),
-      "org.http4s"       %% "http4s-circe"        % "0.23.36" excludeAll (onSparkClasspath: _*),
+      "org.http4s"       %% "http4s-ember-client" % "0.23.38" excludeAll (onSparkClasspath: _*),
+      "org.http4s"       %% "http4s-circe"        % "0.23.38" excludeAll (onSparkClasspath: _*),
       "io.circe"         %% "circe-core"          % "0.14.16",
       "io.circe"         %% "circe-generic"       % "0.14.16",
       "io.circe"         %% "circe-parser"        % "0.14.16",
@@ -171,7 +171,7 @@ lazy val root = (project in file("."))
 
       // OpenAPI. Its chain also drags in libraries every Spark distribution already
       // ships, which are excluded below: see `onSparkClasspath`.
-      "io.swagger.parser.v3" % "swagger-parser"   % "2.1.45"
+      "io.swagger.parser.v3" % "swagger-parser"   % "2.1.48"
         excludeAll ((onSparkClasspath :+ ExclusionRule("com.fasterxml.jackson.dataformat")): _*),
 
       // YAML specs need jackson-dataformat-yaml, which `spark-sql` does not bring (#259).
@@ -190,11 +190,11 @@ lazy val root = (project in file("."))
       "com.typesafe"      % "config"              % "1.4.9",
 
       // Streaming
-      "co.fs2"           %% "fs2-core"            % "3.13.0",
+      "co.fs2"           %% "fs2-core"            % "3.14.0",
 
       // Test
-      "org.scalameta"    %% "munit"               % "1.3.5"  % Test,
-      "org.typelevel"    %% "munit-cats-effect"   % "2.2.0"  % Test,
+      "org.scalameta"    %% "munit"               % "1.3.6"  % Test,
+      "org.typelevel"    %% "munit-cats-effect"   % "2.2.1"  % Test,
       "org.wiremock"      % "wiremock"            % "3.13.2" % Test,
     ),
 
