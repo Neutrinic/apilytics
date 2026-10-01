@@ -23,15 +23,21 @@ tables {
 | `offset` | The last numeric offset | The next offset |
 | `timestamp` | A record timestamp, sent as a query parameter | The latest record timestamp |
 
-Timestamp mode also needs to know which field to track and which parameter to send:
+Timestamp mode also needs to know which field to track and which parameter to send.
+`checkpoint` always belongs to a table:
 
 ```hocon
-checkpoint {
-  enabled = true
-  path = "s3a://my-bucket/checkpoints"
-  mode = "timestamp"
-  timestamp-path = "/updated_at"    # JSON pointer to the timestamp in each record
-  timestamp-param = "since"         # query parameter to filter on
+tables {
+  events {
+    endpoint = "/events"
+    checkpoint {
+      enabled = true
+      path = "s3a://my-bucket/checkpoints"
+      mode = "timestamp"
+      timestamp-path = "/updated_at"    # JSON pointer to the timestamp in each record
+      timestamp-param = "since"         # query parameter to filter on
+    }
+  }
 }
 ```
 

@@ -2,7 +2,7 @@
 # Pre-built image for zero-config quickstart
 #
 # Usage:
-#   docker run -it neutrinic/apilytics "SELECT name FROM api.default.pokemon LIMIT 5"
+#   docker run -it ghcr.io/neutrinic/apilytics "SELECT name FROM api.default.pokemon LIMIT 5"
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8
 LABEL maintainer="Apilytics"

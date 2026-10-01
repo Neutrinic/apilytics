@@ -6,8 +6,12 @@ server, with the APIlytics catalogs registered in the server's Spark config.
 ## With Docker
 
 ```bash
-docker run -p 10000:10000 --rm ghcr.io/neutrinic/apilytics:latest thrift
+docker run -p 127.0.0.1:10000:10000 --rm ghcr.io/neutrinic/apilytics:latest thrift
 ```
+
+The server takes any username and no password, so the port is published on loopback only.
+Without the `127.0.0.1:`, Docker publishes it on every network interface, and anyone who
+can reach the machine can query the APIs with your credentials.
 
 The `pokeapi` and `github` catalogs are configured:
 

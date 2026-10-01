@@ -16,9 +16,11 @@ tables.pokemon {
 }
 ```
 
-It needs offset pagination over a non-streaming response. Other pagination styles take
-the next page from the response, so a start offset means nothing to them and every
-partition would read the same rows. Configs that ask for it anyway are rejected at load.
+It needs `pagination.style = offset` and the default `json` response format. Cursor and
+link-header pagination take the next page from the response, `none` fetches a single page,
+and `ndjson` and `sse` bypass pagination. Under any of those, a start offset means nothing,
+and every partition would read the same rows. Configs that ask for it anyway are rejected
+at load.
 
 `size × count` should cover the endpoint. Partitions past the end return nothing, and rows
 beyond it aren't read, so an endpoint that has grown since the config was written is

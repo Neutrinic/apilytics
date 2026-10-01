@@ -37,9 +37,12 @@ rather than at run time.
   you think it's broken. With `Trigger.AvailableNow`, which Declarative Pipelines uses,
   the first run spans `[now, now]`. That run records the offset, and every later run picks
   up what changed since.
-- **Delivery is at least once.** A record that becomes visible to the API after the batch
-  covering its timestamp has run is missed, so an API with delayed visibility needs a lag
-  applied at the source.
+- **Records visible when their window is read are delivered at least once.** A batch that
+  is replayed after a failure can deliver them again, so make the sink idempotent or
+  deduplicate downstream.
+- **Records that become visible later are missed.** If the API shows a record only after
+  the batch covering its timestamp has run, no later batch asks for it again. An API with
+  delayed visibility needs a lag applied at the source.
 - **Batch windows are `(start, end]`, inclusive at the end.** That suits the usual
   exclusive `since`. If your API's `since` is inclusive, expect one duplicate per batch
   boundary rather than a gap.

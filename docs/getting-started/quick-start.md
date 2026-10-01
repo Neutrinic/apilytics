@@ -51,11 +51,12 @@ catalogs are configured, and example notebooks for Python and Scala are in
 ## JDBC
 
 ```bash
-docker run -p 10000:10000 --rm ghcr.io/neutrinic/apilytics:latest thrift
+docker run -p 127.0.0.1:10000:10000 --rm ghcr.io/neutrinic/apilytics:latest thrift
 ```
 
 Connect to `jdbc:hive2://localhost:10000`. The `pokeapi` and `github` catalogs are
-configured. See [JDBC and BI tools](../using/jdbc.md).
+configured. The server needs no password, which is why the port is published on loopback
+only. See [JDBC and BI tools](../using/jdbc.md).
 
 ## Declarative Pipelines
 
