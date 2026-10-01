@@ -11,8 +11,12 @@ from that state.
     the saved cursor is the one that fetched the last page, so the next run reads that
     page again. Tracked in [#280](https://github.com/Neutrinic/apilytics/issues/280).
 
-    For delivery guarantees, use [streaming](../using/streaming.md): Spark manages a
-    stream's offsets itself, and only commits a batch after it has been written.
+    [Streaming](../using/streaming.md) tracks progress more carefully. Spark keeps the
+    stream's offsets itself, and commits a batch only after the sink has finished it. That
+    tracks the *source*, though. Whether the output can hold duplicates depends on the
+    sink: a batch replayed after a failure is written again, so a sink that is neither
+    transactional nor idempotent, such as Kafka or a plain `foreachBatch`, can receive it
+    twice. Deduplicate by batch ID, or write idempotently.
 
 ```hocon
 tables {

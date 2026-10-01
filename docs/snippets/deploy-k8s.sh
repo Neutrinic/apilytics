@@ -1,5 +1,7 @@
 spark-submit --master k8s://https://kubernetes-api:6443 --deploy-mode cluster \
   --conf spark.kubernetes.container.image=your-spark-image \
+  --conf spark.kubernetes.namespace=spark-jobs \
+  --conf spark.kubernetes.authenticate.driver.serviceAccountName=spark \
   --packages io.github.neutrinic:apilytics_2.13:1.0.0 \
   --conf spark.jars.ivy=/tmp/ivy \
   --conf spark.kubernetes.driver.node.selector.kubernetes.io/hostname=node-with-config \

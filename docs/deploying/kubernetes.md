@@ -25,6 +25,12 @@ local to the machine you submit from. Kubernetes refuses local files unless
   ConfigMap through a driver pod template. If the mount renames the files, set `openapi`
   to the spec's absolute path inside the pod, or a URL, because a relative spec is looked
   up beside the config under its original name.
+- **Service account:** the driver creates and deletes its executor pods, so it needs a
+  service account allowed to do that in its namespace. Set it with
+  `spark.kubernetes.authenticate.driver.serviceAccountName`; without it, Spark uses the
+  namespace's `default` account, which usually can't. The verified runs used an account
+  with a namespace-scoped Role over pods, services, configmaps and persistent volume
+  claims.
 - **Streaming checkpoints:** a checkpoint on the driver pod's disk lasts only as long as
   that pod. A stream that has to survive a restart needs object storage or a persistent
   volume.
@@ -44,6 +50,6 @@ The same job as a `SparkApplication`, for the
   webhook failed: the driver couldn't find its files. `sparkConf` entries are applied by
   Spark itself, so they work either way.
 - **Use a service account that can create executor pods** in the namespace, set with
-  `spec.driver.serviceAccount`.
+  `spec.driver.serviceAccount`. It needs the same permissions as for `spark-submit` above.
 - `deps.packages` and `deps.repositories` are `--packages` and `--repositories`. The
   driver pod resolves them, as above.

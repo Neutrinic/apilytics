@@ -42,12 +42,14 @@ API PASS, batch 400/400, streaming 1204/1204 across a restart with its checkpoin
 gcloud dataproc batches submit pyspark gs://your-bucket/your-job.py \
   --region your-region --version=3.0 --subnet your-subnet \
   --jars gs://your-bucket/apilytics.jar \
+  --files gs://your-bucket/api.conf,gs://your-bucket/api-spec.yaml \
+  --properties spark.sql.catalog.api=com.apilytics.spark.RESTCatalog,spark.sql.catalog.api.config=api.conf \
   --user-workload-authentication-type=SERVICE_ACCOUNT --service-account your-sa@your-project.iam.gserviceaccount.com
 ```
 
-- **Config:** a batch's driver is created for the batch, so ship the config and spec with
-  `--files` and name the config by its bare file name. As on Compute Engine, the verified
-  run wrote its config at run time instead.
+- **Config:** a batch's driver is created for the batch, so the config and spec ship with
+  `--files`, and the catalog names the config by its bare file name, as above. As on
+  Compute Engine, the verified run wrote its config at run time instead.
 - **Enable the Cloud Resource Manager API** in the project. Without it, batches fail before
   starting with `TagKeys.GetNamespacedTagKey PERMISSION_DENIED`.
 - **Runtime 3.0 runs batches with end-user credentials by default.** Pass both flags above
