@@ -125,11 +125,19 @@ object RESTDataSource {
 
   private[spark] def catalogFor(configPath: String): RESTCatalog = {
     val key = (configPath, new File(configPath).lastModified())
-    catalogs.computeIfAbsent(key, _ => {
-      catalogs.keySet().asScala.filter(_._1 == configPath).foreach(catalogs.remove)
-      val catalog = new RESTCatalog
-      catalog.initialize("apilytics", new CaseInsensitiveStringMap(Map("config" -> configPath).asJava))
-      catalog
+    val catalog = catalogs.computeIfAbsent(key, _ => {
+      val c = new RESTCatalog
+      c.initialize("apilytics", new CaseInsensitiveStringMap(Map("config" -> configPath).asJava))
+      c
     })
+    // Drop catalogs for earlier versions of this file. Done after computeIfAbsent, never
+    // inside it: the mapping function must not modify the map, and a removal there can
+    // detach the bin the new entry is inserted into, losing it from the cache.
+    catalogs.keySet().asScala.filter(k => k._1 == configPath && k != key).foreach(catalogs.remove)
+    catalog
   }
+
+  /** Catalogs cached for one config file. Exposed for tests. */
+  private[spark] def cachedFor(configPath: String): Int =
+    catalogs.keySet().asScala.count(_._1 == configPath)
 }

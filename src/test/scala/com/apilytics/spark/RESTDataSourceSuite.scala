@@ -198,5 +198,11 @@ class RESTDataSourceSuite extends FunSuite {
     configPath.toFile.setLastModified(configPath.toFile.lastModified() + 5000)
 
     assertEquals(viaFormat("recent").schema, viaFormat("issues").schema)
+
+    // The edited file replaces the old catalog rather than adding to it, and the new one is
+    // actually kept: a read of the same version reuses it instead of building another.
+    val path = configPath.toAbsolutePath.toString
+    assertEquals(RESTDataSource.cachedFor(path), 1)
+    assert(RESTDataSource.catalogFor(path) eq RESTDataSource.catalogFor(path), "the cached catalog was not reused")
   }
 }
