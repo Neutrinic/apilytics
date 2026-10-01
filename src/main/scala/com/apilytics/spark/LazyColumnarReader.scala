@@ -64,17 +64,28 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
     if (running == null) {
       // Acquire the session manually so it stays open across next() calls.
       val (session, release) = recordSource.session.allocated.unsafeRunSync()
-      val queue = Queue.bounded[IO, QueueItem](prefetchSize).unsafeRunSync()
-      // Producer fiber: runs the stream in background, feeding batches into the queue.
-      val producer = buildStream(session)
-        .evalMap(batch => queue.offer(Some(Right(batch))))
-        .compile
-        .drain
-        .handleErrorWith(t => queue.offer(Some(Left(t))))
-        .guarantee(queue.offer(None)) // sentinel: always sent after success or error
-        .start
-        .unsafeRunSync()
-      running = new Running(release, queue, producer)
+      // Until `running` is set, close() cannot see the session, so this block owns it: if
+      // anything below throws — buildStream does real work while building, and runs on the
+      // caller's thread where the stream's own handleErrorWith cannot catch it — release
+      // the session here before rethrowing.
+      try {
+        val queue = Queue.bounded[IO, QueueItem](prefetchSize).unsafeRunSync()
+        // Producer fiber: runs the stream in background, feeding batches into the queue.
+        val producer = buildStream(session)
+          .evalMap(batch => queue.offer(Some(Right(batch))))
+          .compile
+          .drain
+          .handleErrorWith(t => queue.offer(Some(Left(t))))
+          .guarantee(queue.offer(None)) // sentinel: always sent after success or error
+          .start
+          .unsafeRunSync()
+        running = new Running(release, queue, producer)
+      } catch {
+        case t: Throwable =>
+          try release.unsafeRunSync()
+          catch { case r: Throwable => t.addSuppressed(r) }
+          throw t
+      }
     }
     running
   }
