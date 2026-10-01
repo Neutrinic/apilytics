@@ -149,9 +149,8 @@ object Client {
         case Some(cached) =>
           IO.pure(cached)
         case None =>
-          // Apply rate limiting before making the request
-          rateLimiter.acquire *>
-            applyAuth(baseReq).flatMap { req =>
+          // executeWithRetry takes a rate-limit permit for each attempt it makes.
+          applyAuth(baseReq).flatMap { req =>
               executeWithRetry(req, baseReq, endpoint, params, attempt = 0, authRetried = false)
             }.flatTap { response =>
               // Only cache successful responses
@@ -304,7 +303,10 @@ object Client {
         attempt: Int,
         authRetried: Boolean
     ): IO[ApiResponse] = {
-      underlying.run(req).use { resp =>
+      // A permit per attempt, not per call: retries after 429, 5xx or a network error, and
+      // the re-issue after an OAuth2 refresh, are requests too. Taking one only before the
+      // first attempt let a burst of failures be retried above `rate-limit` (#279).
+      rateLimiter.acquire *> underlying.run(req).use { resp =>
         val hdrs = resp.headers.headers.map(h => h.name.toString -> h.value).toMap
 
         resp.status.code match {
