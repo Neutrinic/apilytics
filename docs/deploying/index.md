@@ -2,6 +2,7 @@
 
 Every page in this section describes a deployment that was run for real. Each one ran the
 same check:
+
 - a read from a public API
 - a 400-row batch read split over 4 partitions
 - a 20-minute streaming run across a restart, checked row by row against the source, with
