@@ -14,13 +14,24 @@ RUN microdnf update -y && \
     ln -sf /usr/bin/python3.11 /usr/bin/python && \
     python3 -m pip install --no-cache-dir jupyter "pandas<3.0.0"
 
-# Install Almond (Scala kernel for Jupyter)
+# Everything runs as `spark` (uid 185, as in Apache Spark's own images), not root.
+# shadow-utils provides useradd, which UBI minimal lacks.
+RUN microdnf install -y shadow-utils && microdnf clean all && \
+    groupadd --gid 185 spark && \
+    useradd --uid 185 --gid 185 --create-home --home-dir /home/spark --shell /bin/sh spark
+
+# Install Almond (Scala kernel for Jupyter) as the spark user: the kernel's launcher is
+# private to the user who installs it, and resolves its jars from their coursier cache.
 ARG ALMOND_VERSION=0.14.5
 ARG SCALA_KERNEL_VERSION=2.13.18
+USER spark
+WORKDIR /tmp
 RUN curl -Lo coursier https://git.io/coursier-cli && \
     chmod +x coursier && \
     ./coursier launch --fork almond:${ALMOND_VERSION} --scala ${SCALA_KERNEL_VERSION} -- --install && \
     rm coursier
+USER root
+WORKDIR /
 
 # Environment variables
 ENV JAVA_HOME=/usr/lib/jvm/java-${JDK_VERSION}-openjdk
@@ -41,7 +52,9 @@ RUN curl -L https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-$
     ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop3 ${SPARK_HOME}
 
 # Configure Spark
-RUN mkdir -p ${SPARK_HOME}/logs ${SPARK_HOME}/work ${SPARK_HOME}/spark-events
+# Owned by spark before VOLUME, so new named volumes start out writable by it.
+RUN mkdir -p ${SPARK_HOME}/logs ${SPARK_HOME}/work ${SPARK_HOME}/spark-events && \
+    chown -R spark:spark ${SPARK_HOME}/logs ${SPARK_HOME}/work ${SPARK_HOME}/spark-events
 COPY spark-defaults.conf ${SPARK_HOME}/conf/
 COPY entrypoint.sh /
 
@@ -55,4 +68,7 @@ EXPOSE 8080 7077 8081 18080 4040 10000
 
 # Entrypoint script
 RUN chmod +x /entrypoint.sh
+# The working directory is where Thrift creates metastore_db and spark-warehouse.
+USER spark
+WORKDIR /home/spark
 ENTRYPOINT ["/entrypoint.sh"]
