@@ -31,9 +31,34 @@ records where the stream starts, and later runs pick up what changed since.
 
 ## Running them on a cluster
 
-Pipelines run on Spark Connect, which needs its Python client (`pyarrow`, `grpcio`,
-`grpcio-status`, `googleapis-common-protos` and `zstandard`). The Docker image ships them.
+`spark-pipelines` only runs through Spark Connect. Without `--remote`, it starts its own
+Connect server in local mode, so the pipeline never touches your cluster. To run on a
+cluster:
 
-Put the pipeline's `storage` and the warehouse (`spark.sql.warehouse.dir`) on storage
-every node can reach, such as HDFS or an object store. With a local `file:` warehouse,
-each executor writes to its own disk, and the driver reads materialised views back empty.
+1. **Run a Connect server on the cluster** with the APIlytics jar in its Spark config
+   (`spark.jars.packages`, as in [Deploying](../deploying/index.md#thrift-and-connect-servers)).
+   The server needs only the jar: the catalog itself is registered by the spec.
+2. **Point the CLI at it:**
+
+    ```bash
+    spark-pipelines --remote sc://connect-host:15002 run --spec spark-pipeline.yml
+    ```
+
+3. **Give the CLI a client-only Spark config.** It refuses `--master` and `--deploy-mode`
+   (*"Remote cannot be specified with master and/or deploy mode"*), and it refuses them from
+   `spark-defaults.conf` too. So on a machine whose `SPARK_CONF_DIR` holds cluster defaults,
+   point `SPARK_CONF_DIR` at an empty directory for the CLI.
+4. **Put the config file where the Connect server's driver can read it.** The spec's
+   `configuration:` keys are sent to the server as session config, so
+   `spark.sql.catalog.api.config` is a path on the server's host, not the client's.
+5. **Use shared storage.** Put the pipeline's `storage` and the server's warehouse
+   (`spark.sql.warehouse.dir`) on storage every node can reach, such as HDFS or an object
+   store. With a local `file:` warehouse, each executor writes to its own disk, and the
+   driver reads materialised views back empty.
+
+The client needs Spark Connect's Python dependencies (`pyarrow`, `grpcio`,
+`grpcio-status`, `googleapis-common-protos` and `zstandard`), plus PyYAML, and pandas below
+3.0. The Docker image ships them.
+
+Verified on YARN with Spark 4.1.3 and 4.2.0: a materialised view over PokeAPI and a
+streaming table over a live feed, three pipeline runs each, with the streaming table exact.

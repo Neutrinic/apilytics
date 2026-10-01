@@ -7,7 +7,7 @@ SELECT name FROM api.default.pokemon LIMIT 5;
 ```
 
 APIlytics is a Spark DataSource V2 catalog. It reads an OpenAPI spec (Swagger 2.0, OpenAPI
-3.0 or 3.1) and exposes the API's endpoints as tables:
+3.0 or 3.1) and exposes the API's endpoints as read-only tables:
 
 - filters, limits and aggregates are pushed down to query parameters
 - pagination is handled for you
@@ -43,13 +43,13 @@ Declarative Pipelines needs Spark's own support for them, which arrived in 4.1.
 
 - **OpenAPI parsing**: Swagger 2.0 and OpenAPI 3.0/3.1. GET endpoints that return arrays become tables.
 - **Pagination**: cursor, offset and link-header styles, with configurable page sizes.
-- **Authentication**: bearer token, basic auth, custom headers and OAuth2 client credentials. See [Credentials](configuration/credentials.md).
+- **Authentication**: bearer token, basic auth and custom headers. See [Credentials](configuration/credentials.md).
 - **Pushdown**:
     - **filters** map to API query parameters
     - **limits** stop pagination early
     - **COUNT, SUM and AVG** push to API endpoints. MIN, MAX and custom functions don't, because their result type can't be decided at plan time, so Spark computes them over a full scan.
 - **Schema modes**: strict (typed columns, the default) or variant (a native VARIANT column). Nested objects flatten to a configurable depth. See [Schema](configuration/schema.md).
-- **Parent-child joins**: chain API calls, such as fetching issues and then each issue's comments. Batch joins cut the number of calls for bulk lookups. See [Parent-child joins](using/joins.md).
+- **Parent-child joins**: chain API calls, such as fetching issues and then each issue's comments. See [Parent-child joins](using/joins.md).
 - **Parallel partitioning**: offset, date-range or enum partitioning for concurrent reads. See [Partitioning](using/partitioning.md).
 - **Rate limiting**: a ceiling on requests per second, divided across partitions. See [Rate limiting](using/rate-limiting.md).
 - **Retries with backoff**: exponential backoff for transient failures (429 and 5xx).

@@ -24,6 +24,15 @@ same check:
 is expected to behave the same; it was run on the lab platforms and on Databricks.
 Platforms that can't run APIlytics are listed under [Unsupported](unsupported.md).
 
+## The job
+
+The recipes in this section submit `your-job.py`. Any Spark job works. A minimal one,
+with the catalog registered on the command line:
+
+```python
+--8<-- "job.py"
+```
+
 ## What every deployment needs
 
 **The jar, on the driver.** Executors get it from the driver, so it's only named on the

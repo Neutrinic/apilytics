@@ -52,6 +52,22 @@ of them:
 - [`examples/slack/slack-config.conf`](https://github.com/Neutrinic/apilytics/blob/main/examples/slack/slack-config.conf): bearer authentication and cursor pagination.
 - [`examples/lichess/lichess-ndjson.conf`](https://github.com/Neutrinic/apilytics/blob/main/examples/lichess/lichess-ndjson.conf) and [`examples/sse/sse-demo.conf`](https://github.com/Neutrinic/apilytics/blob/main/examples/sse/sse-demo.conf): streaming response formats.
 
+## Which endpoints become tables
+
+APIlytics only reads: it sends GET requests, and never writes to the API.
+
+- **Discovered from the spec:** every GET operation whose `200` (or `default`) response is
+  JSON and is an object, or an array of objects. Endpoints with a path placeholder, such
+  as `/pokemon/{id}`, aren't listed, because nothing would supply the value; they're
+  reachable as the child of a [parent-child join](../using/joins.md).
+- **Named** by the operation's `operationId`, or, without one, by the path's last segment:
+  `/api/v2/pokemon` becomes `pokemon`.
+- **Configured tables add to the discovered ones.** Each key under `tables` is a table of
+  its own, whose `endpoint` is matched against the spec, placeholders included, to find
+  its schema. `SHOW TABLES` lists both.
+- **Exploded tables:** with `array-handling = explode_view` or `both`, each array field
+  also gets a `<table>_<field>` table. See [Schema](schema.md).
+
 ## Filters
 
 A table's `filters` map SQL predicates to query parameters, so the API does the filtering.

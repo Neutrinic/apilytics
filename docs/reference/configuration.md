@@ -49,11 +49,11 @@ security warning. See [Credentials](../configuration/credentials.md).
 |---|---|---|
 | `style` | `none` | `none`, `offset`, `cursor` or `link_header`. |
 | `offset-param` | `offset` | For `offset`: the query parameter holding the start offset. |
-| `page-size-param` | `limit` | The query parameter holding the page size. |
+| `page-size-param` | `limit` for `offset`; otherwise not sent | The query parameter holding the page size. For `cursor` and `link_header`, no page size is sent unless this is set. |
 | `max-page-size` | `100` | The page size requested. A pushed-down `LIMIT` smaller than this is requested instead. |
-| `results-path` | | A JSON pointer to the page's record array, used to recognise an empty last page. Without it, an empty top-level array ends the walk. |
-| `cursor-path` | | For `cursor`: a JSON pointer to the next cursor in the response. |
-| `cursor-param` | | For `cursor`: the query parameter that sends it. |
+| `results-path` | | For `offset`: a JSON pointer to the page's record array, used to recognise an empty last page. Without it, an empty top-level array ends the walk. |
+| `cursor-path` | required for `cursor` | A JSON pointer to the next cursor in the response. The walk ends when it's missing or empty. |
+| `cursor-param` | `cursor` | For `cursor`: the query parameter that sends the next cursor. |
 | `max-pages` | `1000` | A safety limit on pages per walk, against an API that never stops. |
 
 `link_header` follows the `Link: rel="next"` response header. A [checkpoint](#checkpoint)
@@ -87,6 +87,15 @@ cursor or offset state to save.
 An in-memory cache of API responses, shared by the tasks in each JVM (the driver, and
 each executor). Useful when the same pages are read repeatedly within its TTL.
 
+!!! warning "Use it for one source per Spark application"
+    Cached responses are keyed by request path and query parameters only, not by host
+    or credentials. Two catalogs in the same application that request the same path with
+    the same parameters can be served each other's responses. Tracked in
+    [#278](https://github.com/Neutrinic/apilytics/issues/278).
+
+A query that mixes cached and fresh pages isn't a consistent snapshot of the API: pages
+cached at different times can overlap or miss records that moved between pages.
+
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | `false` | |
@@ -118,7 +127,7 @@ Each key under `tables` names a table.
 | `partition` | none | [Partitioning](#partition). |
 | `parent-table`, `parent-key`, `join-strategy` | | [Parent-child joins](#parent-child-joins). |
 | `aggregations` | none | [Aggregate pushdown](#aggregations). |
-| `count` | none | Deprecated: a `count` [aggregation](#aggregations) does the same. |
+| `count` | none | Deprecated [`COUNT(*)` pushdown](#count-deprecated). |
 | `checkpoint` | none | [Checkpoints](#checkpoint). |
 
 ### `filters`
@@ -159,7 +168,7 @@ See [Partitioning](../using/partitioning.md) for which pagination each type work
 |---|---|---|
 | `parent-table` | | The table whose rows drive the calls. |
 | `parent-key` | | The parent column substituted into the endpoint's placeholder. |
-| `join-strategy` | | `nested_loop` (one call per parent row) or `batch`. |
+| `join-strategy` | `nested_loop` | `nested_loop` (one call per parent row) or `batch`. **`batch` doesn't work yet:** the config loads, but the table fails when it's built ([#277](https://github.com/Neutrinic/apilytics/issues/277)). |
 | `batch-param` | required for `batch` | The query parameter carrying the batched keys. The endpoint can't have placeholders. |
 | `batch-size` | `100` | Parent keys per call. |
 | `batch-separator` | `,` | How the keys are joined. |
@@ -204,3 +213,25 @@ INFO.
 
 `mode = timestamp`, with both of its keys, is also what lets a table
 [stream](../using/streaming.md). See [Checkpoints](../configuration/checkpoints.md).
+
+### `count` (deprecated)
+
+`COUNT(*)` pushdown from before `aggregations`. It still works; a `count` aggregation does
+the same.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `endpoint` | | A dedicated count endpoint, such as `/items/count`. |
+| `param` | | Or: a query parameter that makes the normal endpoint include a total. |
+| `param-value` | `true` | The value sent in `param`. |
+| `response-path` | required | A JSON pointer to the count in the response. |
+
+One of `endpoint` or `param` is required. The equivalent aggregation:
+
+```hocon
+# Before
+count { endpoint = "/items/count", response-path = "/total" }
+
+# After
+aggregations { total { function = "count", endpoint = "/items/count", response-path = "/total" } }
+```

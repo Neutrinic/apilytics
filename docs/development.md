@@ -30,8 +30,8 @@ sbt assembly
 docker compose -f docker/spark/compose.spark.yaml up -d
 ```
 
-The helper script builds the jar, starts the cluster and opens a `spark-shell` with an
-example API's catalog. The examples are `pokeapi` (the default), `github`, `slack`, and
+With the cluster up, the helper script opens a `spark-shell` with an example API's catalog,
+building the jar first if it's missing. It doesn't start the cluster. The examples are `pokeapi` (the default), `github`, `slack`, and
 `multi`, which has GitHub and PokeAPI together:
 
 ```bash
