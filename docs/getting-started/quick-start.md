@@ -69,4 +69,4 @@ See [Declarative Pipelines](../using/pipelines.md).
 ## Next
 
 The image runs Spark in local mode as the non-root user `spark`. To use APIlytics on your
-own Spark, see [Installation](installation.md).
+own Spark, see [Installation](installation.md) and [Deploying](../deploying/index.md).

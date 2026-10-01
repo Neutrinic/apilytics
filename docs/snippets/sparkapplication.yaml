@@ -1,0 +1,33 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: apilytics-job
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: your-spark-image
+  mainApplicationFile: local:///opt/jobs/your-job.py
+  sparkVersion: "4.2.0"
+  deps:
+    packages: ["io.github.neutrinic:apilytics_2.13:1.0.0"]
+  sparkConf:
+    spark.jars.ivy: /tmp/ivy
+    spark.sql.catalog.api: com.apilytics.spark.RESTCatalog
+    spark.sql.catalog.api.config: /etc/apilytics/api.conf
+    # Placement and mounts declared in sparkConf work whether or not the operator's
+    # webhook is enabled; the equivalent fields under spec.driver need the webhook.
+    spark.kubernetes.driver.node.selector.kubernetes.io/hostname: node-with-config
+    spark.kubernetes.driver.volumes.hostPath.apilytics.mount.path: /etc/apilytics
+    spark.kubernetes.driver.volumes.hostPath.apilytics.mount.readOnly: "true"
+    spark.kubernetes.driver.volumes.hostPath.apilytics.options.path: /srv/apilytics
+  driver:
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+  executor:
+    instances: 3
+    cores: 2
+    memory: 1g
+  restartPolicy:
+    type: Never

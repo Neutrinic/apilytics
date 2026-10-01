@@ -31,6 +31,8 @@ so no upgrade is required for existing users.
   - the README's user documentation, now split into pages
   - examples included from `examples/`, which CI loads
   - the README cut back to a quick start and a link
+  - deploy guides for every platform tested: standalone, YARN, Kubernetes and its Spark Operator, Databricks on AWS and Azure, EMR, and Dataproc
+  - a reference for every config key (#274)
 
   It counts page views with a cookie-free Scarf pixel, which its Privacy page discloses
   (#272).

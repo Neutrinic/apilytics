@@ -61,6 +61,7 @@ filters were pushed down.
 
 ## More
 
+- [Configuration reference](../reference/configuration.md): every key and its default.
 - [Credentials](credentials.md): keeping tokens out of config files.
 - [Schema](schema.md): strict and variant modes, and flattening.
 - [Response formats](response-formats.md): NDJSON and Server-Sent Events.

@@ -34,7 +34,10 @@ Declarative Pipelines needs Spark's own support for them, which arrived in 4.1.
 
 - **Try it in one command** with Docker: [Quick start](getting-started/quick-start.md).
 - **Add it to your Spark**: [Installation](getting-started/installation.md).
-- **Describe your own API**: [Configuration](configuration/index.md).
+- **Run it on your platform**: [Deploying](deploying/index.md), for standalone, YARN, Kubernetes,
+  Databricks, EMR and Dataproc.
+- **Describe your own API**: [Configuration](configuration/index.md), with every key in the
+  [reference](reference/configuration.md).
 
 ## Features
 
