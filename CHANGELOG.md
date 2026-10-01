@@ -100,6 +100,10 @@ so no upgrade is required for existing users.
   token. Tokens are now fetched, renewed and refreshed on a 401 in table scans, COUNT
   pushdown and aggregate pushdown alike. An `oauth2_client` config missing part of the
   credentials now fails when it loads, naming what's missing (#276).
+- **Retries escaped the rate limit.** A JSON request took one rate-limit permit before its
+  first attempt, and its retries after 429, 5xx or network errors took none. So a burst of
+  failures was retried above `http.rate-limit`, which is exactly when an API is asking for
+  less. Every attempt now takes a permit (#279).
 - **An unreachable host took minutes per request to fail.** ember's timeout does not
   cover opening the connection, so each attempt waited for the operating system's TCP
   connect timeout, about two minutes on Linux. On EMR Serverless without a VPC, where
