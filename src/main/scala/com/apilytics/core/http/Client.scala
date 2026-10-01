@@ -109,11 +109,12 @@ object Client {
       httpConfig: HttpConfig,
       authConfig: AuthConfig,
       responseCache: ResponseCache = ResponseCache.disabled
-  ): Resource[IO, RestClient] = {
+  ): Resource[IO, RestClient] =
+    // Fails inside the Resource, like `resource`'s own checks, not when this is called.
     if (authConfig.tokenUrl.isEmpty)
-      throw new IllegalArgumentException("OAuth2 client credentials requires token-url")
-    resource(httpConfig, authConfig.copy(authType = AuthType.OAuth2Client), responseCache)
-  }
+      Resource.eval(IO.raiseError(new IllegalArgumentException("OAuth2 client credentials requires token-url")))
+    else
+      resource(httpConfig, authConfig.copy(authType = AuthType.OAuth2Client), responseCache)
 
   private def oauth2TokenManager(
       authConfig: AuthConfig,

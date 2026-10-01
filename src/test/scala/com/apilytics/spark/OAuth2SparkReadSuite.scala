@@ -99,13 +99,15 @@ class OAuth2SparkReadSuite extends FunSuite {
       .getOrCreate()
   }
 
-  override def afterEach(context: AfterEach): Unit = {
-    if (spark != null) spark.stop()
-    SparkSession.clearActiveSession()
-    SparkSession.clearDefaultSession()
-    if (server != null) server.stop()
-    if (configPath != null) Files.deleteIfExists(configPath)
-  }
+  override def afterEach(context: AfterEach): Unit =
+    try {
+      if (spark != null) spark.stop()
+    } finally {
+      SparkSession.clearActiveSession()
+      SparkSession.clearDefaultSession()
+      try { if (server != null) server.stop() }
+      finally { if (configPath != null) Files.deleteIfExists(configPath) }
+    }
 
   private def tokenRequests: Int =
     server.findAll(postRequestedFor(urlPathEqualTo("/oauth/token"))).size
