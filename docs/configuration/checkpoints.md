@@ -4,13 +4,22 @@ A checkpoint makes repeated batch reads resume where the last one stopped. On th
 run, all the data is fetched, and the final pagination state is saved. Later runs resume
 from that state.
 
-!!! warning "A resume point, not a delivery guarantee"
-    The state is saved when a read ends, **including when it fails or is cancelled**. It
-    tracks what was fetched, not what Spark successfully wrote downstream. So a failed run
-    can move the checkpoint past records that were never delivered. In `cursor` mode,
-    the saved cursor is the one that fetched the last page, so the next run reads that
-    page again. Tracked in [#280](https://github.com/Neutrinic/apilytics/issues/280).
+**The checkpoint only moves when a read succeeds.** It's saved when the Spark task that
+read the table succeeds. A read that fails partway, or whose task fails afterwards (for
+example while writing its output), leaves it where it was, so the next run reads those
+records again instead of skipping them.
 
+Some records can be read twice:
+
+- **After a failed run**, the next run starts from the previous checkpoint, so records
+  the failed run had already delivered come again.
+- **In `cursor` mode**, the API's last page has no next cursor. The saved cursor is the one
+  that fetched that page, so the next run reads it again, along with anything appended
+  to it since. That's what keeps records added to the last page from being missed.
+
+So a checkpointed read is at least once: deduplicate downstream, or write idempotently.
+
+!!! note "Batch checkpoints and streaming"
     [Streaming](../using/streaming.md) tracks progress more carefully. Spark keeps the
     stream's offsets itself, and commits a batch only after the sink has finished it. That
     tracks the *source*, though. Whether the output can hold duplicates depends on the

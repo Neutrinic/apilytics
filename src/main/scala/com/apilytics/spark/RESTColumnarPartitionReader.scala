@@ -1,6 +1,6 @@
 package com.apilytics.spark
 
-import cats.effect.{IO, Ref}
+import cats.effect.{IO, Ref, Resource}
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.arrow.Converter
 import com.apilytics.core.checkpoint.{CheckpointState, CheckpointStore}
@@ -13,6 +13,7 @@ import io.circe.pointer.Pointer
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
+import org.apache.spark.TaskContext
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
 
@@ -56,6 +57,28 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
       .getOrElse(new org.apache.hadoop.conf.Configuration())
     CheckpointStore.fromConfig(partition.checkpointConfig, hadoopConf)
   }
+
+  // The checkpoint is saved only when this partition's Spark task succeeds (#280).
+  //
+  // It used to be saved in the page stream's finaliser, which also runs when the read fails
+  // or is cancelled, so a failed run moved the checkpoint past records it never delivered.
+  // Now the stream only records its final state if it completed, and the task's completion
+  // listener writes it unless the task failed: a read that succeeded but whose task failed
+  // afterwards, as a failed write would, saves nothing either. Without a task (a reader driven directly), the state is saved when the stream completes.
+  private val taskContext: Option[TaskContext] = Option(TaskContext.get())
+  @volatile private var completedState: Option[CheckpointState] = None
+  @volatile private var taskFailed = false
+
+  taskContext.foreach { ctx =>
+    ctx.addTaskFailureListener((_: TaskContext, _: Throwable) => taskFailed = true)
+    ctx.addTaskCompletionListener[Unit] { _ =>
+      if (!taskFailed) completedState.foreach(state => saveCheckpoint(state).unsafeRunSync())
+    }
+  }
+
+  private def saveCheckpoint(state: CheckpointState): IO[Unit] =
+    IO(logInfo(s"Saving checkpoint for table '${partition.tableName}': ${state.toJson.noSpaces}")) >>
+      checkpointStore.write(partition.tableName, state)
 
   override protected def recordSource: RecordSource = new RestSource(effectiveConfig)
 
@@ -122,13 +145,18 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
               }
             }
           }
-          .onFinalize {
-            stateRef.get.flatMap {
-              case Some(state) if partition.checkpointConfig.exists(_.enabled) =>
-                IO(logInfo(s"Saving checkpoint for table '${partition.tableName}': ${state.toJson.noSpaces}")) >>
-                  checkpointStore.write(partition.tableName, state)
-              case _ => IO.unit
-            }
+          .onFinalizeCase {
+            case Resource.ExitCase.Succeeded =>
+              stateRef.get.flatMap {
+                case Some(state) if partition.checkpointConfig.exists(_.enabled) =>
+                  if (taskContext.isDefined) IO { completedState = Some(state) }
+                  else saveCheckpoint(state)
+                case _ => IO.unit
+              }
+            case incomplete if partition.checkpointConfig.exists(_.enabled) =>
+              IO(logInfo(s"Not saving checkpoint for table '${partition.tableName}': the read did not " +
+                s"complete ($incomplete), so the next run starts from the previous checkpoint"))
+            case _ => IO.unit
           }
       }
     }
