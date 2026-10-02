@@ -94,6 +94,10 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **Partitions shared one batch checkpoint.** Every partition read and wrote the same
+  `<table>.checkpoint.json`, so concurrent partitions all resumed from the same saved
+  offset, and their writes raced. A table that enables a checkpoint and a partition is now
+  rejected at load. Streaming is unaffected (#294).
 - **OAuth2 client credentials didn't work in Spark reads.** Every reader built its HTTP
   client without a token manager, so `auth.type = oauth2_client` with `client-id`,
   `client-secret` and `token-url` failed on the first request, asking for a pre-fetched

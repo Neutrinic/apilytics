@@ -72,4 +72,6 @@ The paginator would overwrite it, and every partition would read the whole endpo
 that combination is rejected at config load. Offset partitioning is the exception: it
 drives the pagination parameter deliberately, and bounds each window.
 
-The configured [rate limit](rate-limiting.md) is shared between partitions.
+The configured [rate limit](rate-limiting.md) is shared between partitions. A partitioned
+table can't also have a batch [checkpoint](../configuration/checkpoints.md): it's one
+position for the whole table, so a config with both is rejected at load.

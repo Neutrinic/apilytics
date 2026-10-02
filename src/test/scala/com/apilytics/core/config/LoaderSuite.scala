@@ -1190,6 +1190,30 @@ class LoaderSuite extends FunSuite {
     assertEquals(result.openapi, dir.resolve("bundled-spec.yaml").toFile.getPath)
   }
 
+  test("a batch checkpoint and a partition can't be combined") {
+    // Partitions shared the one checkpoint file: each resumed from the same saved offset,
+    // and their writes raced (#294).
+    def table(checkpoint: String) = ConfigFactory.parseString(
+      s"""
+        |openapi = "https://example.com/openapi.json"
+        |auth { type = none }
+        |pagination { style = offset }
+        |tables.items {
+        |  endpoint = "/items"
+        |  partition { type = "offset", size = 100, count = 2 }
+        |  $checkpoint
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException](
+      Loader.load(table("""checkpoint { enabled = true, path = "/tmp/ck", mode = offset }"""))
+    )
+    assert(ex.getMessage.contains("enables a checkpoint and a partition"), ex.getMessage)
+
+    // A streaming table's timestamp settings, without `enabled`, are still fine.
+    Loader.load(table("""checkpoint { mode = timestamp, timestamp-param = "since", timestamp-path = "/at" }"""))
+  }
+
   private def oauth2(keys: String) = ConfigFactory.parseString(
     s"""
       |openapi = "https://example.com/openapi.json"
