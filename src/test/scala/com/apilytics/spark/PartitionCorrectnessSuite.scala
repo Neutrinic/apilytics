@@ -40,10 +40,12 @@ class PartitionCorrectnessSuite extends FunSuite {
 
   private def page(ids: Range): String = ids.map(i => s"""{"id": $i}""").mkString("""{"results": [""", ",", "]}")
 
-  /** An API holding records 0 until `total`, serving `[offset, offset + min(limit, cap))`. */
-  private def stubOffsetApi(total: Int, cap: Int = Int.MaxValue): Unit =
+  /** An API holding records 0 until `total`, serving `[offset, offset + min(limit, cap))`,
+    * or a fixed `ignoring` records whatever the limit, like an API that ignores it.
+    */
+  private def stubOffsetApi(total: Int, cap: Int = Int.MaxValue, ignoring: Option[Int] = None): Unit =
     for (offset <- 0 to total by 50; limit <- Seq(50, 100)) {
-      val served = math.min(limit, cap)
+      val served = ignoring.getOrElse(math.min(limit, cap))
       server.stubFor(get(urlPathEqualTo("/items"))
         .withQueryParam("offset", equalTo(offset.toString)).withQueryParam("limit", equalTo(limit.toString))
         .willReturn(okJson(page(offset until math.min(offset + served, total)))))
@@ -106,6 +108,15 @@ class PartitionCorrectnessSuite extends FunSuite {
     // The API caps pages at 50 though asked for 100: a window must keep reading until it
     // holds its records, rather than stop after the pages it expected to need.
     stubOffsetApi(total = 300, cap = 50)
+    start("""partition { type = "offset", size = 150, count = 2 }""")
+
+    assertEquals(ids("SELECT id FROM api.default.items"), (0L until 300L).toList)
+  }
+
+  test("an offset window holds exactly its records even when the API ignores the page size") {
+    // Asked for 50, the API sends 100: the page is trimmed to what was asked for, so the
+    // window doesn't spill into the next one.
+    stubOffsetApi(total = 300, ignoring = Some(100))
     start("""partition { type = "offset", size = 150, count = 2 }""")
 
     assertEquals(ids("SELECT id FROM api.default.items"), (0L until 300L).toList)

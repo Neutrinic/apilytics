@@ -28,9 +28,10 @@ truncated rather than duplicated.
 
 Each window stops exactly at its boundary, whatever its size relative to the page size:
 the last request asks only for the records the window still needs, and the offset
-advances by the records each page actually held. That relies on the API honouring the
-page-size parameter. An API that sends more records than asked for can still overrun a
-window. An API that sends fewer is fine: the window keeps reading until it's full.
+advances by the records each page actually held. An API that sends more records than
+asked for has the page trimmed to what was asked for, as long as it can be counted: a
+top-level array, or the array at `results-path`. An API that sends fewer is fine: the
+window keeps reading until it's full.
 
 ## Enum
 

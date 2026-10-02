@@ -166,6 +166,26 @@ object Paginator {
       case None      => json.asArray.map(_.size)
     }
 
+    // The page with its record array cut to `n`: at `results-path`, or the top-level array.
+    // An API that ignores the page-size parameter sends more than was asked for, and the
+    // surplus belongs to the next offset window.
+    def trimTo(json: Json, n: Int): Json = {
+      def at(j: Json, keys: List[String]): Json = keys match {
+        case Nil => j.mapArray(_.take(n))
+        case key :: rest =>
+          j.arrayOrObject(
+            j,
+            arr => key.toIntOption.filter(i => i >= 0 && i < arr.size)
+              .map(i => Json.fromValues(arr.updated(i, at(arr(i), rest)))).getOrElse(j),
+            obj => obj(key).map(v => Json.fromJsonObject(obj.add(key, at(v, rest)))).getOrElse(j)
+          )
+      }
+      // RFC 6901: `~1` is `/` and `~0` is `~` within a segment.
+      val keys = config.resultsPath.toList
+        .flatMap(_.split("/").toList.drop(1)).map(_.replace("~1", "/").replace("~0", "~"))
+      at(json, keys)
+    }
+
     // Walk by records, not by pages (#292). Each request asks for what is left of the
     // limit, at most `max-page-size`; the offset advances by the records the page actually
     // held; and the walk stops once the limit is reached.
@@ -197,10 +217,17 @@ object Paginator {
             }
             if (isEmpty) None
             else {
-              val held       = recordCount(json).getOrElse(size)
+              val received = recordCount(json)
+              // More than asked for: keep what was asked for, and count only that, so the
+              // offset, the checkpoint and the window all stop at the same record.
+              val (page, held) = received match {
+                case Some(n) if n > size => (trimTo(json, size), size)
+                case Some(n)             => (json, n)
+                case None                => (json, size)
+              }
               val nextOffset = offset + held
               val state: Option[CheckpointState] = Some(CheckpointState.OffsetValue(nextOffset.toLong))
-              Some(((json, state), (nextOffset, read + held)))
+              Some(((page, state), (nextOffset, read + held)))
             }
           }
         }
