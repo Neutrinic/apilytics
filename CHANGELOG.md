@@ -94,6 +94,12 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **Link-header pagination could send credentials to another host.** It followed any
+  `next` URL a response named, and every request carries the source's authentication, so
+  a `Link` header pointing elsewhere received the API's token, even over plain HTTP. With
+  authentication configured, `next` links must now stay on the API's own origin; another
+  origin fails the read. Relative `next` links are now resolved against the request
+  (#288).
 - **OAuth2 client credentials didn't work in Spark reads.** Every reader built its HTTP
   client without a token manager, so `auth.type = oauth2_client` with `client-id`,
   `client-secret` and `token-url` failed on the first request, asking for a pre-fetched

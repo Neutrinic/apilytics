@@ -145,6 +145,12 @@ object Client {
       case None     => Auth(authConfig)
     }
 
+    /** Whether every request this client sends carries the source's credentials. Callers
+      * that follow URLs an API hands back use it to keep those credentials on the API's
+      * own origin (#288).
+      */
+    def sendsCredentials: Boolean = authConfig.authType != AuthType.None
+
     // Whose responses these are. The response cache is shared by every source in the JVM,
     // so a key of path and parameters alone let two catalogs requesting the same path, on
     // different hosts or with different credentials, be served each other's responses

@@ -56,7 +56,11 @@ security warning. See [Credentials](../configuration/credentials.md).
 | `cursor-param` | `cursor` | For `cursor`: the query parameter that sends the next cursor. |
 | `max-pages` | `1000` | A safety limit on pages per walk, against an API that never stops. |
 
-`link_header` follows the `Link: rel="next"` response header. A [checkpoint](#checkpoint)
+`link_header` follows the `Link: rel="next"` response header, resolving a relative link
+against the request. With authentication configured, it only follows links on the API's
+own origin (scheme, host and port), because every request carries the source's
+credentials. A link to another origin, or from HTTPS to HTTP, fails the read rather than
+send them there. A [checkpoint](#checkpoint)
 on a `link_header` source must use `mode = timestamp`, because the header carries no
 cursor or offset state to save.
 
