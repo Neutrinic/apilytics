@@ -145,6 +145,12 @@ object Client {
       case None     => Auth(authConfig)
     }
 
+    /** Whether every request this client sends carries the source's credentials. Callers
+      * that follow URLs an API hands back use it to keep those credentials on the API's
+      * own origin (#288).
+      */
+    def sendsCredentials: Boolean = authConfig.authType != AuthType.None
+
     // Whose responses these are. The response cache is shared by every source in the JVM,
     // so a key of path and parameters alone let two catalogs requesting the same path, on
     // different hosts or with different credentials, be served each other's responses
@@ -161,10 +167,15 @@ object Client {
         .take(8).map("%02x".format(_)).mkString
     }
 
+    // The URI's own query is part of the key too. Link-header pagination follows each next
+    // link with its query inside the URL (`/items?page=2`) and an empty `params` map, so a
+    // key of path and `params` alone gave every later page the same entry: page 3 was
+    // served page 2 from the cache, and the walk followed the same link again (#286).
     private def cacheKey(uri: Uri): String = {
       val origin = uri.scheme.map(_.value + "://").getOrElse("") +
         uri.authority.map(_.copy(userInfo = None).renderString).getOrElse("")
-      s"$origin#$credentialScope${uri.path.renderString}"
+      val query = if (uri.query.isEmpty) "" else "?" + uri.query.renderString
+      s"$origin#$credentialScope${uri.path.renderString}$query"
     }
 
     def get(uri: Uri, params: Map[String, String] = Map.empty): IO[ApiResponse] = {
@@ -173,10 +184,14 @@ object Client {
       }
       val baseReq = Request[IO](uri = fullUri)
       val endpoint = uri.path.renderString
-      val cached = cacheKey(uri)
+      // Keyed on the request actually sent: the URL with the parameters encoded into its
+      // query, sorted so the same request always gets the same key. Composing the URL's own
+      // query and the parameter map separately was ambiguous: `/items?a=1` with b=2, and
+      // `/items?a=1?b=2` with no parameters, produced the same key (#286).
+      val cached = cacheKey(params.toList.sorted.foldLeft(uri) { case (u, (k, v)) => u.withQueryParam(k, v) })
 
       // Check cache first
-      responseCache.get(cached, params).flatMap {
+      responseCache.get(cached, Map.empty).flatMap {
         case Some(cached) =>
           IO.pure(cached)
         case None =>
@@ -186,7 +201,7 @@ object Client {
             }.flatTap { response =>
               // Only cache successful responses
               if (response.status >= 200 && response.status < 300) {
-                responseCache.put(cached, params, response)
+                responseCache.put(cached, Map.empty, response)
               } else IO.unit
             }
       }

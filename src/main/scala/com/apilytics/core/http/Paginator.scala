@@ -138,7 +138,6 @@ object Paginator {
   ): Stream[IO, (Json, Option[CheckpointState])] = {
     val offsetParam = config.offsetParam.getOrElse("offset")
     val pageSizeParam = config.pageSizeParam.getOrElse("limit")
-    val pageSize = limit.map(l => math.min(l, config.maxPageSize)).getOrElse(config.maxPageSize)
     val resultsPointer = config.resultsPath.flatMap(p => Pointer.parse(p).toOption)
 
     // Where to start walking. A checkpoint wins, then an offset the caller already put in
@@ -160,29 +159,81 @@ object Paginator {
           .getOrElse(0)
     }
 
-    Stream.unfoldEval[IO, Int, (Json, Option[CheckpointState])](initialOffset) { offset =>
-      val reqParams = params + (offsetParam -> offset.toString) + (pageSizeParam -> pageSize.toString)
-      client.get(baseUri, reqParams).map { resp =>
-        val json = resp.json
-        val isEmpty = resultsPointer match {
-          case Some(ptr) =>
-            // Check the configured results-path for an empty array
-            ptr.get(json).toOption match {
-              case Some(arr) => arr.asArray.exists(_.isEmpty)
-              case None      => true // Path not found — no more data
-            }
-          case None =>
-            // No results-path — check if top-level response is an empty array
-            json.asArray.exists(_.isEmpty)
-        }
-        if (isEmpty) None
-        else {
-          val nextOffset = offset + pageSize
-          val state: Option[CheckpointState] = Some(CheckpointState.OffsetValue(nextOffset.toLong))
-          Some(((json, state), nextOffset))
-        }
+    // How many records a page held: the results array, or a top-level array. None when the
+    // response is neither, and the requested size has to be assumed.
+    def recordCount(json: Json): Option[Int] = resultsPointer match {
+      case Some(ptr) => ptr.get(json).toOption.flatMap(_.asArray).map(_.size)
+      case None      => json.asArray.map(_.size)
+    }
+
+    // The page with its record array cut to `n`: at `results-path`, or the top-level array.
+    // An API that ignores the page-size parameter sends more than was asked for, and the
+    // surplus belongs to the next offset window.
+    def trimTo(json: Json, n: Int): Json = {
+      def at(j: Json, keys: List[String]): Json = keys match {
+        case Nil => j.mapArray(_.take(n))
+        case key :: rest =>
+          j.arrayOrObject(
+            j,
+            arr => key.toIntOption.filter(i => i >= 0 && i < arr.size)
+              .map(i => Json.fromValues(arr.updated(i, at(arr(i), rest)))).getOrElse(j),
+            obj => obj(key).map(v => Json.fromJsonObject(obj.add(key, at(v, rest)))).getOrElse(j)
+          )
       }
-    }.through(limitPages(limit, config))
+      // RFC 6901: `~1` is `/` and `~0` is `~` within a segment. The -1 keeps empty segments,
+      // including a trailing one: `/items/` names the "" member of `items`, and dropping it
+      // trimmed the wrong array, so more records were emitted than the offset counted.
+      val keys = config.resultsPath.toList
+        .flatMap(_.split("/", -1).toList.drop(1)).map(_.replace("~1", "/").replace("~0", "~"))
+      at(json, keys)
+    }
+
+    // Walk by records, not by pages (#292). Each request asks for what is left of the
+    // limit, at most `max-page-size`; the offset advances by the records the page actually
+    // held; and the walk stops once the limit is reached.
+    //
+    // It used to ask for `min(limit, max-page-size)` every time, advance by that, and stop
+    // after `ceil(limit / max-page-size)` pages. So an offset window of 150 with 100-record
+    // pages read 200 records, 50 of them the next window's; an API capping pages below the
+    // configured size left a window short; and a checkpoint after a short page saved the
+    // requested size, so records appended after the last one read were skipped.
+    Stream.unfoldEval[IO, (Int, Int), (Json, Option[CheckpointState])]((initialOffset, 0)) {
+      case (offset, read) =>
+        val remaining = limit.map(_ - read)
+        if (remaining.exists(_ <= 0)) IO.pure(None)
+        else {
+          val size = remaining.fold(config.maxPageSize)(r => math.min(r, config.maxPageSize))
+          val reqParams = params + (offsetParam -> offset.toString) + (pageSizeParam -> size.toString)
+          client.get(baseUri, reqParams).map { resp =>
+            val json = resp.json
+            val isEmpty = resultsPointer match {
+              case Some(ptr) =>
+                // Check the configured results-path for an empty array
+                ptr.get(json).toOption match {
+                  case Some(arr) => arr.asArray.exists(_.isEmpty)
+                  case None      => true // Path not found — no more data
+                }
+              case None =>
+                // No results-path — check if top-level response is an empty array
+                json.asArray.exists(_.isEmpty)
+            }
+            if (isEmpty) None
+            else {
+              val received = recordCount(json)
+              // More than asked for: keep what was asked for, and count only that, so the
+              // offset, the checkpoint and the window all stop at the same record.
+              val (page, held) = received match {
+                case Some(n) if n > size => (trimTo(json, size), size)
+                case Some(n)             => (json, n)
+                case None                => (json, size)
+              }
+              val nextOffset = offset + held
+              val state: Option[CheckpointState] = Some(CheckpointState.OffsetValue(nextOffset.toLong))
+              Some(((page, state), (nextOffset, read + held)))
+            }
+          }
+        }
+    }.take(config.maxPages.toLong)
   }
 
   private def linkHeaderPages(
@@ -204,13 +255,32 @@ object Paginator {
       case Some(uri) =>
         // For first request use pageParams, for subsequent use uri as-is (it includes params)
         val reqParams = if (uri == baseUri) pageParams else Map.empty[String, String]
-        client.get(uri, reqParams).map { resp =>
+        client.get(uri, reqParams).flatMap { resp =>
           val nextLink = resp.headers.get("Link").flatMap(parseLinkHeader)
-          val nextUri = nextLink.flatMap(link => Uri.fromString(link).toOption)
-          Some(((resp.json, None), nextUri))
+          // A relative link is resolved against the request that returned it (RFC 8288).
+          val nextUri = nextLink.flatMap(link => Uri.fromString(link).toOption).map(uri.resolve)
+          nextUri match {
+            // Every request carries the source's credentials, so a next link may only lead
+            // back to the API's own origin. Following one elsewhere sent the token to
+            // whatever host a response named, or downgraded it to plain HTTP (#288).
+            case Some(next) if client.sendsCredentials && origin(next) != origin(baseUri) =>
+              IO.raiseError(new IllegalStateException(
+                s"The API's Link header sends the next page to ${origin(next)}, a different " +
+                  s"origin from ${origin(baseUri)}. Not following it: the request would carry " +
+                  "this source's credentials there."
+              ))
+            case _ => IO.pure(Some(((resp.json, None), nextUri)))
+          }
         }
     }.through(safetyLimit(config))
   }
+
+  /** Scheme, host and port: what has to match for credentials to stay with the API. */
+  private def origin(uri: Uri): String =
+    uri.scheme.map(_.value).getOrElse("") + "://" +
+      uri.host.map(_.renderString.toLowerCase).getOrElse("") +
+      uri.port.orElse(uri.scheme.map(_.value).collect { case "https" => 443; case "http" => 80 })
+        .map(":" + _).getOrElse("")
 
   private def parseLinkHeader(header: String): Option[String] = {
     // Parse: <url>; rel="next"
