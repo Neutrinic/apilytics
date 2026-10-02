@@ -42,9 +42,9 @@ def fragment_files():
 def parse(text, source):
     """Entries by heading.
 
-    An entry is a `- ` line with text on it, plus everything after it up to the next entry or heading: lines
-    indented by two spaces or more (continuations and nested lists) and the blank lines between
-    them. Blank lines at an entry's end are dropped.
+    An entry is a `- ` line with text on it, plus everything after it up to the next entry or
+    heading: lines indented by two spaces or more (continuations and nested lists) and the
+    blank lines between them. Blank lines at an entry's end are dropped.
     """
     sections, current, errors = {}, None, []
     for n, line in enumerate(text.rstrip("\n").split("\n"), 1):
