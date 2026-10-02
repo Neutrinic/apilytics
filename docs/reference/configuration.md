@@ -166,8 +166,8 @@ See [Partitioning](../using/partitioning.md) for which pagination each type work
 |---|---|---|
 | `parent-table` | | The table whose rows drive the calls. |
 | `parent-key` | | The parent column substituted into the endpoint's placeholder. |
-| `join-strategy` | `nested_loop` | `nested_loop` (one call per parent row) or `batch`. **`batch` doesn't work yet:** the config loads, but the table fails when it's built ([#277](https://github.com/Neutrinic/apilytics/issues/277)). |
-| `batch-param` | required for `batch` | The query parameter carrying the batched keys. The endpoint can't have placeholders. |
+| `join-strategy` | `nested_loop` | `nested_loop` (one call per parent row) or `batch` (many parent keys per call). |
+| `batch-param` | required for `batch` | The query parameter carrying the batched keys. The endpoint can't have placeholders, so the parent key column is named after `parent-key`. |
 | `batch-size` | `100` | Parent keys per call. |
 | `batch-separator` | `,` | How the keys are joined. |
 | `child-key-field` | derived from `parent-key` | For `batch`: the field in each child record that holds its parent's key, used to match results back to parents. Without it, common names derived from `parent-key` are tried. |

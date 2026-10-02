@@ -111,6 +111,10 @@ so no upgrade is required for existing users.
   work, or is killed leaves the checkpoint where it was. It follows the reading task, not
   the whole query, so a failure in a later stage still comes after the checkpoint has
   moved; the checkpoints page says so (#280).
+- **Batch joins couldn't run.** The loader requires a `join-strategy = batch` endpoint
+  without a path placeholder, but the table required one to name its parent key column,
+  so every batch join the loader accepted failed when the table was built. A batch join
+  now names the column after `parent-key` (`_parent_id`) and reads end to end (#277).
 - **The response cache could serve one catalog another's data.** It's shared by every
   source in a JVM, and its entries were keyed by request path and parameters only. Two
   catalogs requesting the same path on different hosts, or with different credentials,

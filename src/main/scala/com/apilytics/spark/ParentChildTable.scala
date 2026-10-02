@@ -1,6 +1,6 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{SchemaMode, SourceConfig, TableConfig}
+import com.apilytics.core.config.{JoinStrategy, SchemaMode, SourceConfig, TableConfig}
 import com.apilytics.core.source.SourceHandle
 import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.schema.SchemaMapper
@@ -38,13 +38,21 @@ class ParentChildTable(
     val baseUrl: String
 ) extends Table with SupportsRead {
 
-  // Path parameter name extracted from endpoint template (e.g., "customer_id" from "/customers/{customer_id}/orders")
-  val pathParamName: String = extractPathParam(childEndpointTemplate)
-    .getOrElse(throw new IllegalArgumentException(
-      s"Child endpoint '$childEndpointTemplate' must contain a path parameter like {param_name}"
-    ))
+  // What the parent key column is named after. A nested-loop join substitutes the key into
+  // a path placeholder, and the column takes the placeholder's name ("customer_id" from
+  // "/customers/{customer_id}/orders"). A batch join has no placeholder, since the loader
+  // forbids one: the keys go in `batch-param` instead, so the column takes the parent key's
+  // own name. Requiring a placeholder for both is what made every batch join fail here (#277).
+  val pathParamName: String = extractPathParam(childEndpointTemplate) match {
+    case Some(param) => param
+    case None if tableConfig.joinStrategy.contains(JoinStrategy.Batch) => parentKey
+    case None => throw new IllegalArgumentException(
+      s"Child endpoint '$childEndpointTemplate' must contain a path parameter like {param_name}, " +
+        "or use join-strategy = batch with a batch-param"
+    )
+  }
 
-  // Parent key column name in output (e.g., "_parent_customer_id")
+  // Parent key column name in output (e.g., "_parent_customer_id", or "_parent_id" for a batch join)
   val parentKeyColumn: String = s"_parent_$pathParamName"
 
   private lazy val (arrowSchema, sparkSchema) = buildSchema()

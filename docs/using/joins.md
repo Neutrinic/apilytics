@@ -19,14 +19,41 @@ FROM api.default.type_pokemon LIMIT 5;
 | `parent-table` | The table whose rows drive the calls. |
 | `parent-key` | The parent column substituted into the path. |
 | `data-path` | Where the child records sit in the response, when they are nested. |
-| `join-strategy` | `nested_loop` makes one call per parent row. |
-
-`join-strategy = batch`, which would send many parent keys in one call for APIs that accept
-a list, doesn't work yet: the config loads, but the table fails when it's built
-([#277](https://github.com/Neutrinic/apilytics/issues/277)). Use `nested_loop`.
+| `join-strategy` | `nested_loop` makes one call per parent row. `batch` sends many parent keys in one call; see below. |
 
 The parent key comes back as a column named `_parent_` followed by the path parameter's
 name: `{type_name}` gives `_parent_type_name`.
+
+## Batch joins
+
+When the API can look up many parents in one call, such as `/orders?customer_ids=1,2,3`,
+a batch join cuts the number of calls:
+
+```hocon
+tables {
+  customers { endpoint = "/customers" }
+  orders {
+    endpoint        = "/orders"          # no placeholder: the keys go in batch-param
+    parent-table    = "customers"
+    parent-key      = "id"
+    join-strategy   = "batch"
+    batch-param     = "customer_ids"
+    batch-size      = 100                # parent keys per call
+    child-key-field = "customer_id"      # the field in each order that names its customer
+  }
+}
+```
+
+```sql
+SELECT _parent_id AS customer, order_id FROM api.default.orders;
+```
+
+- The keys are joined by `batch-separator`, `,` by default, into `batch-param`.
+- Each child record is matched back to its parent through `child-key-field`. Without it,
+  common names derived from `parent-key` are tried. A child that matches no parent in its
+  batch is dropped.
+- With no placeholder to name it after, the parent key column is named after `parent-key`:
+  `parent-key = "id"` gives `_parent_id`.
 
 ## Two things that catch people out
 
