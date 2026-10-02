@@ -178,10 +178,14 @@ object Client {
       }
       val baseReq = Request[IO](uri = fullUri)
       val endpoint = uri.path.renderString
-      val cached = cacheKey(uri)
+      // Keyed on the request actually sent: the URL with the parameters encoded into its
+      // query, sorted so the same request always gets the same key. Composing the URL's own
+      // query and the parameter map separately was ambiguous: `/items?a=1` with b=2, and
+      // `/items?a=1?b=2` with no parameters, produced the same key (#286).
+      val cached = cacheKey(params.toList.sorted.foldLeft(uri) { case (u, (k, v)) => u.withQueryParam(k, v) })
 
       // Check cache first
-      responseCache.get(cached, params).flatMap {
+      responseCache.get(cached, Map.empty).flatMap {
         case Some(cached) =>
           IO.pure(cached)
         case None =>
@@ -191,7 +195,7 @@ object Client {
             }.flatTap { response =>
               // Only cache successful responses
               if (response.status >= 200 && response.status < 300) {
-                responseCache.put(cached, params, response)
+                responseCache.put(cached, Map.empty, response)
               } else IO.unit
             }
       }

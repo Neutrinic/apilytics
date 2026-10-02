@@ -62,13 +62,17 @@ object ResponseCache {
     }
   }
 
-  /** A cache key fit for a log line: parameter names kept, their values dropped.
+  /** A cache key fit for a log line: everything up to the query string.
     *
-    * Keys include query strings, the URL's own as well as the request's parameters (#286),
-    * and a query can carry a token. The full key stays the cache's identity; only what's
-    * logged loses the values.
+    * Keys include the request's query (#286), and a query can carry a token. Redacting
+    * values in place can't be done reliably on a composite key: a value may itself contain
+    * `?` or `=`, and one did leak. So log lines leave the query out entirely; the full key
+    * stays the cache's identity.
     */
-  private[http] def forLog(key: String): String = key.replaceAll("=[^&?]*", "=***")
+  private[http] def forLog(key: String): String = key.indexOf('?') match {
+    case -1 => key
+    case i  => key.take(i) + "?<query omitted>"
+  }
 
   /** Clear singleton caches (for testing). */
   private[http] def clearSingletons(): Unit = synchronized {
