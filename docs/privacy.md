@@ -16,7 +16,10 @@ The API you query receives what your configuration and queries send it:
 
 What APIlytics' errors show of a failed request:
 
-- **A request that times out** is named by its host and path only, never its query string.
+- **A request that gets no response within `http.timeout`**, because it couldn't connect
+  or no response headers arrived in time, is named by its host and path only, never its
+  query string. A response body that stalls later fails through a different path, which
+  doesn't apply this rule.
 - **An HTTP error** shows the method, path and query parameters, and up to 200 characters
   of the response body. Parameters whose names look like credentials (containing `key`,
   `token`, `pass`, `secret`, `auth` or `credential`) have their values replaced by

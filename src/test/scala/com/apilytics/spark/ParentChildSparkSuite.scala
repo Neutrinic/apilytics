@@ -164,9 +164,12 @@ class ParentChildSparkSuite extends FunSuite {
     spark.conf.set("spark.sql.catalog.v", "com.apilytics.spark.RESTCatalog")
     spark.conf.set("spark.sql.catalog.v.config", variantConf.toAbsolutePath.toString)
 
-    val error = intercept[Exception](spark.sql("SELECT value FROM v.default.orders_each").collect())
+    // Resolving the table must fail, with no query run: a refusal that came only once rows
+    // were read would be the bug back again.
+    val error = intercept[Exception](spark.table("v.default.orders_each"))
     assert(Iterator.iterate[Throwable](error)(_.getCause).takeWhile(_ != null)
-      .exists(e => String.valueOf(e.getMessage).contains("variant mode")), s"unexpected failure: $error")
+      .exists(e => String.valueOf(e.getMessage).contains("variant mode") &&
+        String.valueOf(e.getMessage).contains("orders_each")), s"unexpected failure: $error")
 
     assertEquals(spark.sql("SELECT value FROM v.default.customers").collect().length, 3)
   }
