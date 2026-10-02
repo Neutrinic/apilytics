@@ -250,8 +250,10 @@ class PaginatorSuite extends CatsEffectSuite {
     Paginator.pagesWithState(client, Uri.unsafeFromString("http://test"), Map.empty, config)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 2)
-        assertEquals(pages(0)._2, Some(CheckpointState.OffsetValue(10L)))
-        assertEquals(pages(1)._2, Some(CheckpointState.OffsetValue(20L)))
+        // One record per page: the saved offset is where reading stopped, not a multiple of
+        // the page size, which would skip records appended after a short page (#292).
+        assertEquals(pages(0)._2, Some(CheckpointState.OffsetValue(1L)))
+        assertEquals(pages(1)._2, Some(CheckpointState.OffsetValue(2L)))
       }
   }
 

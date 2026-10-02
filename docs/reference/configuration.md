@@ -155,7 +155,7 @@ A predicate without a matching entry is applied by Spark after the rows arrive. 
 | `type` | `date-range` | `offset`, `enum` or `date-range`. |
 | `size`, `count` | required for `offset` | Partition `i` covers offsets `[i * size, (i + 1) * size)`. Both at least 1. |
 | `param`, `values` | required for `enum` | One partition per value, sent in `param`. |
-| `column`, `range`, `start-param`, `end-param` | required for `date-range` | Splits the pushed-down window on `column` into chunks of `range`. |
+| `column`, `range`, `start-param`, `end-param` | required for `date-range` | Splits the pushed-down window on `column` into chunks of `range`, which must be at least 1 millisecond. |
 | `format` | `yyyy-MM-dd'T'HH:mm:ss'Z'` | For `date-range`: how the bounds are written. |
 
 See [Partitioning](../using/partitioning.md) for which pagination each type works with.
