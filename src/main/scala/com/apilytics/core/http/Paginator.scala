@@ -125,7 +125,7 @@ object Paginator {
               case None => None
             }
         }
-    }.through(limitPages(limit, config))
+    }.through(safetyLimit(config))
   }
 
   private def offsetPages(
@@ -272,7 +272,7 @@ object Paginator {
             case _ => IO.pure(Some(((resp.json, None), nextUri)))
           }
         }
-    }.through(limitPages(limit, config))
+    }.through(safetyLimit(config))
   }
 
   /** Scheme, host and port: what has to match for credentials to stay with the API. */
@@ -290,17 +290,15 @@ object Paginator {
     }
   }
 
-  /** Apply page limits. When a record limit is specified, compute the number of pages
-    * needed. Always enforce max-pages as a safety net to prevent infinite pagination. */
-  private def limitPages[A](limit: Option[Int], config: PaginationConfig): fs2.Pipe[IO, A, A] = {
-    val safetyLimit = config.maxPages
-    limit match {
-      case None =>
-        _.take(safetyLimit.toLong)
-      case Some(l) =>
-        // Take enough pages to cover the limit. With max page size, that's ceil(limit/pageSize) pages.
-        val pagesForLimit = math.ceil(l.toDouble / config.maxPageSize).toInt.max(1)
-        _.take(math.min(pagesForLimit, safetyLimit).toLong)
-    }
-  }
+  /** Only the `max-pages` safety stop, for walks that follow the API's own next page.
+    *
+    * Cursor and link-header walks used to stop after `ceil(limit / max-page-size)` pages,
+    * assuming every page is full. A maximum isn't a guaranteed size: with one record per
+    * page, `LIMIT 2` stopped after one page and returned one row (#298). A pushed limit still
+    * sets the page size requested; Spark applies the limit itself and stops reading once it
+    * has its rows, and the reader's bounded prefetch keeps the overshoot to a page or two.
+    */
+  private def safetyLimit[A](config: PaginationConfig): fs2.Pipe[IO, A, A] =
+    _.take(config.maxPages.toLong)
+
 }
