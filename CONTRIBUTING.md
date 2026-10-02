@@ -52,6 +52,15 @@ Always put `Closes #XX` before the summary section.
 - Keep the first line under 72 characters
 - Reference issues when relevant
 
+### Changelog
+
+Don't edit `CHANGELOG.md` in a pull request. If users would notice the change, add
+`changelog.d/<issue>.md` instead: a heading and the entry, written as it will appear. See
+[`changelog.d/README.md`](changelog.d/README.md). When every pull request edited
+`CHANGELOG.md`, each merge conflicted with every other open one; separate files never do. The
+release pull request folds the fragments into `CHANGELOG.md` with
+`python .github/scripts/release_changelog.py <version> <date>`.
+
 ## Code Style
 
 - Follow existing patterns in the codebase
