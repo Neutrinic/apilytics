@@ -124,8 +124,18 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
               pageState
             }
 
-            // Update checkpoint ref within the IO context
+            // Update checkpoint ref within the IO context. A timestamp checkpoint keeps the
+            // latest timestamp of the whole read: pages often come newest first (GitHub's
+            // default), and saving the last page's maximum saved the oldest, so the next run
+            // read everything again (#311). Cursor and offset state is positional: the last
+            // page's is the one to resume from.
             val updateState = effectiveState match {
+              case Some(CheckpointState.TimestampValue(ts)) if isTimestampMode =>
+                stateRef.update {
+                  case Some(CheckpointState.TimestampValue(prev)) =>
+                    Some(CheckpointState.TimestampValue(RESTColumnarPartitionReader.laterTimestamp(prev, ts)))
+                  case _ => Some(CheckpointState.TimestampValue(ts))
+                }
               case Some(s) => stateRef.set(Some(s))
               case None    => IO.unit
             }
@@ -220,10 +230,8 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
 
   /** Extract the maximum timestamp from already-extracted records.
     *
-    * Uses lexicographic max (`String#max`), which gives correct temporal ordering
-    * only for ISO-8601 strings with fixed-width components and consistent timezone
-    * (e.g., "2024-01-15T10:30:00Z"). Non-ISO formats such as Unix epoch strings,
-    * non-zero-padded dates, or varying timezone offsets will compare incorrectly.
+    * Compared as instants, so offsets and fractional seconds order correctly; see
+    * `laterTimestamp`.
     */
   private def extractMaxTimestamp(records: List[Json], pointer: Option[Pointer]): Option[CheckpointState] = {
     pointer.flatMap { ptr =>
@@ -231,12 +239,24 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
         ptr.get(record).toOption.flatMap(_.asString)
       }
       if (timestamps.isEmpty) None
-      else Some(CheckpointState.TimestampValue(timestamps.max))
+      else Some(CheckpointState.TimestampValue(timestamps.reduce(RESTColumnarPartitionReader.laterTimestamp)))
     }
   }
 }
 
 object RESTColumnarPartitionReader {
+
+  /** The later of two API timestamps, compared as instants (#311).
+    *
+    * As strings, `2026-01-15T10:00:00.5Z` sorts before `2026-01-15T10:00:00Z` and offsets
+    * don't order at all. Only when one of them doesn't parse are they compared as strings,
+    * which still orders the fixed-width ISO-8601 forms most APIs send.
+    */
+  private[spark] def laterTimestamp(a: String, b: String): String =
+    (parseInstant(a), parseInstant(b)) match {
+      case (Some(x), Some(y)) => if (y.isAfter(x)) b else a
+      case _                  => if (b > a) b else a
+    }
 
   /** Parse an API timestamp into an instant.
     *

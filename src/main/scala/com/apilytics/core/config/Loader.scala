@@ -166,6 +166,8 @@ object Loader {
       }
     }
 
+    checkParameterCollisions(sc)
+
     // Warn when auth credentials are configured over plaintext HTTP
     warnPlaintextCredentials(sc)
 
@@ -543,6 +545,79 @@ object Loader {
     * This catches accidental `http://` typos that would leak Bearer tokens,
     * Basic Auth credentials, or API keys in plaintext.
     */
+  /** Two settings that set the same query parameter (#312).
+    *
+    * Only one value can be sent, so one setting silently replaced the other, and twice that
+    * returned wrong rows without an error (#292, #310). A filter on the parameter a timestamp
+    * checkpoint sets is safe: the filter isn't pushed, and Spark applies it after the rows
+    * arrive. That's the setup the docs recommend, so it loads, with a warning that the filter
+    * won't reach the API. Any other collision has no safe reading, so it fails here: a filter
+    * or a checkpoint on a parameter pagination sends, or a filter on a batch join's
+    * `batch-param`.
+    *
+    * @return the warnings, for tests
+    */
+  private[config] def checkParameterCollisions(sc: SourceConfig): List[String] = {
+    val warnings = List.newBuilder[String]
+
+    sc.tables.foreach { case (name, tc) =>
+      val pagination = tc.pagination.getOrElse(sc.pagination)
+      val setBy: Map[String, String] =
+        paginationParams(pagination, sc.http.responseFormat) ++ tc.batchParam.map(_ -> "batch-param")
+      val checkpointParam = tc.checkpoint.flatMap(_.overriddenParam)
+
+      checkpointParam.foreach { param =>
+        setBy.get(param).foreach { where =>
+          throw new IllegalArgumentException(
+            s"Table '$name' sets query parameter '$param' from checkpoint.timestamp-param, but " +
+              s"$where sends that parameter too. Only one value can be sent, so one would " +
+              "replace the other. Use a different parameter for one of them."
+          )
+        }
+      }
+
+      tc.filters.foreach { f =>
+        setBy.get(f.param).foreach { where =>
+          throw new IllegalArgumentException(
+            s"Table '$name' has a filter on '${f.column}' sending query parameter '${f.param}', " +
+              s"but $where sends that parameter too. The filter's value would be replaced, and " +
+              "the rows wouldn't match the WHERE. Remove the filter, or map it to another " +
+              "parameter."
+          )
+        }
+        if (checkpointParam.contains(f.param)) {
+          val msg = s"Table '$name': the filter on '${f.column}' uses query parameter " +
+            s"'${f.param}', which the timestamp checkpoint sets on every request. The filter " +
+            "won't be sent to the API; Spark applies it to the rows that come back."
+          log.warn(msg)
+          warnings += msg
+        }
+      }
+    }
+
+    warnings.result()
+  }
+
+  /** The query parameters pagination sends, with the setting each comes from. Defaults
+    * included: offset pagination sends `offset` and `limit` unless told otherwise. The
+    * streaming formats don't paginate, so they send none.
+    */
+  private def paginationParams(p: PaginationConfig, format: ResponseFormat): Map[String, String] =
+    if (format != ResponseFormat.Json) Map.empty
+    else p.style match {
+      case PaginationStyle.Cursor =>
+        Map(p.cursorParam.getOrElse("cursor") -> "pagination's cursor-param") ++
+          p.pageSizeParam.map(_ -> "pagination's page-size-param")
+      case PaginationStyle.Offset =>
+        Map(
+          p.offsetParam.getOrElse("offset")  -> "pagination's offset-param",
+          p.pageSizeParam.getOrElse("limit") -> "pagination's page-size-param"
+        )
+      case PaginationStyle.LinkHeader =>
+        p.pageSizeParam.map(_ -> "pagination's page-size-param").toMap
+      case PaginationStyle.None => Map.empty
+    }
+
   private[config] def warnPlaintextCredentials(sc: SourceConfig): List[String] = {
     if (sc.auth.authType == AuthType.None) return Nil
 

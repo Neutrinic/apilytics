@@ -71,6 +71,15 @@ tables {
 }
 ```
 
+The checkpoint saves the latest timestamp of the whole read, compared as instants, so the
+order the API serves pages in doesn't matter.
+
+Every request carries the checkpoint's value in `timestamp-param`. A `filters` entry on the
+same parameter, such as `since` mapped to `updated_at`, therefore isn't sent to the API: Spark
+applies that filter to the rows that come back, and the config logs a warning saying so when
+it loads. A `timestamp-param` that pagination also sends, such as its `cursor-param`, is
+rejected at load, since only one value could be sent.
+
 A checkpoint can't be combined with [partitioning](../using/partitioning.md): it's one
 position for the whole table, so every partition would resume from the same place. A
 config with both is rejected at load.
