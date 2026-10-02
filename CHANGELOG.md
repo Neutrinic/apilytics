@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-08-26
+## [1.0.0] - 2026-10-02
 
 First stable release. The version marks architectural stability rather than a burst of
 features: the source layer is protocol-neutral, one jar covers the whole Spark 4.x line,
