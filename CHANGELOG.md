@@ -100,6 +100,17 @@ so no upgrade is required for existing users.
   token. Tokens are now fetched, renewed and refreshed on a 401 in table scans, COUNT
   pushdown and aggregate pushdown alike. An `oauth2_client` config missing part of the
   credentials now fails when it loads, naming what's missing (#276).
+- **Retries escaped the rate limit.** A JSON request took one rate-limit permit before its
+  first attempt, and its retries after 429, 5xx or network errors took none. So a burst of
+  failures was retried above `http.rate-limit`, which is exactly when an API is asking for
+  less. Every attempt now takes a permit (#279).
+- **A failed read could move a batch checkpoint past undelivered records.** The state was
+  saved in the page stream's finaliser, which also runs on failure and cancellation, so
+  the next run skipped what the failed one never delivered. It's now saved only when the
+  reading Spark task succeeds. A reading task that fails, fails afterwards in its own
+  work, or is killed leaves the checkpoint where it was. It follows the reading task, not
+  the whole query, so a failure in a later stage still comes after the checkpoint has
+  moved; the checkpoints page says so (#280).
 - **Batch joins couldn't run.** The loader requires a `join-strategy = batch` endpoint
   without a path placeholder, but the table required one to name its parent key column,
   so every batch join the loader accepted failed when the table was built. A batch join
