@@ -87,11 +87,9 @@ cursor or offset state to save.
 An in-memory cache of API responses, shared by the tasks in each JVM (the driver, and
 each executor). Useful when the same pages are read repeatedly within its TTL.
 
-!!! warning "Use it for one source per Spark application"
-    Cached responses are keyed by request path and query parameters only, not by host
-    or credentials. Two catalogs in the same application that request the same path with
-    the same parameters can be served each other's responses. Tracked in
-    [#278](https://github.com/Neutrinic/apilytics/issues/278).
+Entries are keyed by host, credentials, path and query parameters, so catalogs in the same
+application never share responses, even when they request the same path. The credentials
+are hashed rather than stored.
 
 A query that mixes cached and fresh pages isn't a consistent snapshot of the API: pages
 cached at different times can overlap or miss records that moved between pages.
