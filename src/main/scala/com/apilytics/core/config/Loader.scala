@@ -64,6 +64,21 @@ object Loader {
               else CacheConfig()
     )
 
+    // Validate: a batch checkpoint can't be combined with partitioning. Every partition reads
+    // and writes the same `<table>.checkpoint.json`: the saved position overrode each
+    // partition's own start, so concurrent partitions all began at the same offset, and
+    // their writes raced (#294). Streaming is unaffected; it keeps offsets in Spark's own
+    // checkpoint, not in this file.
+    sc.tables.foreach { case (name, tc) =>
+      if (tc.partition.isDefined && tc.checkpoint.exists(_.enabled)) {
+        throw new IllegalArgumentException(
+          s"Table '$name' enables a checkpoint and a partition. A batch checkpoint is one " +
+            "position for the whole table, so partitions sharing it would all resume from " +
+            "the same place. Remove one: partition the read, or checkpoint it."
+        )
+      }
+    }
+
     // Validate: checkpoint with link-header pagination is not supported
     if (sc.pagination.style == PaginationStyle.LinkHeader) {
       sc.tables.foreach { case (name, tc) =>
@@ -362,9 +377,12 @@ object Loader {
     partitionType match {
       case "date-range" =>
         val range = Duration(config.getString("range")) match {
-          case fd: FiniteDuration => fd
+          // Partitions step through the window in whole milliseconds, so a range that rounds
+          // to zero never advances and its list of partitions grows without end (#292).
+          case fd: FiniteDuration if fd.toMillis >= 1 => fd
           case _ => throw new IllegalArgumentException(
-            s"partition.range must be a finite duration (got '${config.getString("range")}')"
+            s"partition.range must be a finite duration of at least 1 millisecond " +
+              s"(got '${config.getString("range")}')"
           )
         }
         PartitionConfig.DateRange(

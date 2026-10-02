@@ -30,8 +30,11 @@ class ExplodedArrayColumnarPartitionReader(partition: ExplodedArrayInputPartitio
     val outer = partition.sourceConfig.schema.explodeOuter
     val handle = partition.handle
 
+    // No limit goes to the API. It would count parent records, but this table's rows are
+    // array elements: a parent with an empty array yields none, so fetching `LIMIT n`
+    // parents can return fewer than n rows, or none (#298). Spark applies the limit itself.
     session
-      .pages(ReadRequest(handle, partition.pushedParams, partition.pushedLimit))
+      .pages(ReadRequest(handle, partition.pushedParams, None))
       .flatMap { page =>
         val exploded = page.records.flatMap(r =>
           ExplodedArrayOps.explodeRecord(r, partition.arrayFieldName, partition.arrayJsonPath, outer)

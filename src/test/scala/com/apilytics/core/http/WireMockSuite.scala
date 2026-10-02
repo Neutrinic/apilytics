@@ -85,11 +85,21 @@ class WireMockSuite extends FunSuite {
         .withQueryParam("limit", equalTo("5"))
         .willReturn(okJson("""[{"id": 1}, {"id": 2}]"""))
     )
+    // The offset advances by the records a page held, not the size asked for: a short first
+    // page of 2 continues at 2. Stepping by 5 skipped records 2 to 4 (#292).
     server.stubFor(
       get(urlPathEqualTo("/items"))
-        .withQueryParam("offset", equalTo("5"))
+        .withQueryParam("offset", equalTo("2"))
         .withQueryParam("limit", equalTo("5"))
         .willReturn(okJson("""[{"id": 3}]"""))
+    )
+    // Three records so far, four short of the limit of 7: the walk asks again until the
+    // API runs out.
+    server.stubFor(
+      get(urlPathEqualTo("/items"))
+        .withQueryParam("offset", equalTo("3"))
+        .withQueryParam("limit", equalTo("4"))
+        .willReturn(okJson("""[]"""))
     )
 
     val pagination = PaginationConfig(
@@ -120,9 +130,10 @@ class WireMockSuite extends FunSuite {
         .withQueryParam("limit", equalTo("2"))
         .willReturn(okJson("""[{"id": 3}]"""))
     )
+    // After a page of one record at offset 2, the next page starts at 3, not 4 (#292).
     server.stubFor(
       get(urlPathEqualTo("/items"))
-        .withQueryParam("offset", equalTo("4"))
+        .withQueryParam("offset", equalTo("3"))
         .withQueryParam("limit", equalTo("2"))
         .willReturn(okJson("""[]"""))
     )
@@ -157,9 +168,10 @@ class WireMockSuite extends FunSuite {
         .withQueryParam("limit", equalTo("2"))
         .willReturn(okJson("""{"count": 3, "results": [{"name": "c"}]}"""))
     )
+    // One record at offset 2 means the next page starts at 3 (#292).
     server.stubFor(
       get(urlPathEqualTo("/api"))
-        .withQueryParam("offset", equalTo("4"))
+        .withQueryParam("offset", equalTo("3"))
         .withQueryParam("limit", equalTo("2"))
         .willReturn(okJson("""{"count": 3, "results": []}"""))
     )
@@ -1634,9 +1646,10 @@ class WireMockSuite extends FunSuite {
           .withQueryParam("limit", equalTo("2"))
           .willReturn(okJson("""[{"id": 3}]"""))
       )
+      // One record read at 2, so the next page starts at 3 (#292).
       server.stubFor(
         get(urlPathEqualTo("/items"))
-          .withQueryParam("offset", equalTo("4"))
+          .withQueryParam("offset", equalTo("3"))
           .withQueryParam("limit", equalTo("2"))
           .willReturn(okJson("""[]"""))
       )

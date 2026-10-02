@@ -13,11 +13,16 @@ Strict mode uses the OpenAPI schema to produce typed columns. Nested objects are
 to `flatten-depth` levels. Anything deeper becomes a JSON string, which `parse_json()`
 can read if you need it.
 
+Every column is nullable, including fields the spec marks `required`. A required field
+can still be null in the data: inside an optional parent object that's missing, when it's
+also declared `nullable: true`, or when the API breaks its own spec. A non-nullable column
+would let Spark drop `IS NULL` filters on it, and with them those rows.
+
 `array-handling` controls array fields:
 
 | `array-handling` | Result |
 |---|---|
-| `keep_array` | The default. Arrays stay as array columns. |
+| `keep_array` | The default. Each array is one column holding the array as a JSON string. Read elements with `from_json` or `parse_json()`, or use `explode_view` for a row per element. |
 | `explode_view` | Each array field also becomes a table, `<table>_<field>`, with one row per element. `SHOW TABLES` lists only these exploded tables. |
 | `both` | `SHOW TABLES` lists the base tables and the exploded ones. |
 

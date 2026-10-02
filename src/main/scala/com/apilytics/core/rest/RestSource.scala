@@ -75,7 +75,16 @@ private[rest] final class RestSession(
     // on the child side of a join returns one object. Inheriting the source setting there
     // makes the paginator hunt for a results path that is not present, decide the page is
     // empty, and return nothing (#217).
-    val pagination = handle.tableConfig.flatMap(_.pagination).getOrElse(sourceConfig.pagination)
+    val configured = handle.tableConfig.flatMap(_.pagination).getOrElse(sourceConfig.pagination)
+
+    // Offset pagination counts each page's records to know where the next page starts, how
+    // many a window still needs, and what to checkpoint. Without a `results-path` it could
+    // only count a top-level array, so a wrapped response with just a `data-path` fell back
+    // to the requested size: short pages skipped records, and a checkpoint after two records
+    // saved the page size (#292). The table's `data-path` is where its records are, so it
+    // stands in for `results-path` when that isn't set.
+    val pagination =
+      if (configured.resultsPath.isEmpty) configured.copy(resultsPath = dataPath) else configured
 
     Paginator
       .pagesWithState(

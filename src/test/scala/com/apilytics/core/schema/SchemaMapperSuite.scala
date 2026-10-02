@@ -26,7 +26,9 @@ class SchemaMapperSuite extends FunSuite {
 
     val nameField = fields.find(_.getName == "name").get
     assert(nameField.getType.isInstanceOf[ArrowType.Utf8])
-    assert(!nameField.isNullable)
+    // Required, but still nullable: a spec's `required` isn't a promise Spark can rely on
+    // to drop `IS NULL` filters (#296).
+    assert(nameField.isNullable)
 
     val ageField = fields.find(_.getName == "age").get
     assert(ageField.getType.isInstanceOf[ArrowType.Int])
