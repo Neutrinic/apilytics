@@ -207,7 +207,7 @@ INFO.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `enabled` | `false` | |
+| `enabled` | `false` | Can't be combined with `partition`: one checkpoint covers the whole table. |
 | `path` | required when enabled | The directory for `<table>.checkpoint.json`: a local path, or `hdfs://`, `s3://`, `s3a://`, `gs://`. |
 | `mode` | `cursor` | `cursor`, `offset` or `timestamp`. |
 | `timestamp-path` | required for `timestamp` | A JSON pointer to each record's timestamp. |
