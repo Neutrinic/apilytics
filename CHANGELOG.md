@@ -94,6 +94,12 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **Link-header pagination could send credentials to another host.** It followed any
+  `next` URL a response named, and every request carries the source's authentication, so
+  a `Link` header pointing elsewhere received the API's token, even over plain HTTP. With
+  authentication configured, `next` links must now stay on the API's own origin; another
+  origin fails the read. Relative `next` links are now resolved against the request
+  (#288).
 - **Offset pagination stepped by the page size, not the records received.** Three
   consequences:
   - an offset partition whose size wasn't a multiple of the page size read past its window
@@ -135,7 +141,9 @@ so no upgrade is required for existing users.
   source in a JVM, and its entries were keyed by request path and parameters only. Two
   catalogs requesting the same path on different hosts, or with different credentials,
   could be served each other's responses. Keys now include the host and a hash of the
-  credentials (#278).
+  credentials (#278). They also include the URL's own query string: link-header
+  pagination follows each next link with its query inside the URL, so later pages shared
+  one entry, and page 3 was served page 2 (#286).
 - **An unreachable host took minutes per request to fail.** ember's timeout does not
   cover opening the connection, so each attempt waited for the operating system's TCP
   connect timeout, about two minutes on Linux. On EMR Serverless without a VPC, where
