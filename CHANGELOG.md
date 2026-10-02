@@ -94,6 +94,34 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **Link-header pagination could send credentials to another host.** It followed any
+  `next` URL a response named, and every request carries the source's authentication, so
+  a `Link` header pointing elsewhere received the API's token, even over plain HTTP. With
+  authentication configured, `next` links must now stay on the API's own origin; another
+  origin fails the read. Relative `next` links are now resolved against the request
+  (#288).
+- **Offset pagination stepped by the page size, not the records received.** Three
+  consequences:
+  - an offset partition whose size wasn't a multiple of the page size read past its window
+    into the next one (two windows of 150 over 300 records returned 350 rows)
+  - a window stopped short when the API served smaller pages than asked for
+  - an offset checkpoint after a short page saved the requested size, so records appended
+    after the last one read were skipped
+
+  Requests now ask only for what a window still needs, the offset advances by the records
+  each page held, and a window reads until it's full (#292).
+- **Enum partitioning overrode a filter pushed to its parameter.** `WHERE id = 1` with `id`
+  pushed to `kind` returned every enum value's records, because planning replaced the
+  pushed value after Spark had dropped the predicate. Such a query now reads one partition
+  with its own value (#292).
+- **A date-range partition's `range` must now be at least 1 millisecond.** A zero range
+  never advanced, and planning grew its partition list without end (#292).
+- **A pushed `LIMIT` could stop reading too early.** Cursor and link-header pagination
+  stopped after `ceil(limit / max-page-size)` pages, assuming full pages, so `LIMIT 2`
+  over one-record pages returned one row. Exploded tables sent the limit to the API as a
+  count of parent records, so a parent with an empty array could leave `LIMIT 1` with no
+  rows. Walks now run until Spark has its rows, and exploded tables don't forward the
+  limit (#298).
 - **`COUNT(*)` could be answered by a count of one column.** A `count` aggregation
   configured for a column also matched `COUNT(*)`, but a column count skips nulls, so a
   table with a null in that column under-counted its rows. `COUNT(*)` now matches only a
@@ -123,7 +151,9 @@ so no upgrade is required for existing users.
   source in a JVM, and its entries were keyed by request path and parameters only. Two
   catalogs requesting the same path on different hosts, or with different credentials,
   could be served each other's responses. Keys now include the host and a hash of the
-  credentials (#278).
+  credentials (#278). They also include the URL's own query string: link-header
+  pagination follows each next link with its query inside the URL, so later pages shared
+  one entry, and page 3 was served page 2 (#286).
 - **An unreachable host took minutes per request to fail.** ember's timeout does not
   cover opening the connection, so each attempt waited for the operating system's TCP
   connect timeout, about two minutes on Linux. On EMR Serverless without a VPC, where

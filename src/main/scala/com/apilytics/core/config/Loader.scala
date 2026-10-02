@@ -362,9 +362,12 @@ object Loader {
     partitionType match {
       case "date-range" =>
         val range = Duration(config.getString("range")) match {
-          case fd: FiniteDuration => fd
+          // Partitions step through the window in whole milliseconds, so a range that rounds
+          // to zero never advances and its list of partitions grows without end (#292).
+          case fd: FiniteDuration if fd.toMillis >= 1 => fd
           case _ => throw new IllegalArgumentException(
-            s"partition.range must be a finite duration (got '${config.getString("range")}')"
+            s"partition.range must be a finite duration of at least 1 millisecond " +
+              s"(got '${config.getString("range")}')"
           )
         }
         PartitionConfig.DateRange(
