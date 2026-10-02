@@ -66,9 +66,25 @@ class LinkHeaderOriginSuite extends FunSuite {
     assertEquals(walk(bearer), Right(List(1, 2)))
   }
 
+  test("with credentials, a next link that only changes the scheme is refused") {
+    // Same host and port, different scheme: only the scheme part of the origin check can
+    // catch this. The test server speaks plain HTTP, so the link goes HTTP to HTTPS; the
+    // check is the same in the HTTPS-to-HTTP direction. Without it, the walk would follow
+    // the link and fail on TLS instead of refusing it.
+    firstPageLinkingTo(s"https://localhost:${api.port()}/items?page=2")
+
+    val result = walk(bearer)
+
+    assert(result.isLeft, s"expected the walk to fail, got $result")
+    val message = result.left.toOption.get.getMessage
+    assert(message.contains("different origin"), s"failed for another reason: $message")
+  }
+
   test("a relative next link is resolved against the request and followed") {
     firstPageLinkingTo("/items?page=2")
+    // Resolved onto the same origin, so the credentials go with it.
     api.stubFor(get(urlPathEqualTo("/items")).withQueryParam("page", equalTo("2"))
+      .withHeader("Authorization", equalTo("Bearer secret-token"))
       .willReturn(okJson("""{"page": 2}""")))
 
     assertEquals(walk(bearer), Right(List(1, 2)))
