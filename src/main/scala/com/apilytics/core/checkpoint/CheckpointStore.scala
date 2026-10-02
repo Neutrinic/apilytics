@@ -11,8 +11,8 @@ import java.nio.file.{Files, Paths}
 
 /** Storage abstraction for checkpoint state.
   *
-  * Uses Java NIO for local paths and Hadoop FileSystem API for
-  * remote paths (HDFS, S3).
+  * Uses Java NIO for plain local paths and Hadoop's FileSystem API for any path with a
+  * URI scheme (HDFS, S3, GCS, ADLS, DBFS, `file://`).
   */
 trait CheckpointStore {
   def read(tableName: String): IO[Option[CheckpointState]]
@@ -35,9 +35,17 @@ object CheckpointStore {
       case None                              => disabled
     }
 
-  /** Check if a path uses a remote filesystem (HDFS, S3, etc.) */
-  private def isRemotePath(path: String): Boolean =
-    path.startsWith("hdfs://") || path.startsWith("s3://") || path.startsWith("s3a://") || path.startsWith("gs://")
+  /** Whether a path goes through Hadoop's FileSystem: any path with a URI scheme.
+    *
+    * Only `hdfs://`, `s3://`, `s3a://` and `gs://` used to: `abfss://`, `wasbs://`, `dbfs:/`
+    * and `file://` fell to the local store, where `Paths.get` made them relative paths under
+    * the executor's working directory, so the checkpoint didn't persist (#316). Hadoop
+    * resolves every scheme it has a connector for. A scheme is two or more characters, so a
+    * Windows drive such as `C:\` stays local, and so do plain paths, including Databricks'
+    * `/Volumes/...` mounts.
+    */
+  private[checkpoint] def isRemotePath(path: String): Boolean =
+    path.matches("^[A-Za-z][A-Za-z0-9+.-]+:.*")
 
   /** Local filesystem checkpoint store using Java NIO. */
   private class LocalCheckpointStore(basePath: String) extends CheckpointStore {

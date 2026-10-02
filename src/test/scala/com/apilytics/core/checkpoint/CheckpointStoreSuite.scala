@@ -114,4 +114,33 @@ class CheckpointStoreSuite extends FunSuite {
     assertEquals(store.read("table_a").unsafeRunSync(), Some(CheckpointState.CursorValue("cursor-a")))
     assertEquals(store.read("table_b").unsafeRunSync(), Some(CheckpointState.OffsetValue(100L)))
   }
+
+  test("any path with a URI scheme goes through Hadoop; a plain path stays local (#316)") {
+    // Only hdfs, s3, s3a and gs were recognised: abfss, wasbs and dbfs paths became relative
+    // local paths under the executor's working directory, and didn't persist.
+    val remote = List(
+      "abfss://container@account.dfs.core.windows.net/checkpoints",
+      "wasbs://container@account.blob.core.windows.net/checkpoints",
+      "dbfs:/checkpoints",
+      "file:///tmp/checkpoints",
+      "hdfs://namenode/checkpoints",
+      "s3a://bucket/checkpoints",
+      "gs://bucket/checkpoints"
+    )
+    val local = List("/tmp/checkpoints", "relative/checkpoints", "/Volumes/catalog/schema/vol", "C:\\checkpoints", "C:/checkpoints")
+    remote.foreach(p => assert(CheckpointStore.isRemotePath(p), s"$p should go through Hadoop"))
+    local.foreach(p => assert(!CheckpointStore.isRemotePath(p), s"$p should stay local"))
+  }
+
+  tmpDirFixture.test("a file:// checkpoint is written where the URI says (#316)") { tmpDir =>
+    // Hadoop's local writes need its native helpers on Windows. CI and the lab run this on Linux.
+    assume(!System.getProperty("os.name").startsWith("Windows"), "needs Hadoop native helpers on Windows")
+    val config = CheckpointConfig(enabled = true, path = tmpDir.toUri.toString)
+    val store = CheckpointStore.fromConfig(Some(config), testHadoopConf)
+
+    store.write("table1", CheckpointState.CursorValue("c1")).unsafeRunSync()
+
+    assert(Files.exists(tmpDir.resolve("table1.checkpoint.json")), s"nothing under $tmpDir")
+    assertEquals(store.read("table1").unsafeRunSync(), Some(CheckpointState.CursorValue("c1")))
+  }
 }
