@@ -11,6 +11,14 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels the run it replaces (#304): each conflict fix used to
+# leave the superseded matrix running. Runs are grouped by pull request number, not branch
+# name, since two pull requests from forks can share a branch name. Runs on main are never
+# cancelled; every commit there is tested.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # One jar serves the whole Spark 4.x line, so every supported line is built and tested.
   #
@@ -104,3 +112,18 @@ jobs:
         with:
           name: sbom
           path: bom.cdx.json
+
+  # Changelog fragments (#304) parse, so a malformed one fails here rather than at release.
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Check changelog fragments
+        run: python .github/scripts/release_changelog.py --check
