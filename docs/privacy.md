@@ -14,8 +14,18 @@ The API you query receives what your configuration and queries send it:
 - the query parameters that pushed-down filters become
 - one request per page, and per parent row for [parent-child](using/joins.md) tables
 
-APIlytics' errors name the host and path of a failed request, never its query string,
-because a query string can carry credentials.
+What APIlytics' errors show of a failed request:
+
+- **A request that gets no response within `http.timeout`**, because it couldn't connect
+  or no response headers arrived in time, is named by its host and path only, never its
+  query string. A response body that stalls later fails through a different path, which
+  doesn't apply this rule.
+- **An HTTP error** shows the method, path and query parameters, and up to 200 characters
+  of the response body. Parameters whose names look like credentials (containing `key`,
+  `token`, `pass`, `secret`, `auth` or `credential`) have their values replaced by
+  `[REDACTED]`, and common token formats are scrubbed from the body. A credential in a
+  parameter with some other name would still show: send credentials as headers, through
+  `auth`, rather than in query parameters.
 
 ## This site counts page views
 

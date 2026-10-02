@@ -38,6 +38,17 @@ class ParentChildTable(
     val baseUrl: String
 ) extends Table with SupportsRead {
 
+  // Variant mode isn't supported for joins: the table would advertise one VARIANT column, but
+  // the child reader builds Arrow string vectors, so a query crashed mid-read with "Struct
+  // type not supported" (#300). Refuse it here, when the table is loaded, saying why.
+  if (sourceConfig.schema.mode == SchemaMode.Variant) {
+    throw new UnsupportedOperationException(
+      s"Table '$tableName' is a parent-child table, which isn't supported in variant mode " +
+        "(schema.mode = variant). Use strict mode for this source, or define the join's child " +
+        "as a plain table and join in SQL."
+    )
+  }
+
   // What the parent key column is named after. A nested-loop join substitutes the key into
   // a path placeholder, and the column takes the placeholder's name ("customer_id" from
   // "/customers/{customer_id}/orders"). A batch join has no placeholder, since the loader

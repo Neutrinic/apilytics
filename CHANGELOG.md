@@ -135,6 +135,10 @@ so no upgrade is required for existing users.
   data when its optional parent object is missing, when it's also `nullable: true`, or
   when the API breaks its spec, and those rows vanished. Every column is now nullable
   (#296).
+- **A parent-child table in variant mode crashed mid-read.** It advertised a VARIANT column,
+  but its reader built Arrow strings, so a query failed with "Struct type not supported".
+  Parent-child tables are now refused in variant mode when they load, with a message
+  saying so. The privacy page also now describes error messages accurately (#300).
 - **OAuth2 client credentials didn't work in Spark reads.** Every reader built its HTTP
   client without a token manager, so `auth.type = oauth2_client` with `client-id`,
   `client-secret` and `token-url` failed on the first request, asking for a pre-fetched
