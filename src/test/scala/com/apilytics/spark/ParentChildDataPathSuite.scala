@@ -53,8 +53,9 @@ class ParentChildDataPathSuite extends FunSuite {
       get(urlPathEqualTo("/types")).withQueryParam("offset", equalTo("0"))
         .willReturn(okJson("""{"results": [{"name": "fire"}]}"""))
     )
+    // One record at offset 0, so the next page starts at 1, not at the page size (#292).
     server.stubFor(
-      get(urlPathEqualTo("/types")).withQueryParam("offset", equalTo("100"))
+      get(urlPathEqualTo("/types")).withQueryParam("offset", equalTo("1"))
         .willReturn(okJson("""{"results": []}"""))
     )
     server.stubFor(

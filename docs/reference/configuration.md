@@ -51,7 +51,7 @@ security warning. See [Credentials](../configuration/credentials.md).
 | `offset-param` | `offset` | For `offset`: the query parameter holding the start offset. |
 | `page-size-param` | `limit` for `offset`; otherwise not sent | The query parameter holding the page size. For `cursor` and `link_header`, no page size is sent unless this is set. |
 | `max-page-size` | `100` | The page size requested. A pushed-down `LIMIT` smaller than this is requested instead. |
-| `results-path` | | For `offset`: a JSON pointer to the page's record array, used to recognise an empty last page. Without it, an empty top-level array ends the walk. |
+| `results-path` | the table's `data-path` | For `offset`: a JSON pointer to the page's record array, used to count each page's records and recognise an empty last page. Without either, only a top-level array can be counted. |
 | `cursor-path` | required for `cursor` | A JSON pointer to the next cursor in the response. The walk ends when it's missing or empty. |
 | `cursor-param` | `cursor` | For `cursor`: the query parameter that sends the next cursor. |
 | `max-pages` | `1000` | A safety limit on pages per walk, against an API that never stops. |
@@ -159,7 +159,7 @@ A predicate without a matching entry is applied by Spark after the rows arrive. 
 | `type` | `date-range` | `offset`, `enum` or `date-range`. |
 | `size`, `count` | required for `offset` | Partition `i` covers offsets `[i * size, (i + 1) * size)`. Both at least 1. |
 | `param`, `values` | required for `enum` | One partition per value, sent in `param`. |
-| `column`, `range`, `start-param`, `end-param` | required for `date-range` | Splits the pushed-down window on `column` into chunks of `range`. |
+| `column`, `range`, `start-param`, `end-param` | required for `date-range` | Splits the pushed-down window on `column` into chunks of `range`, which must be at least 1 millisecond. |
 | `format` | `yyyy-MM-dd'T'HH:mm:ss'Z'` | For `date-range`: how the bounds are written. |
 
 See [Partitioning](../using/partitioning.md) for which pagination each type works with.

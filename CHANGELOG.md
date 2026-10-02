@@ -100,6 +100,22 @@ so no upgrade is required for existing users.
   authentication configured, `next` links must now stay on the API's own origin; another
   origin fails the read. Relative `next` links are now resolved against the request
   (#288).
+- **Offset pagination stepped by the page size, not the records received.** Three
+  consequences:
+  - an offset partition whose size wasn't a multiple of the page size read past its window
+    into the next one (two windows of 150 over 300 records returned 350 rows)
+  - a window stopped short when the API served smaller pages than asked for
+  - an offset checkpoint after a short page saved the requested size, so records appended
+    after the last one read were skipped
+
+  Requests now ask only for what a window still needs, the offset advances by the records
+  each page held, and a window reads until it's full (#292).
+- **Enum partitioning overrode a filter pushed to its parameter.** `WHERE id = 1` with `id`
+  pushed to `kind` returned every enum value's records, because planning replaced the
+  pushed value after Spark had dropped the predicate. Such a query now reads one partition
+  with its own value (#292).
+- **A date-range partition's `range` must now be at least 1 millisecond.** A zero range
+  never advanced, and planning grew its partition list without end (#292).
 - **OAuth2 client credentials didn't work in Spark reads.** Every reader built its HTTP
   client without a token manager, so `auth.type = oauth2_client` with `client-id`,
   `client-secret` and `token-url` failed on the first request, asking for a pre-fetched
