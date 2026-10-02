@@ -4,20 +4,27 @@ A checkpoint makes repeated batch reads resume where the last one stopped. On th
 run, all the data is fetched, and the final pagination state is saved. Later runs resume
 from that state.
 
-**The checkpoint only moves when a read succeeds.** It's saved when the Spark task that
-read the table succeeds. A read that fails partway, or whose task fails afterwards (for
-example while writing its output), leaves it where it was, so the next run reads those
+**The checkpoint moves when the Spark task that read the table succeeds.** A reading task
+that fails partway, is killed, or fails later in its own work (such as writing its
+output in the same task) leaves the checkpoint where it was, so the next run reads those
 records again instead of skipping them.
 
 Some records can be read twice:
 
-- **After a failed run**, the next run starts from the previous checkpoint, so records
-  the failed run had already delivered come again.
+- **After a failed reading task**, the next run starts from the previous checkpoint, so
+  records the failed task had already delivered come again.
 - **In `cursor` mode**, the API's last page has no next cursor. The saved cursor is the one
   that fetched that page, so the next run reads it again, along with anything appended
   to it since. That's what keeps records added to the last page from being missed.
 
-So a checkpointed read is at least once: deduplicate downstream, or write idempotently.
+!!! warning "Not an end-to-end delivery guarantee"
+    The checkpoint follows the *reading* task, not the whole query. If the query goes on
+    past that task (after a shuffle, in a later stage, or in a sink's final commit) and
+    fails there, the reading task has already succeeded and moved the checkpoint.
+    Rerunning the query then starts after records that never reached the output, and
+    deduplicating downstream can't bring them back. Use batch checkpoints where the read
+    and the write happen in the same task, or where re-reading from an earlier point is
+    possible; for end-to-end tracking, use streaming.
 
 !!! note "Batch checkpoints and streaming"
     [Streaming](../using/streaming.md) tracks progress more carefully. Spark keeps the

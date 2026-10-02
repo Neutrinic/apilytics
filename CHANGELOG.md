@@ -107,8 +107,10 @@ so no upgrade is required for existing users.
 - **A failed read could move a batch checkpoint past undelivered records.** The state was
   saved in the page stream's finaliser, which also runs on failure and cancellation, so
   the next run skipped what the failed one never delivered. It's now saved only when the
-  reading Spark task succeeds. A read that fails, or whose task fails afterwards, leaves
-  the checkpoint where it was (#280).
+  reading Spark task succeeds. A reading task that fails, fails afterwards in its own
+  work, or is killed leaves the checkpoint where it was. It follows the reading task, not
+  the whole query, so a failure in a later stage still comes after the checkpoint has
+  moved; the checkpoints page says so (#280).
 - **An unreachable host took minutes per request to fail.** ember's timeout does not
   cover opening the connection, so each attempt waited for the operating system's TCP
   connect timeout, about two minutes on Linux. On EMR Serverless without a VPC, where

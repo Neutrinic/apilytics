@@ -111,12 +111,50 @@ class CheckpointSparkSuite extends FunSuite {
   }
 
   test("a read whose task fails downstream saves nothing") {
-    // Every page is read, but the task fails after the rows reach it, as a failed write would.
-    intercept[Exception](
-      spark.table("api.default.events").foreach((_: Row) => throw new RuntimeException("sink failed"))
+    // The task reads every row first, so the read itself completes, then fails as a failed
+    // write would. Only the task-failure gate can stop the save here: throwing on the first
+    // row would cancel the read before it finished, and pass for the wrong reason.
+    val error = intercept[Exception](
+      spark.table("api.default.events").foreachPartition { (rows: Iterator[Row]) =>
+        val read = rows.size
+        throw new RuntimeException(s"sink failed after reading $read rows")
+      }
     )
 
+    assert(Iterator.iterate[Throwable](error)(_.getCause).takeWhile(_ != null)
+      .exists(e => String.valueOf(e.getMessage).contains("sink failed after reading 2 rows")),
+      s"the task failed for another reason: $error")
     assert(!Files.exists(checkpointFile),
       s"a failed task saved a checkpoint: ${Files.readString(checkpointFile)}")
+  }
+
+  test("a task killed after its read finished saves nothing") {
+    // The window CodeRabbit pointed at: the read completes, the task is killed, and Spark
+    // reports the kill only after the completion callbacks have run. The task reads every
+    // row, cancels its own job, waits until Spark has marked it interrupted, then returns
+    // normally, so nothing fails it and only the interruption check can stop the save.
+    // Local mode runs the task in the driver's JVM, which is what lets it reach the context.
+    // Cancelling the job fails the driver's call at once, while the killed task is still
+    // running; its completion listener runs later. Wait for the task to end before looking.
+    val taskEnded = new java.util.concurrent.CountDownLatch(1)
+    spark.sparkContext.addSparkListener(new org.apache.spark.scheduler.SparkListener {
+      override def onTaskEnd(end: org.apache.spark.scheduler.SparkListenerTaskEnd): Unit = taskEnded.countDown()
+    })
+    spark.sparkContext.setJobGroup("checkpoint-kill", "kill after read", interruptOnCancel = false)
+    try {
+      intercept[Exception](
+        spark.table("api.default.events").foreachPartition { (rows: Iterator[Row]) =>
+          rows.size
+          org.apache.spark.SparkContext.getOrCreate().cancelJobGroup("checkpoint-kill")
+          val ctx = org.apache.spark.TaskContext.get()
+          val deadline = System.nanoTime() + 10L * 1000 * 1000 * 1000
+          while (!ctx.isInterrupted() && System.nanoTime() < deadline) Thread.sleep(20)
+        }
+      )
+    } finally spark.sparkContext.clearJobGroup()
+
+    assert(taskEnded.await(30, java.util.concurrent.TimeUnit.SECONDS), "the killed task never ended")
+    assert(!Files.exists(checkpointFile),
+      s"a killed task saved a checkpoint: ${Files.readString(checkpointFile)}")
   }
 }

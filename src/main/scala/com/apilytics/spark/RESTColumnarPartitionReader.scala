@@ -72,7 +72,10 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
   taskContext.foreach { ctx =>
     ctx.addTaskFailureListener((_: TaskContext, _: Throwable) => taskFailed = true)
     ctx.addTaskCompletionListener[Unit] { _ =>
-      if (!taskFailed) completedState.foreach(state => saveCheckpoint(state).unsafeRunSync())
+      // A task killed after its read finished still reaches here without failing: Spark
+      // reports the kill only after the completion callbacks run. So check for it too.
+      if (!taskFailed && !ctx.isInterrupted())
+        completedState.foreach(state => saveCheckpoint(state).unsafeRunSync())
     }
   }
 
