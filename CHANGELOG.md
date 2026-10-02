@@ -125,7 +125,9 @@ so no upgrade is required for existing users.
   source in a JVM, and its entries were keyed by request path and parameters only. Two
   catalogs requesting the same path on different hosts, or with different credentials,
   could be served each other's responses. Keys now include the host and a hash of the
-  credentials (#278).
+  credentials (#278). They also include the URL's own query string: link-header
+  pagination follows each next link with its query inside the URL, so later pages shared
+  one entry, and page 3 was served page 2 (#286).
 - **An unreachable host took minutes per request to fail.** ember's timeout does not
   cover opening the connection, so each attempt waited for the operating system's TCP
   connect timeout, about two minutes on Linux. On EMR Serverless without a VPC, where

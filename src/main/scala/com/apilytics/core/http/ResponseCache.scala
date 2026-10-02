@@ -62,6 +62,18 @@ object ResponseCache {
     }
   }
 
+  /** A cache key fit for a log line: everything up to the query string.
+    *
+    * Keys include the request's query (#286), and a query can carry a token. Redacting
+    * values in place can't be done reliably on a composite key: a value may itself contain
+    * `?` or `=`, and one did leak. So log lines leave the query out entirely; the full key
+    * stays the cache's identity.
+    */
+  private[http] def forLog(key: String): String = key.indexOf('?') match {
+    case -1 => key
+    case i  => key.take(i) + "?<query omitted>"
+  }
+
   /** Clear singleton caches (for testing). */
   private[http] def clearSingletons(): Unit = synchronized {
     singletonCaches.clear()
@@ -112,7 +124,7 @@ object ResponseCache {
                   accessOrder = newOrder,
                   hits = state.hits + 1
                 )
-                log.debug("Cache HIT: {}", key)
+                log.debug("Cache HIT: {}", forLog(key))
                 (newState, Some(entry.response))
 
               case Some(_) =>
@@ -122,11 +134,11 @@ object ResponseCache {
                   accessOrder = state.accessOrder.filterNot(_ == key),
                   misses = state.misses + 1
                 )
-                log.debug("Cache EXPIRED: {}", key)
+                log.debug("Cache EXPIRED: {}", forLog(key))
                 (newState, None)
 
               case None =>
-                log.debug("Cache MISS: {}", key)
+                log.debug("Cache MISS: {}", forLog(key))
                 (state.copy(misses = state.misses + 1), None)
             }
           }
@@ -155,7 +167,7 @@ object ResponseCache {
               (withNew, newOrder)
             }
 
-            log.debug("Cache PUT: {} (size={})", key, finalCache.size)
+            log.debug("Cache PUT: {} (size={})", forLog(key), finalCache.size)
             state.copy(cache = finalCache, accessOrder = finalOrder)
           }
         }
