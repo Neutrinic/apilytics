@@ -257,6 +257,29 @@ class PaginatorSuite extends CatsEffectSuite {
       }
   }
 
+  test("an oversized page is trimmed even when results-path ends in an empty key") {
+    // `/items/` names the "" member of `items` (RFC 6901). Splitting the pointer dropped that
+    // trailing empty segment, so three records were emitted while the offset moved by two.
+    val page = parse("""{"items": {"": [{"id": 1}, {"id": 2}, {"id": 3}]}}""").toOption.get
+    val client = mockClient(List((page, Map.empty)))
+
+    val config = PaginationConfig(
+      style = PaginationStyle.Offset,
+      offsetParam = Some("offset"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 10,
+      resultsPath = Some("/items/")
+    )
+
+    Paginator.pagesWithState(client, Uri.unsafeFromString("http://test"), Map.empty, config, limit = Some(2))
+      .compile.toList.map { pages =>
+        assertEquals(pages.size, 1)
+        val records = pages.head._1.hcursor.downField("items").downField("").focus.flatMap(_.asArray).map(_.size)
+        assertEquals(records, Some(2))
+        assertEquals(pages.head._2, Some(CheckpointState.OffsetValue(2L)))
+      }
+  }
+
   test("offset pagination resumes from checkpoint state") {
     val page = parse("""[{"id": 3}]""").toOption.get
     val empty = parse("""[]""").toOption.get

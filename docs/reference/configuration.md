@@ -51,7 +51,7 @@ security warning. See [Credentials](../configuration/credentials.md).
 | `offset-param` | `offset` | For `offset`: the query parameter holding the start offset. |
 | `page-size-param` | `limit` for `offset`; otherwise not sent | The query parameter holding the page size. For `cursor` and `link_header`, no page size is sent unless this is set. |
 | `max-page-size` | `100` | The page size requested. A pushed-down `LIMIT` smaller than this is requested instead. |
-| `results-path` | | For `offset`: a JSON pointer to the page's record array, used to recognise an empty last page. Without it, an empty top-level array ends the walk. |
+| `results-path` | the table's `data-path` | For `offset`: a JSON pointer to the page's record array, used to count each page's records and recognise an empty last page. Without either, only a top-level array can be counted. |
 | `cursor-path` | required for `cursor` | A JSON pointer to the next cursor in the response. The walk ends when it's missing or empty. |
 | `cursor-param` | `cursor` | For `cursor`: the query parameter that sends the next cursor. |
 | `max-pages` | `1000` | A safety limit on pages per walk, against an API that never stops. |

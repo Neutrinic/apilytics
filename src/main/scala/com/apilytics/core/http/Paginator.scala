@@ -180,9 +180,11 @@ object Paginator {
             obj => obj(key).map(v => Json.fromJsonObject(obj.add(key, at(v, rest)))).getOrElse(j)
           )
       }
-      // RFC 6901: `~1` is `/` and `~0` is `~` within a segment.
+      // RFC 6901: `~1` is `/` and `~0` is `~` within a segment. The -1 keeps empty segments,
+      // including a trailing one: `/items/` names the "" member of `items`, and dropping it
+      // trimmed the wrong array, so more records were emitted than the offset counted.
       val keys = config.resultsPath.toList
-        .flatMap(_.split("/").toList.drop(1)).map(_.replace("~1", "/").replace("~0", "~"))
+        .flatMap(_.split("/", -1).toList.drop(1)).map(_.replace("~1", "/").replace("~0", "~"))
       at(json, keys)
     }
 

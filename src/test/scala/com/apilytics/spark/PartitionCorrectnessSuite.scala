@@ -51,7 +51,7 @@ class PartitionCorrectnessSuite extends FunSuite {
         .willReturn(okJson(page(offset until math.min(offset + served, total)))))
     }
 
-  private def start(tableBody: String): Unit = {
+  private def start(tableBody: String, resultsPath: Boolean = true): Unit = {
     Files.writeString(dir.resolve("items.yaml"), spec)
     Files.writeString(
       dir.resolve("items.conf"),
@@ -59,7 +59,7 @@ class PartitionCorrectnessSuite extends FunSuite {
          |base-url = "http://localhost:${server.port()}"
          |auth { type = none }
          |http { max-retries = 0, max-backoff = "0 seconds" }
-         |pagination { style = offset, offset-param = "offset", page-size-param = "limit", max-page-size = 100, results-path = "/results" }
+         |pagination { style = offset, offset-param = "offset", page-size-param = "limit", max-page-size = 100${if (resultsPath) ", results-path = \"/results\"" else ""} }
          |tables {
          |  items {
          |    endpoint = "/items"
@@ -131,6 +131,21 @@ class PartitionCorrectnessSuite extends FunSuite {
       .willReturn(okJson(page(0 until 0))))
     val checkpoints = dir.resolve("ck").toAbsolutePath.toString.replace("\\", "/")
     start(s"""checkpoint { enabled = true, path = "$checkpoints", mode = offset }""")
+
+    assertEquals(ids("SELECT id FROM api.default.items"), List(0L, 1L))
+    val saved = Files.readString(dir.resolve("ck").resolve("items.checkpoint.json"))
+    assert(saved.contains("\"value\":2"), saved)
+  }
+
+  test("with only data-path, an offset checkpoint still resumes after the records read") {
+    // No results-path: the records sit at the table's data-path, and they must be counted
+    // there. Counting nothing fell back to the page size, saving 100 after two records.
+    server.stubFor(get(urlPathEqualTo("/items")).withQueryParam("offset", equalTo("0"))
+      .willReturn(okJson(page(0 until 2))))
+    server.stubFor(get(urlPathEqualTo("/items")).withQueryParam("offset", equalTo("2"))
+      .willReturn(okJson(page(0 until 0))))
+    val checkpoints = dir.resolve("ck").toAbsolutePath.toString.replace("\\", "/")
+    start(s"""checkpoint { enabled = true, path = "$checkpoints", mode = offset }""", resultsPath = false)
 
     assertEquals(ids("SELECT id FROM api.default.items"), List(0L, 1L))
     val saved = Files.readString(dir.resolve("ck").resolve("items.checkpoint.json"))
