@@ -92,7 +92,7 @@ class ParentChildColumnarPartitionReader(partition: ParentChildInputPartition)
         case Some(keyValue) =>
           val childPath = partition.childEndpointTemplate.replace(
             s"{${partition.pathParamName}}",
-            keyValue
+            ParentChildUtils.encodePathSegment(keyValue)
           )
           session
             .pages(ReadRequest(
