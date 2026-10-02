@@ -133,8 +133,9 @@ class RESTScanBuilder(table: RESTTable) extends ScanBuilder
           .orElse(countConfig.map(legacyCountToAggConfig))
 
       case c: Count =>
-        val col = extractColumnName(c.column())
-        findAggConfig(AggregationFunction.Count, col)
+        // Only a plain column can match: COUNT(expr) skips nulls of an expression no config
+        // describes, so it must not fall through to the row count either.
+        extractColumnName(c.column()).flatMap(col => findAggConfig(AggregationFunction.Count, Some(col)))
 
       case s: Sum =>
         val col = extractColumnName(s.column())
@@ -161,13 +162,20 @@ class RESTScanBuilder(table: RESTTable) extends ScanBuilder
     }
   }
 
-  /** Find an aggregation config matching function and optional column. */
+  /** Find an aggregation config for exactly this function and column.
+    *
+    * The column must match exactly, absence included. `COUNT(*)` asks with no column and
+    * must only match a count configured without one: treating a missing column as a
+    * wildcard let a count of one column, which skips nulls, answer `COUNT(*)` (#290). An
+    * aggregate over an expression rather than a plain column also arrives with no column,
+    * and must not match a column's config either.
+    */
   private def findAggConfig(
       function: AggregationFunction,
       column: Option[String]
   ): Option[AggregationConfig] = {
     aggregationConfigs.values.find { config =>
-      config.function == function && (column.isEmpty || config.column == column)
+      config.function == function && config.column == column
     }
   }
 
