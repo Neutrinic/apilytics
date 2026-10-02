@@ -176,6 +176,17 @@ class RESTScan(
   /** Create multiple partitions for enum-based parallel reads. */
   private def planEnumPartitions(config: PartitionConfig.Enum): Array[InputPartition] = {
     val paramName = config.param
+
+    // A filter already pushed to this parameter has chosen its value, and Spark has dropped
+    // the predicate from its plan on the strength of that. Overriding it with each enum value
+    // returned every value's records for `WHERE id = 1` (#292). Read one partition with the
+    // pushed value instead.
+    if (pushedParams.contains(paramName)) {
+      logInfo(s"Not partitioning by enum '$paramName': the query already sets it to " +
+        s"'${pushedParams(paramName)}' through a pushed filter")
+      return Array(makePartition(pushedParams, table.sourceConfig.http.rateLimit))
+    }
+
     val values = config.values
     val numPartitions = values.size
     val shares = rateLimitShares(numPartitions)

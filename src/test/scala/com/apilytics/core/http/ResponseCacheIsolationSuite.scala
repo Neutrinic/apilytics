@@ -60,6 +60,54 @@ class ResponseCacheIsolationSuite extends FunSuite {
     assertEquals(fetch(a, bearer("two")), "two", "credentials two were served credentials one's cached response")
   }
 
+  test("link-header pages whose query sits in the URL are cached separately") {
+    // Link-header pagination follows each next link with its query inside the URL and an
+    // empty parameter map, so a key built from the path and the map alone gave page 2 and
+    // page 3 the same entry: page 3 came back as page 2, and the walk repeated it (#286).
+    val base = s"http://localhost:${a.port()}"
+    a.stubFor(get(urlPathEqualTo("/pages")).withQueryParam("page", absent())
+      .willReturn(okJson("""{"page": 1}""").withHeader("Link", s"""<$base/pages?page=2>; rel="next"""")))
+    a.stubFor(get(urlPathEqualTo("/pages")).withQueryParam("page", equalTo("2"))
+      .willReturn(okJson("""{"page": 2}""").withHeader("Link", s"""<$base/pages?page=3>; rel="next"""")))
+    a.stubFor(get(urlPathEqualTo("/pages")).withQueryParam("page", equalTo("3"))
+      .willReturn(okJson("""{"page": 3}""")))
+
+    val config = com.apilytics.core.config.PaginationConfig(style = com.apilytics.core.config.PaginationStyle.LinkHeader)
+    val pages = Client.resource(http, none, ResponseCache.fromConfig(cacheConfig)).use { client =>
+      Paginator.pages(client, Uri.unsafeFromString(s"$base/pages"), Map.empty, config)
+        .map(_.hcursor.get[Int]("page").toOption.get).compile.toList
+    }.unsafeRunSync()
+
+    assertEquals(pages, List(1, 2, 3))
+  }
+
+  test("cache keys are logged without their query string") {
+    // Keys carry query strings, which can carry tokens. Redacting values in place missed one
+    // containing `?` (`api_key=first?SECRET`), so the whole query is left out of the log.
+    val key = "https://api.example.com#0a1b/items?api_key=first?SECRET_SUFFIX&page=2"
+    val logged = ResponseCache.forLog(key)
+    assertEquals(logged, "https://api.example.com#0a1b/items?<query omitted>")
+    assert(!logged.contains("SECRET"), logged)
+  }
+
+  test("a URL's own query and the request's parameters can't be confused in the key") {
+    // `/items?a=1` with parameter b=2 requests `/items?a=1&b=2`; `/items?a=1?b=2` with none
+    // requests a=`1?b=2`. Composing the key from the URL's query and the parameters
+    // separately gave both the same key, so the second was served the first's response.
+    a.stubFor(get(urlPathEqualTo("/q")).withQueryParam("a", equalTo("1")).withQueryParam("b", equalTo("2"))
+      .willReturn(okJson("""{"from": "a=1&b=2"}""")))
+    a.stubFor(get(urlPathEqualTo("/q")).withQueryParam("a", equalTo("1?b=2"))
+      .willReturn(okJson("""{"from": "a=1?b=2"}""")))
+
+    def fetchFrom(uri: String, params: Map[String, String]) =
+      Client.resource(http, none, ResponseCache.fromConfig(cacheConfig)).use { client =>
+        client.get(Uri.unsafeFromString(s"http://localhost:${a.port()}$uri"), params)
+      }.unsafeRunSync().json.hcursor.get[String]("from").toOption.orNull
+
+    assertEquals(fetchFrom("/q?a=1", Map("b" -> "2")), "a=1&b=2")
+    assertEquals(fetchFrom("/q?a=1?b=2", Map.empty), "a=1?b=2", "served the other request's cached response")
+  }
+
   test("a repeated request from the same source is still served from the cache") {
     assertEquals(fetch(a, bearer("one")), "a")
     assertEquals(fetch(a, bearer("one")), "a")

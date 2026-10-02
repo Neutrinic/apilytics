@@ -250,8 +250,33 @@ class PaginatorSuite extends CatsEffectSuite {
     Paginator.pagesWithState(client, Uri.unsafeFromString("http://test"), Map.empty, config)
       .compile.toList.map { pages =>
         assertEquals(pages.size, 2)
-        assertEquals(pages(0)._2, Some(CheckpointState.OffsetValue(10L)))
-        assertEquals(pages(1)._2, Some(CheckpointState.OffsetValue(20L)))
+        // One record per page: the saved offset is where reading stopped, not a multiple of
+        // the page size, which would skip records appended after a short page (#292).
+        assertEquals(pages(0)._2, Some(CheckpointState.OffsetValue(1L)))
+        assertEquals(pages(1)._2, Some(CheckpointState.OffsetValue(2L)))
+      }
+  }
+
+  test("an oversized page is trimmed even when results-path ends in an empty key") {
+    // `/items/` names the "" member of `items` (RFC 6901). Splitting the pointer dropped that
+    // trailing empty segment, so three records were emitted while the offset moved by two.
+    val page = parse("""{"items": {"": [{"id": 1}, {"id": 2}, {"id": 3}]}}""").toOption.get
+    val client = mockClient(List((page, Map.empty)))
+
+    val config = PaginationConfig(
+      style = PaginationStyle.Offset,
+      offsetParam = Some("offset"),
+      pageSizeParam = Some("limit"),
+      maxPageSize = 10,
+      resultsPath = Some("/items/")
+    )
+
+    Paginator.pagesWithState(client, Uri.unsafeFromString("http://test"), Map.empty, config, limit = Some(2))
+      .compile.toList.map { pages =>
+        assertEquals(pages.size, 1)
+        val records = pages.head._1.hcursor.downField("items").downField("").focus.flatMap(_.asArray).map(_.size)
+        assertEquals(records, Some(2))
+        assertEquals(pages.head._2, Some(CheckpointState.OffsetValue(2L)))
       }
   }
 

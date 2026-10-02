@@ -71,6 +71,10 @@ tables {
 }
 ```
 
+A checkpoint can't be combined with [partitioning](../using/partitioning.md): it's one
+position for the whole table, so every partition would resume from the same place. A
+config with both is rejected at load.
+
 Each table's checkpoint is stored as `<table-name>.checkpoint.json` under `path`. Local
 paths are written directly. Remote paths (`hdfs://`, `s3://`, `s3a://`, `gs://`) go
 through Hadoop's FileSystem, so the cluster needs the matching connector.

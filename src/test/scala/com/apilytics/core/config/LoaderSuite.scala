@@ -1190,6 +1190,50 @@ class LoaderSuite extends FunSuite {
     assertEquals(result.openapi, dir.resolve("bundled-spec.yaml").toFile.getPath)
   }
 
+  test("a date-range partition's range must be at least a millisecond") {
+    // A range that rounds to zero milliseconds never advanced, and planning grew its list of
+    // partitions without end (#292).
+    def withRange(range: String) = ConfigFactory.parseString(
+      s"""
+        |openapi = "https://example.com/openapi.json"
+        |auth { type = none }
+        |tables.events {
+        |  endpoint = "/events"
+        |  partition { type = "date-range", column = "created_at", range = "$range", start-param = "since", end-param = "until" }
+        |}
+        |""".stripMargin)
+
+    for (bad <- Seq("0 seconds", "-1 day", "500 microseconds")) {
+      val ex = intercept[IllegalArgumentException](Loader.load(withRange(bad)))
+      assert(ex.getMessage.contains("at least 1 millisecond"), s"$bad: ${ex.getMessage}")
+    }
+    Loader.load(withRange("7 days"))
+  }
+
+  test("a batch checkpoint and a partition can't be combined") {
+    // Partitions shared the one checkpoint file: each resumed from the same saved offset,
+    // and their writes raced (#294).
+    def table(checkpoint: String) = ConfigFactory.parseString(
+      s"""
+        |openapi = "https://example.com/openapi.json"
+        |auth { type = none }
+        |pagination { style = offset }
+        |tables.items {
+        |  endpoint = "/items"
+        |  partition { type = "offset", size = 100, count = 2 }
+        |  $checkpoint
+        |}
+        |""".stripMargin)
+
+    val ex = intercept[IllegalArgumentException](
+      Loader.load(table("""checkpoint { enabled = true, path = "/tmp/ck", mode = offset }"""))
+    )
+    assert(ex.getMessage.contains("enables a checkpoint and a partition"), ex.getMessage)
+
+    // A streaming table's timestamp settings, without `enabled`, are still fine.
+    Loader.load(table("""checkpoint { mode = timestamp, timestamp-param = "since", timestamp-path = "/at" }"""))
+  }
+
   private def oauth2(keys: String) = ConfigFactory.parseString(
     s"""
       |openapi = "https://example.com/openapi.json"
