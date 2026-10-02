@@ -301,17 +301,4 @@ object Paginator {
   private def safetyLimit[A](config: PaginationConfig): fs2.Pipe[IO, A, A] =
     _.take(config.maxPages.toLong)
 
-  /** Apply page limits, for offset pagination only. When a record limit is specified,
-    * compute the number of pages needed. Always enforce max-pages as a safety net. */
-  private def limitPages[A](limit: Option[Int], config: PaginationConfig): fs2.Pipe[IO, A, A] = {
-    val safetyLimit = config.maxPages
-    limit match {
-      case None =>
-        _.take(safetyLimit.toLong)
-      case Some(l) =>
-        // Take enough pages to cover the limit. With max page size, that's ceil(limit/pageSize) pages.
-        val pagesForLimit = math.ceil(l.toDouble / config.maxPageSize).toInt.max(1)
-        _.take(math.min(pagesForLimit, safetyLimit).toLong)
-    }
-  }
 }
