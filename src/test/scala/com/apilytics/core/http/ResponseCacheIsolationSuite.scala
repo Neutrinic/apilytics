@@ -81,6 +81,12 @@ class ResponseCacheIsolationSuite extends FunSuite {
     assertEquals(pages, List(1, 2, 3))
   }
 
+  test("cache keys are logged without their parameter values") {
+    // Keys carry query strings, which can carry tokens; logs keep only the names.
+    val key = "https://api.example.com#0a1b/items?api_key=secret&page=2?per_page=100"
+    assertEquals(ResponseCache.forLog(key), "https://api.example.com#0a1b/items?api_key=***&page=***?per_page=***")
+  }
+
   test("a repeated request from the same source is still served from the cache") {
     assertEquals(fetch(a, bearer("one")), "a")
     assertEquals(fetch(a, bearer("one")), "a")
