@@ -37,7 +37,7 @@ object SchemaMapper {
 
   /** Convert an OpenAPI object schema to an Arrow Schema, flattening nested objects up to `maxDepth`. */
   def toArrowSchema(obj: SourceSchema.ObjectType, maxDepth: Int = 2): Schema = {
-    val fields = flattenFields(obj.properties, obj.required, prefix = "", pathSegments = Nil, depth = 0, maxDepth = maxDepth)
+    val fields = flattenFields(obj.properties, prefix = "", pathSegments = Nil, depth = 0, maxDepth = maxDepth)
     val duplicates = fields.groupBy(_.getName).collect { case (name, fs) if fs.size > 1 => name }
     if (duplicates.nonEmpty) {
       throw new IllegalArgumentException(
@@ -71,7 +71,6 @@ object SchemaMapper {
 
   private def flattenFields(
       properties: Map[String, SourceSchema],
-      required: Set[String],
       prefix: String,
       pathSegments: List[String],
       depth: Int,
@@ -80,11 +79,17 @@ object SchemaMapper {
     properties.toList.sortBy(_._1).flatMap { case (name, schema) =>
       val fullName = if (prefix.isEmpty) name else s"${prefix}_$name"
       val segments = pathSegments :+ name
-      val nullable = !required.contains(name)
+      // Every column is nullable, required or not (#296). Spark trusts a non-nullable column
+      // and drops `IS NULL` filters on it as always false, but a required field is null in
+      // the data whenever its parent object is optional and missing, when it's also declared
+      // `nullable: true`, or when the API simply breaks its own spec. Each case lost rows.
+      // Treating the spec as a promise about the data costs correctness; this costs only an
+      // optimisation.
+      val nullable = true
 
       schema match {
-        case SourceSchema.ObjectType(props, req) if props.nonEmpty && depth < maxDepth =>
-          flattenFields(props, req, fullName, segments, depth + 1, maxDepth)
+        case SourceSchema.ObjectType(props, _) if props.nonEmpty && depth < maxDepth =>
+          flattenFields(props, fullName, segments, depth + 1, maxDepth)
 
         case SourceSchema.ObjectType(props, _) if props.nonEmpty =>
           // Beyond maxDepth - serialize as JSON string

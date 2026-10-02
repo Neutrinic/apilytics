@@ -94,6 +94,11 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **`IS NULL` could miss rows.** Columns for required fields were non-nullable, so Spark
+  dropped `IS NULL` filters on them as always false. But a required field is null in the
+  data when its optional parent object is missing, when it's also `nullable: true`, or
+  when the API breaks its spec, and those rows vanished. Every column is now nullable
+  (#296).
 - **OAuth2 client credentials didn't work in Spark reads.** Every reader built its HTTP
   client without a token manager, so `auth.type = oauth2_client` with `client-id`,
   `client-secret` and `token-url` failed on the first request, asking for a pre-fetched
