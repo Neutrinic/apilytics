@@ -220,8 +220,6 @@ object Paginator {
     }
   }
 
-  /** Apply page limits. When a record limit is specified, compute the number of pages
-    * needed. Always enforce max-pages as a safety net to prevent infinite pagination. */
   /** Only the `max-pages` safety stop, for walks that follow the API's own next page.
     *
     * Cursor and link-header walks used to stop after `ceil(limit / max-page-size)` pages,
@@ -233,6 +231,8 @@ object Paginator {
   private def safetyLimit[A](config: PaginationConfig): fs2.Pipe[IO, A, A] =
     _.take(config.maxPages.toLong)
 
+  /** Apply page limits, for offset pagination only. When a record limit is specified,
+    * compute the number of pages needed. Always enforce max-pages as a safety net. */
   private def limitPages[A](limit: Option[Int], config: PaginationConfig): fs2.Pipe[IO, A, A] = {
     val safetyLimit = config.maxPages
     limit match {

@@ -96,7 +96,9 @@ class LimitPushdownSuite extends FunSuite {
     start("""pagination { style = cursor, cursor-path = "/next", cursor-param = "cursor", max-page-size = 100 }
             |tables { events { endpoint = "/events", data-path = "/items" } }""".stripMargin)
 
-    assertEquals(spark.sql("SELECT id FROM api.default.events LIMIT 2").collect().length, 2)
+    val ids = spark.sql("SELECT id FROM api.default.events LIMIT 2").collect()
+      .map(_.getAs[Number](0).longValue).toList.sorted
+    assertEquals(ids, List(1L, 2L))
   }
 
   test("LIMIT on an exploded table counts output rows, not parent records") {
