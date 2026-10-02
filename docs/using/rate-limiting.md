@@ -12,11 +12,9 @@ throttles itself to its own share.
 
 What that guarantees, and what it doesn't:
 
-- **A scan's first attempts stay within the limit.** The shares add up to exactly the
-  configured value.
-- **Retries aren't throttled.** A retried request doesn't wait for a new permit, so a burst
-  of 429 or 5xx responses can briefly exceed the limit. Tracked in
-  [#279](https://github.com/Neutrinic/apilytics/issues/279).
+- **A scan stays within the limit, retries included.** The shares add up to exactly the
+  configured value, and every attempt takes a permit: retries after a 429, a 5xx or a
+  network error wait their turn like any other request.
 - **Concurrent scans each get the whole budget.** Two queries reading the same API at once
   can together send twice the limit.
 - **It isn't coordinated across executors.** There's no shared token bucket; each
