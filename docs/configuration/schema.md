@@ -52,3 +52,6 @@ FROM api.default.users;
 
 [`examples/pokeapi/pokeapi-variant.conf`](https://github.com/Neutrinic/apilytics/blob/main/examples/pokeapi/pokeapi-variant.conf)
 is a working variant-mode config.
+
+Parent-child tables aren't supported in variant mode: loading one fails, saying so. The
+source's other tables still read. Use strict mode for a source with joins.

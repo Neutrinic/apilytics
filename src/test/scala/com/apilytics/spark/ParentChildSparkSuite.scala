@@ -153,4 +153,21 @@ class ParentChildSparkSuite extends FunSuite {
 
     assertEquals(rows, List(("1", 10L), ("3", 30L)))
   }
+
+  test("a parent-child table in variant mode is refused when loaded, not at read time") {
+    // The table advertised a VARIANT column, but the child reader builds Arrow strings, so a
+    // query crashed mid-read with "Struct type not supported" (#300). It now fails to load,
+    // saying why, while the source's plain tables still read in variant mode.
+    val variantConf = dir.resolve("shop-variant.conf")
+    Files.writeString(variantConf,
+      Files.readString(dir.resolve("shop.conf")).replace("auth { type = none }", "auth { type = none }\nschema { mode = variant }"))
+    spark.conf.set("spark.sql.catalog.v", "com.apilytics.spark.RESTCatalog")
+    spark.conf.set("spark.sql.catalog.v.config", variantConf.toAbsolutePath.toString)
+
+    val error = intercept[Exception](spark.sql("SELECT value FROM v.default.orders_each").collect())
+    assert(Iterator.iterate[Throwable](error)(_.getCause).takeWhile(_ != null)
+      .exists(e => String.valueOf(e.getMessage).contains("variant mode")), s"unexpected failure: $error")
+
+    assertEquals(spark.sql("SELECT value FROM v.default.customers").collect().length, 3)
+  }
 }

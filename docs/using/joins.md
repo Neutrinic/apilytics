@@ -55,6 +55,9 @@ SELECT _parent_id AS customer, order_id FROM api.default.orders;
 - With no placeholder to name it after, the parent key column is named after `parent-key`:
   `parent-key = "id"` gives `_parent_id`.
 
+Parent-child tables need strict schema mode. In variant mode (`schema.mode = variant`),
+loading one fails, saying so.
+
 ## Two things that catch people out
 
 Missing either of these gives **zero rows and no error**:
