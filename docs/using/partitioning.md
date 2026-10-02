@@ -26,6 +26,13 @@ at load.
 beyond it aren't read, so an endpoint that has grown since the config was written is
 truncated rather than duplicated.
 
+Each window stops exactly at its boundary, whatever its size relative to the page size:
+the last request asks only for the records the window still needs, and the offset
+advances by the records each page actually held. An API that sends more records than
+asked for has the page trimmed to what was asked for, as long as it can be counted: a
+top-level array, or the array at `results-path`. An API that sends fewer is fine: the
+window keeps reading until it's full.
+
 ## Enum
 
 When a query parameter splits the data naturally:
@@ -33,6 +40,10 @@ When a query parameter splits the data naturally:
 ```hocon
 partition { type = "enum", param = "kind", values = ["fire", "water", "grass"] }
 ```
+
+A query whose filter is already pushed to the same parameter, such as `WHERE kind = 'fire'`
+with a `filters` entry for `kind`, reads a single partition with that value. The filter
+has already chosen it.
 
 ## Date range
 
