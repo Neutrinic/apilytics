@@ -1,6 +1,7 @@
 package com.apilytics.spark
 
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
+import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan, Statistics, SupportsReportStatistics}
 import org.apache.spark.sql.types.StructType
 
@@ -11,6 +12,9 @@ class ParentChildScan(
     pushedParams: Map[String, String],
     pushedLimit: Option[Int]
 ) extends Scan with Batch with SupportsReportStatistics {
+
+  /** Counts of converted and NULLed values, in the SQL tab next to the scan (#309). */
+  override def supportedCustomMetrics(): Array[CustomMetric] = ConversionMetrics.supported
 
   override def readSchema(): StructType = prunedSchema.getOrElse(table.schema())
 

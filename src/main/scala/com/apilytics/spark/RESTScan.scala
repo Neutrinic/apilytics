@@ -4,6 +4,7 @@ import com.apilytics.core.config.{AggregationConfig, CheckpointMode, PartitionCo
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
+import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan, Statistics, SupportsReportStatistics}
 import org.apache.spark.sql.connector.read.streaming.MicroBatchStream
 import org.apache.spark.sql.types.StructType
@@ -28,6 +29,9 @@ class RESTScan(
     * the table schema regardless made Spark assert on the column count and fail the
     * query during optimization, so COUNT pushdown never worked (#212).
     */
+  /** Counts of converted and NULLed values, in the SQL tab next to the scan (#309). */
+  override def supportedCustomMetrics(): Array[CustomMetric] = ConversionMetrics.supported
+
   override def readSchema(): StructType =
     if (pushedAggregation.isDefined) aggregateSchema
     else prunedSchema.getOrElse(table.schema())
