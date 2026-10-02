@@ -22,6 +22,7 @@ pull request and commit the result.
 Unlike Flare's version, this changelog references issues as plain `(#N)` and keeps no link
 definitions or compare links, so there are none to add.
 """
+import datetime
 import re
 import sys
 from pathlib import Path
@@ -41,7 +42,7 @@ def fragment_files():
 def parse(text, source):
     """Entries by heading.
 
-    An entry is a `- ` line plus everything after it up to the next entry or heading: lines
+    An entry is a `- ` line with text on it, plus everything after it up to the next entry or heading: lines
     indented by two spaces or more (continuations and nested lists) and the blank lines between
     them. Blank lines at an entry's end are dropped.
     """
@@ -53,9 +54,11 @@ def parse(text, source):
             if current not in ORDER:
                 errors.append(f"{source}:{n}: unknown heading '{current}', use one of {', '.join(ORDER)}")
             sections.setdefault(current, [])
-        elif line.startswith("- "):
+        elif line.startswith("- ") or line.rstrip() == "-":
             if current is None:
                 errors.append(f"{source}:{n}: entry before any '### Heading'")
+            elif not line[1:].strip():
+                errors.append(f"{source}:{n}: empty entry, the text starts on the '- ' line")
             else:
                 sections[current].append(line)
         elif not line.strip():
@@ -82,6 +85,25 @@ def load_fragments():
     return merged, errors
 
 
+def split_unreleased(text):
+    """(head, entries under `## [Unreleased]`, the rest from the latest release on).
+
+    Release mode folds those entries in and drops the section; preview shows them, so it shows
+    everything a release would add.
+    """
+    first = re.search(r"^## \[", text, re.M)
+    if not first:
+        sys.exit("CHANGELOG.md has no '## [' section to release above")
+    head, rest = text[:first.start()], text[first.start():]
+    unreleased = re.match(r"## \[Unreleased\][^\n]*\n(.*?)(?=^## \[)", rest, re.S | re.M)
+    if not unreleased:
+        return head, {}, rest
+    entries, errors = parse(unreleased.group(1), "CHANGELOG.md [Unreleased]")
+    if errors:
+        sys.exit("\n".join(errors))
+    return head, entries, rest[unreleased.end():]
+
+
 def render(sections):
     """Sections in this changelog's order, a blank line after each heading, entries together."""
     return "\n\n".join(f"### {h}\n\n" + "\n".join(sections[h]) for h in ORDER if sections.get(h))
@@ -95,32 +117,24 @@ def main(argv):
     if argv == ["--check"]:
         print(f"{len(fragment_files())} changelog fragment(s), well formed")
         return
+
+    text = CHANGELOG.read_text(encoding="utf-8")
+    head, existing, rest = split_unreleased(text)
+    for heading, entries in fragments.items():
+        existing.setdefault(heading, []).extend(entries)
+
     if argv == ["--preview"]:
-        print(render(fragments) or "(no fragments)")
+        print(render(existing) or "(no fragments and no [Unreleased] entries)")
         return
     if len(argv) != 2 or not re.fullmatch(r"\d+\.\d+\.\d+", argv[0]) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", argv[1]):
         sys.exit(__doc__)
     version, date = argv
-
-    text = CHANGELOG.read_text(encoding="utf-8")
+    try:
+        datetime.date.fromisoformat(date)
+    except ValueError:
+        sys.exit(f"{date} is not a calendar date")
     if re.search(rf"^## \[{re.escape(version)}\]", text, re.M):
         sys.exit(f"CHANGELOG.md already has a [{version}] section")
-
-    first = re.search(r"^## \[", text, re.M)
-    if not first:
-        sys.exit("CHANGELOG.md has no '## [' section to release above")
-    head, rest = text[:first.start()], text[first.start():]
-
-    # Anything still under [Unreleased] is folded in, and the section removed.
-    existing = {}
-    unreleased = re.match(r"## \[Unreleased\][^\n]*\n(.*?)(?=^## \[)", rest, re.S | re.M)
-    if unreleased:
-        existing, errs = parse(unreleased.group(1), "CHANGELOG.md [Unreleased]")
-        if errs:
-            sys.exit("\n".join(errs))
-        rest = rest[unreleased.end():]
-    for heading, entries in fragments.items():
-        existing.setdefault(heading, []).extend(entries)
     if not any(existing.values()):
         sys.exit("nothing to release: no fragments and no [Unreleased] entries")
 

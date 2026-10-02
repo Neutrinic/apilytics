@@ -12,10 +12,11 @@ permissions:
   contents: read
 
 # A new push to a pull request cancels the run it replaces (#304): each conflict fix used to
-# leave the superseded matrix running. Runs on main are never cancelled; every commit there is
-# tested.
+# leave the superseded matrix running. Runs are grouped by pull request number, not branch
+# name, since two pull requests from forks can share a branch name. Runs on main are never
+# cancelled; every commit there is tested.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

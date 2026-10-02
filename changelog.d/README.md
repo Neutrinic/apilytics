@@ -2,7 +2,8 @@
 
 Each pull request adds one file here, named after its issue, such as `305.md`, and doesn't
 edit `CHANGELOG.md`. No two pull requests touch the same file, so neither conflicts with the
-other.
+other. A pull request users won't notice, such as a CI, test or contributor-docs change, needs
+no fragment.
 
 A fragment is a heading followed by its entry, written exactly as it will appear in
 `CHANGELOG.md`:
