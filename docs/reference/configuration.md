@@ -192,7 +192,7 @@ aggregations {
 | Key | Meaning |
 |---|---|
 | `function` | `count`, `sum`, `avg`, `min`, `max` or `custom`. |
-| `column` | Required for `sum`, `avg`, `min` and `max`. |
+| `column` | Required for `sum`, `avg`, `min` and `max`. For `count`: without it, the aggregation answers `COUNT(*)`; with it, only `COUNT(that column)`, which skips nulls. |
 | `name` | Required for `custom`: the SQL function's name. |
 | `endpoint` | The endpoint that returns the aggregate. |
 | `response-path` | A JSON pointer to the value in its response. |

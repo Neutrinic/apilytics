@@ -144,4 +144,41 @@ class AggregationPushdownSuite extends FunSuite {
     val rows = spark.sql("SELECT COUNT(*) FROM api.default.issues").collect()
     assertEquals(rows.head.getLong(0), 42L)
   }
+
+  private def configureColumnCount(): Unit = {
+    // A count of one column: the API answers how many rows have `number` set.
+    Files.writeString(
+      configPath,
+      Files.readString(configPath).replace(
+        """count { param = "per_page", param-value = "1", response-path = "/total_count" }""",
+        """aggregations { numbered { function = "count", column = "number", endpoint = "/stats", response-path = "/numbered" } }"""
+      )
+    )
+    spark.sql("CLEAR CACHE")
+    server.stubFor(get(urlPathEqualTo("/stats")).willReturn(okJson("""{"numbered": 2}""")))
+    server.stubFor(
+      get(urlPathEqualTo("/repos/octocat/Hello-World/issues"))
+        .willReturn(okJson("""[{"id": 1, "number": 2}, {"id": 2, "number": null}, {"id": 3, "number": 3}]"""))
+    )
+  }
+
+  test("COUNT(*) is not answered by a count of one column") {
+    // A column count skips nulls, so it can't stand in for a row count: three rows, one
+    // with no `number`, gave COUNT(*) = 2 before the fix (#290).
+    configureColumnCount()
+
+    val rows = spark.sql("SELECT COUNT(*) FROM api.default.issues").collect()
+
+    assertEquals(rows.head.getLong(0), 3L)
+    server.verify(0, getRequestedFor(urlPathEqualTo("/stats")))
+  }
+
+  test("COUNT(column) is answered by that column's count") {
+    configureColumnCount()
+
+    val rows = spark.sql("SELECT COUNT(number) FROM api.default.issues").collect()
+
+    assertEquals(rows.head.getLong(0), 2L)
+    server.verify(1, getRequestedFor(urlPathEqualTo("/stats")))
+  }
 }

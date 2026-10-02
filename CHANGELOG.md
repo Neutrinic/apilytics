@@ -122,6 +122,10 @@ so no upgrade is required for existing users.
   count of parent records, so a parent with an empty array could leave `LIMIT 1` with no
   rows. Walks now run until Spark has its rows, and exploded tables don't forward the
   limit (#298).
+- **`COUNT(*)` could be answered by a count of one column.** A `count` aggregation
+  configured for a column also matched `COUNT(*)`, but a column count skips nulls, so a
+  table with a null in that column under-counted its rows. `COUNT(*)` now matches only a
+  count configured without a column, and `COUNT(column)` only that column's (#290).
 - **OAuth2 client credentials didn't work in Spark reads.** Every reader built its HTTP
   client without a token manager, so `auth.type = oauth2_client` with `client-id`,
   `client-secret` and `token-url` failed on the first request, asking for a pre-fetched
