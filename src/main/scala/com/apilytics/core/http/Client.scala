@@ -161,10 +161,15 @@ object Client {
         .take(8).map("%02x".format(_)).mkString
     }
 
+    // The URI's own query is part of the key too. Link-header pagination follows each next
+    // link with its query inside the URL (`/items?page=2`) and an empty `params` map, so a
+    // key of path and `params` alone gave every later page the same entry: page 3 was
+    // served page 2 from the cache, and the walk followed the same link again (#286).
     private def cacheKey(uri: Uri): String = {
       val origin = uri.scheme.map(_.value + "://").getOrElse("") +
         uri.authority.map(_.copy(userInfo = None).renderString).getOrElse("")
-      s"$origin#$credentialScope${uri.path.renderString}"
+      val query = if (uri.query.isEmpty) "" else "?" + uri.query.renderString
+      s"$origin#$credentialScope${uri.path.renderString}$query"
     }
 
     def get(uri: Uri, params: Map[String, String] = Map.empty): IO[ApiResponse] = {

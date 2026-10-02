@@ -60,6 +60,27 @@ class ResponseCacheIsolationSuite extends FunSuite {
     assertEquals(fetch(a, bearer("two")), "two", "credentials two were served credentials one's cached response")
   }
 
+  test("link-header pages whose query sits in the URL are cached separately") {
+    // Link-header pagination follows each next link with its query inside the URL and an
+    // empty parameter map, so a key built from the path and the map alone gave page 2 and
+    // page 3 the same entry: page 3 came back as page 2, and the walk repeated it (#286).
+    val base = s"http://localhost:${a.port()}"
+    a.stubFor(get(urlPathEqualTo("/pages")).withQueryParam("page", absent())
+      .willReturn(okJson("""{"page": 1}""").withHeader("Link", s"""<$base/pages?page=2>; rel="next"""")))
+    a.stubFor(get(urlPathEqualTo("/pages")).withQueryParam("page", equalTo("2"))
+      .willReturn(okJson("""{"page": 2}""").withHeader("Link", s"""<$base/pages?page=3>; rel="next"""")))
+    a.stubFor(get(urlPathEqualTo("/pages")).withQueryParam("page", equalTo("3"))
+      .willReturn(okJson("""{"page": 3}""")))
+
+    val config = com.apilytics.core.config.PaginationConfig(style = com.apilytics.core.config.PaginationStyle.LinkHeader)
+    val pages = Client.resource(http, none, ResponseCache.fromConfig(cacheConfig)).use { client =>
+      Paginator.pages(client, Uri.unsafeFromString(s"$base/pages"), Map.empty, config)
+        .map(_.hcursor.get[Int]("page").toOption.get).compile.toList
+    }.unsafeRunSync()
+
+    assertEquals(pages, List(1, 2, 3))
+  }
+
   test("a repeated request from the same source is still served from the cache") {
     assertEquals(fetch(a, bearer("one")), "a")
     assertEquals(fetch(a, bearer("one")), "a")
