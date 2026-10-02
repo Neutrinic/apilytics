@@ -111,6 +111,10 @@ so no upgrade is required for existing users.
   work, or is killed leaves the checkpoint where it was. It follows the reading task, not
   the whole query, so a failure in a later stage still comes after the checkpoint has
   moved; the checkpoints page says so (#280).
+- **Batch joins couldn't run.** The loader requires a `join-strategy = batch` endpoint
+  without a path placeholder, but the table required one to name its parent key column,
+  so every batch join the loader accepted failed when the table was built. A batch join
+  now names the column after `parent-key` (`_parent_id`) and reads end to end (#277).
 - **An unreachable host took minutes per request to fail.** ember's timeout does not
   cover opening the connection, so each attempt waited for the operating system's TCP
   connect timeout, about two minutes on Linux. On EMR Serverless without a VPC, where
