@@ -55,6 +55,53 @@ class RetryBudgetSuite extends FunSuite {
     connections.get()
   }
 
+  /** Answers the first request with a 500, then resets every connection after it. */
+  private def requestsAfterServerErrorThenResets(maxRetries: Int, format: ResponseFormat = ResponseFormat.Json): Int = {
+    val requests = new AtomicInteger(0)
+    val server = new ServerSocket(0)
+    val t = new Thread(() => {
+      try while (!server.isClosed) {
+        val sock = server.accept()
+        val n = requests.incrementAndGet()
+        try {
+          sock.getInputStream.read(new Array[Byte](4096))
+          if (n == 1) {
+            sock.getOutputStream.write(
+              "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".getBytes
+            )
+            sock.getOutputStream.flush()
+          } else sock.setSoLinger(true, 0)
+        } catch { case _: SocketException => () }
+        finally sock.close()
+      } catch { case _: Throwable => () }
+    })
+    t.setDaemon(true)
+    t.start()
+
+    val cfg = HttpConfig(maxRetries = maxRetries, maxBackoff = 50.millis, timeout = 5.seconds, responseFormat = format)
+    try {
+      Client.resource(cfg, AuthConfig(authType = AuthType.None)).use { client =>
+        client
+          .getStreaming(Uri.unsafeFromString(s"http://localhost:${server.getLocalPort}/x"), Map.empty, format)
+          .compile.toList.attempt
+      }.timeout(60.seconds).unsafeRunSync()
+    } finally server.close()
+
+    requests.get()
+  }
+
+  test("server errors and network errors share one retry budget (#313)") {
+    // The 5xx retry ran inside the attempt that got the 500, so when it then hit a network
+    // error the outer handler restarted the whole chain: 3/5/7/11 requests for max-retries
+    // 1/2/3/5, against budgets of 2/3/4/6.
+    for (format <- List(ResponseFormat.Json, ResponseFormat.NDJSON); maxRetries <- List(1, 2, 3, 5)) {
+      assertEquals(
+        requestsAfterServerErrorThenResets(maxRetries, format), maxRetries + 1,
+        s"$format, max-retries=$maxRetries"
+      )
+    }
+  }
+
   test("a request is attempted exactly max-retries + 1 times") {
     for (maxRetries <- List(0, 1, 2)) {
       assertEquals(
