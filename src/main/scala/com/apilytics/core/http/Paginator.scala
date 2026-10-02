@@ -204,13 +204,32 @@ object Paginator {
       case Some(uri) =>
         // For first request use pageParams, for subsequent use uri as-is (it includes params)
         val reqParams = if (uri == baseUri) pageParams else Map.empty[String, String]
-        client.get(uri, reqParams).map { resp =>
+        client.get(uri, reqParams).flatMap { resp =>
           val nextLink = resp.headers.get("Link").flatMap(parseLinkHeader)
-          val nextUri = nextLink.flatMap(link => Uri.fromString(link).toOption)
-          Some(((resp.json, None), nextUri))
+          // A relative link is resolved against the request that returned it (RFC 8288).
+          val nextUri = nextLink.flatMap(link => Uri.fromString(link).toOption).map(uri.resolve)
+          nextUri match {
+            // Every request carries the source's credentials, so a next link may only lead
+            // back to the API's own origin. Following one elsewhere sent the token to
+            // whatever host a response named, or downgraded it to plain HTTP (#288).
+            case Some(next) if client.sendsCredentials && origin(next) != origin(baseUri) =>
+              IO.raiseError(new IllegalStateException(
+                s"The API's Link header sends the next page to ${origin(next)}, a different " +
+                  s"origin from ${origin(baseUri)}. Not following it: the request would carry " +
+                  "this source's credentials there."
+              ))
+            case _ => IO.pure(Some(((resp.json, None), nextUri)))
+          }
         }
     }.through(limitPages(limit, config))
   }
+
+  /** Scheme, host and port: what has to match for credentials to stay with the API. */
+  private def origin(uri: Uri): String =
+    uri.scheme.map(_.value).getOrElse("") + "://" +
+      uri.host.map(_.renderString.toLowerCase).getOrElse("") +
+      uri.port.orElse(uri.scheme.map(_.value).collect { case "https" => 443; case "http" => 80 })
+        .map(":" + _).getOrElse("")
 
   private def parseLinkHeader(header: String): Option[String] = {
     // Parse: <url>; rel="next"
