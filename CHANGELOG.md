@@ -94,6 +94,12 @@ so no upgrade is required for existing users.
 
 ### Fixed
 
+- **A pushed `LIMIT` could stop reading too early.** Cursor and link-header pagination
+  stopped after `ceil(limit / max-page-size)` pages, assuming full pages, so `LIMIT 2`
+  over one-record pages returned one row. Exploded tables sent the limit to the API as a
+  count of parent records, so a parent with an empty array could leave `LIMIT 1` with no
+  rows. Walks now run until Spark has its rows, and exploded tables don't forward the
+  limit (#298).
 - **OAuth2 client credentials didn't work in Spark reads.** Every reader built its HTTP
   client without a token manager, so `auth.type = oauth2_client` with `client-id`,
   `client-secret` and `token-url` failed on the first request, asking for a pre-fetched

@@ -125,7 +125,7 @@ object Paginator {
               case None => None
             }
         }
-    }.through(limitPages(limit, config))
+    }.through(safetyLimit(config))
   }
 
   private def offsetPages(
@@ -209,7 +209,7 @@ object Paginator {
           val nextUri = nextLink.flatMap(link => Uri.fromString(link).toOption)
           Some(((resp.json, None), nextUri))
         }
-    }.through(limitPages(limit, config))
+    }.through(safetyLimit(config))
   }
 
   private def parseLinkHeader(header: String): Option[String] = {
@@ -222,6 +222,17 @@ object Paginator {
 
   /** Apply page limits. When a record limit is specified, compute the number of pages
     * needed. Always enforce max-pages as a safety net to prevent infinite pagination. */
+  /** Only the `max-pages` safety stop, for walks that follow the API's own next page.
+    *
+    * Cursor and link-header walks used to stop after `ceil(limit / max-page-size)` pages,
+    * assuming every page is full. A maximum isn't a guaranteed size: with one record per
+    * page, `LIMIT 2` stopped after one page and returned one row (#298). A pushed limit still
+    * sets the page size requested; Spark applies the limit itself and stops reading once it
+    * has its rows, and the reader's bounded prefetch keeps the overshoot to a page or two.
+    */
+  private def safetyLimit[A](config: PaginationConfig): fs2.Pipe[IO, A, A] =
+    _.take(config.maxPages.toLong)
+
   private def limitPages[A](limit: Option[Int], config: PaginationConfig): fs2.Pipe[IO, A, A] = {
     val safetyLimit = config.maxPages
     limit match {

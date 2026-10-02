@@ -46,7 +46,7 @@ Declarative Pipelines needs Spark's own support for them, which arrived in 4.1.
 - **Authentication**: bearer token, basic auth, custom headers and OAuth2 client credentials. See [Credentials](configuration/credentials.md).
 - **Pushdown**:
     - **filters** map to API query parameters
-    - **limits** stop pagination early
+    - **limits** set the page size requested, and reading stops once Spark has its rows
     - **COUNT, SUM and AVG** push to API endpoints. MIN, MAX and custom functions don't, because their result type can't be decided at plan time, so Spark computes them over a full scan.
 - **Schema modes**: strict (typed columns, the default) or variant (a native VARIANT column). Nested objects flatten to a configurable depth. See [Schema](configuration/schema.md).
 - **Parent-child joins**: chain API calls, such as fetching issues and then each issue's comments. Batch joins cut the calls for bulk lookups. See [Parent-child joins](using/joins.md).
