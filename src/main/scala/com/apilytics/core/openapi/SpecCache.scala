@@ -23,7 +23,7 @@ object SpecCache {
 
   private val log = LoggerFactory.getLogger(getClass)
 
-  private val CacheVersion = 1 // Bump when ParsedSpec format changes
+  private val CacheVersion = 2 // Bump when ParsedSpec format or parsing changes (2: #319)
 
   /** Cache entry with metadata for invalidation. */
   @SerialVersionUID(1L)

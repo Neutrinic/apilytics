@@ -64,6 +64,31 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
         }
     }
 
+  /** Why a configured table has no endpoint in the spec to take its columns from, or None
+    * when it has one (#319).
+    *
+    * Such a table falls back to a config-only endpoint with no columns, which suits variant
+    * mode and streaming formats the spec doesn't describe. In strict mode it's a table with
+    * no columns, never what was meant, so the caller fails with this reason instead. When the
+    * spec does describe the path, but only in formats the reader doesn't read, it lists them.
+    */
+  def unmatchedReason(name: String): Option[String] =
+    config.tables.get(name).filter(_ => findEndpoint(name).isEmpty).map { tc =>
+      val offered = spec.unreadable.collectFirst {
+        case (path, types) if path == tc.endpoint || pathMatches(tc.endpoint, path) => types
+      }
+      val why = offered match {
+        case Some(types) =>
+          s"The spec describes it, but its response is only ${types.mkString(", ")}, none of " +
+            "them JSON."
+        case None =>
+          "The spec doesn't describe a GET endpoint at that path."
+      }
+      s"Table '$name' has endpoint '${tc.endpoint}', which has no response schema to take " +
+        s"columns from, so in strict mode it would have none. $why Use schema mode " +
+        "'variant', or an endpoint the spec describes with a JSON response."
+    }
+
   /** Record schema for a table: the response schema resolved down to one row. */
   def recordSchema(endpoint: Endpoint, name: String): SourceSchema.ObjectType =
     config.tables.get(name).flatMap(_.dataPath) match {
@@ -99,14 +124,15 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
     * "/repos/octocat/Hello-World/issues" matches "/repos/{owner}/{repo}/issues" and
     * "/customers/{customer_id}/orders" matches "/customers/{id}/orders".
     */
-  def findByPathTemplate(configPath: String): Option[Endpoint] = {
+  def findByPathTemplate(configPath: String): Option[Endpoint] =
+    spec.endpoints.find(ep => pathMatches(configPath, ep.path))
+
+  private def pathMatches(configPath: String, specPath: String): Boolean = {
     val configSegments = configPath.split("/").toList
-    spec.endpoints.find { ep =>
-      val specSegments = ep.path.split("/").toList
-      configSegments.length == specSegments.length &&
-      configSegments.zip(specSegments).forall { case (configSeg, specSeg) =>
-        specSeg.startsWith("{") || configSeg == specSeg
-      }
+    val specSegments   = specPath.split("/").toList
+    configSegments.length == specSegments.length &&
+    configSegments.zip(specSegments).forall { case (configSeg, specSeg) =>
+      specSeg.startsWith("{") || configSeg == specSeg
     }
   }
 

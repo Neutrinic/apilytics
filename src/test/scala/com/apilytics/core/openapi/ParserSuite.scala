@@ -786,24 +786,85 @@ class ParserSuite extends FunSuite {
     assertEquals(result.baseUrl, "https://api.example.com/v2")
   }
 
-  test("Swagger 2.0: Petstore spec from URL".tag(munit.Slow)) {
-    // Integration test - fetches real Petstore 2.0 spec
-    // Note: This test is tagged Slow and may be skipped in CI if petstore.swagger.io is down
-    val result = Parser.parse("https://petstore.swagger.io/v2/swagger.json")
+  test("Swagger 2.0: Petstore spec from URL") {
+    // Served locally, so the test needs no internet access (#320). It used to fetch
+    // petstore.swagger.io, and failed offline or behind a proxy.
+    val petstore =
+      """{
+        |  "swagger": "2.0",
+        |  "info": { "title": "Swagger Petstore", "version": "1.0.7" },
+        |  "host": "petstore.swagger.io",
+        |  "basePath": "/v2",
+        |  "schemes": ["https"],
+        |  "paths": {
+        |    "/pet/findByStatus": {
+        |      "get": {
+        |        "operationId": "findPetsByStatus",
+        |        "produces": ["application/json"],
+        |        "parameters": [{ "name": "status", "in": "query", "required": true, "type": "array", "items": { "type": "string" } }],
+        |        "responses": { "200": { "description": "ok", "schema": { "type": "array", "items": { "$ref": "#/definitions/Pet" } } } }
+        |      }
+        |    },
+        |    "/store/inventory": {
+        |      "get": {
+        |        "operationId": "getInventory",
+        |        "produces": ["application/json"],
+        |        "responses": { "200": { "description": "ok", "schema": { "type": "object", "additionalProperties": { "type": "integer" } } } }
+        |      }
+        |    }
+        |  },
+        |  "definitions": {
+        |    "Pet": { "type": "object", "properties": { "id": { "type": "integer", "format": "int64" }, "name": { "type": "string" } } }
+        |  }
+        |}""".stripMargin
+    val server = new com.github.tomakehurst.wiremock.WireMockServer(
+      com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig().dynamicPort()
+    )
+    server.start()
+    try {
+      import com.github.tomakehurst.wiremock.client.WireMock._
+      server.stubFor(get(urlPathEqualTo("/v2/swagger.json")).willReturn(okJson(petstore)))
 
-    // Should find multiple GET endpoints
-    assert(result.endpoints.nonEmpty, "Expected endpoints from Petstore spec")
+      val result = Parser.parse(s"http://localhost:${server.port()}/v2/swagger.json")
 
-    // Check for known endpoints
-    val paths = result.endpoints.map(_.path).toSet
-    assert(paths.contains("/pet/findByStatus"), s"Expected /pet/findByStatus, got: $paths")
+      val paths = result.endpoints.map(_.path).toSet
+      assert(paths.contains("/pet/findByStatus"), s"Expected /pet/findByStatus, got: $paths")
+      // The base URL comes from the spec's host and basePath, not from where it was fetched.
+      assertEquals(result.baseUrl, "https://petstore.swagger.io/v2")
+      // Array response gets wrapped in "data" key
+      val findByStatus = result.endpoints.find(_.path == "/pet/findByStatus").get
+      assert(findByStatus.responseSchema.properties.contains("data"))
+    } finally server.stop()
+  }
 
-    // Check baseUrl was extracted
-    assertEquals(result.baseUrl, "https://petstore.swagger.io/v2")
+  /** A spec with one GET per content type, each returning `{id}`. */
+  private def specWithContent(entries: (String, String)*): String = {
+    val paths = entries.map { case (path, types) =>
+      val content = types.split('|').map(ct =>
+        s""""$ct": { "schema": { "type": "object", "properties": { "${ct.filter(_.isLetter).take(8)}": { "type": "string" } } } }"""
+      ).mkString(", ")
+      s""""$path": { "get": { "responses": { "200": { "description": "ok", "content": { $content } } } } }"""
+    }.mkString(", ")
+    s"""{ "openapi": "3.0.0", "info": { "title": "t", "version": "1" }, "paths": { $paths } }"""
+  }
 
-    // Check Pet schema from /pet/findByStatus (array of Pet)
-    val findByStatus = result.endpoints.find(_.path == "/pet/findByStatus").get
-    // Array response gets wrapped in "data" key
-    assert(findByStatus.responseSchema.properties.contains("data"))
+  test("JSON responses are read under any JSON media type (#319)") {
+    val result = Parser.parseContent(specWithContent(
+      "/charset"  -> "application/json; charset=utf-8",
+      "/hal"      -> "application/hal+json",
+      "/jsonapi"  -> "application/vnd.api+json",
+      "/wildcard" -> "*/*",
+      "/text"     -> "text/plain",
+      "/xml"      -> "application/xml|text/csv"
+    ))
+
+    assertEquals(result.endpoints.map(_.path).toSet, Set("/charset", "/hal", "/jsonapi", "/wildcard"))
+    assertEquals(result.unreadable, Map("/text" -> List("text/plain"), "/xml" -> List("application/xml", "text/csv")))
+  }
+
+  test("an exact application/json is preferred to the wildcard (#319)") {
+    // The schema's one property is named after the media type it came from.
+    val result = Parser.parseContent(specWithContent("/both" -> "*/*|application/json"))
+    assertEquals(result.endpoints.head.responseSchema.properties.keySet, Set("applicat"))
   }
 }
