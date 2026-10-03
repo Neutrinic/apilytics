@@ -101,6 +101,31 @@ class LimitPushdownSuite extends FunSuite {
     assertEquals(ids, List(1L, 2L))
   }
 
+  test("a LIMIT that stops the read early doesn't fail the query with a memory leak (#307)") {
+    // Spark closes the reader once it has its row, while the producer still holds batches.
+    // A batch converted but not yet queued was never released, and in local mode the query
+    // failed with "Memory was leaked by query". Many small batches, one in flight at a time,
+    // make that the usual state at close.
+    val pages = 10
+    (0 until pages).foreach { p =>
+      val items = (0 until 20).map(i => s"""{"id": ${p * 20 + i}}""").mkString(",")
+      val cursor = if (p == 0) absent() else equalTo(s"c$p")
+      val next = if (p + 1 < pages) s"c${p + 1}" else ""
+      server.stubFor(get(urlPathEqualTo("/events")).withQueryParam("cursor", cursor)
+        .willReturn(okJson(s"""{"items": [$items], "next": "$next"}""")))
+    }
+    start("""pagination { style = cursor, cursor-path = "/next", cursor-param = "cursor", max-page-size = 20 }
+            |schema { arrow-batch-size = 2, prefetch-batches = 1 }
+            |tables { events { endpoint = "/events", data-path = "/items" } }""".stripMargin)
+
+    (1 to 30).foreach { i =>
+      val rows =
+        try spark.sql("SELECT id FROM api.default.events LIMIT 1").collect()
+        catch { case e: Throwable => fail(s"query $i failed: $e", e) }
+      assertEquals(rows.length, 1)
+    }
+  }
+
   test("LIMIT on an exploded table counts output rows, not parent records") {
     // The first parent's array is empty. Fetching only one parent for LIMIT 1 returned
     // no rows at all.
