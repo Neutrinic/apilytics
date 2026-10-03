@@ -385,13 +385,15 @@ object Loader {
               s"(got '${config.getString("range")}')"
           )
         }
+        val format = if (config.hasPath("format")) config.getString("format")
+                     else "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        checkRangeFitsFormat(range, format)
         PartitionConfig.DateRange(
           column = config.getString("column"),
           range = range,
           startParam = config.getString("start-param"),
           endParam = config.getString("end-param"),
-          format = if (config.hasPath("format")) config.getString("format")
-                   else "yyyy-MM-dd'T'HH:mm:ss'Z'"
+          format = format
         )
 
       case "offset" =>
@@ -543,6 +545,42 @@ object Loader {
     * This catches accidental `http://` typos that would leak Bearer tokens,
     * Basic Auth credentials, or API keys in plaintext.
     */
+  /** A date-range partition's boundaries have to be expressible in its format (#321).
+    *
+    * Each partition sends its bounds formatted with `format`. With `yyyy-MM-dd` and a range of
+    * one hour, the 24 partitions of a day all send the same two dates, so each fetches the
+    * whole day and the rows come back 24 times. The range must be a whole number of the
+    * format's smallest unit: the first of a second, minute, hour or day that changes its
+    * output. A format coarser than a day, such as `yyyy-MM`, can't bound fixed-size ranges.
+    */
+  private def checkRangeFitsFormat(range: FiniteDuration, format: String): Unit = {
+    import java.time.{Instant, ZoneOffset}
+    import java.time.format.DateTimeFormatter
+    val formatter = try DateTimeFormatter.ofPattern(format).withZone(ZoneOffset.UTC)
+      catch {
+        case e: IllegalArgumentException =>
+          throw new IllegalArgumentException(s"partition.format '$format' is not a valid pattern: ${e.getMessage}")
+      }
+    val origin = Instant.parse("2024-01-01T00:00:00Z")
+    val units  = List(1.second -> "second", 1.minute -> "minute", 1.hour -> "hour", 1.day -> "day")
+    val unit   = units.find { case (u, _) => formatter.format(origin) != formatter.format(origin.plusMillis(u.toMillis)) }
+    unit match {
+      case Some((u, _)) if range.toMillis % u.toMillis == 0 => ()
+      case Some((_, name)) =>
+        throw new IllegalArgumentException(
+          s"partition.range '$range' isn't a whole number of ${name}s, the smallest step " +
+            s"partition.format '$format' can express. Partitions would send the same bounds and " +
+            s"fetch the same rows more than once. Use a range in whole ${name}s, or a format " +
+            "with finer fields."
+        )
+      case None =>
+        throw new IllegalArgumentException(
+          s"partition.format '$format' doesn't change within a day, so it can't express the " +
+            "bounds of fixed-size date ranges. Use a format with at least the day."
+        )
+    }
+  }
+
   private[config] def warnPlaintextCredentials(sc: SourceConfig): List[String] = {
     if (sc.auth.authType == AuthType.None) return Nil
 

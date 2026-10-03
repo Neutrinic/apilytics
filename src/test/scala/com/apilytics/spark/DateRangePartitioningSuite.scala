@@ -710,4 +710,66 @@ class DateRangePartitioningSuite extends FunSuite {
 
     assertEquals(partition.column, "created_at")
   }
+
+  /** A scan over `events`, date-range partitioned with `format` and `range`. */
+  private def dateScan(format: String, range: FiniteDuration, start: String, end: String): RESTScan = {
+    val partitionConfig = PartitionConfig.DateRange(
+      column = "day", range = range, startParam = "from", endParam = "to", format = format
+    )
+    val table = new RESTTable(
+      tableName = "events",
+      arrowSchema = dummySchema,
+      handle = RestHandle(dummyEndpoint.path, "https://api.example.com", None),
+      tableConfig = Some(TableConfig(endpoint = "/events", partition = Some(partitionConfig))),
+      sourceConfig = dummySourceConfig,
+      baseUrl = "https://api.example.com"
+    )
+    new RESTScan(table, dummySchema, None, Map("from" -> start, "to" -> end), None)
+  }
+
+  test("a date-only format partitions by day instead of failing planning (#321)") {
+    // Instant.from can't make an instant from a date alone: planning threw
+    // "Unable to obtain Instant from TemporalAccessor", uncaught.
+    val parts = dateScan("yyyy-MM-dd", 1.day, "2024-01-01", "2024-01-03").planInputPartitions()
+      .map(_.asInstanceOf[RESTInputPartition].pushedParams).toList
+
+    assertEquals(parts.map(p => (p("from"), p("to"))), List("2024-01-01" -> "2024-01-02", "2024-01-02" -> "2024-01-03"))
+  }
+
+  test("a format without a zone reads its bounds as UTC (#321)") {
+    val parts = dateScan("yyyy-MM-dd'T'HH:mm", 12.hours, "2024-01-01T00:00", "2024-01-02T00:00").planInputPartitions()
+    assertEquals(parts.length, 2)
+  }
+
+  test("a bound that parses but isn't a date falls back to one partition (#321)") {
+    // A time with no date parses, then can't become an instant: a DateTimeException that
+    // isn't a parse error, which wasn't caught.
+    val parts = dateScan("HH:mm", 1.hour, "01:00", "03:00").planInputPartitions()
+    assertEquals(parts.length, 1)
+  }
+
+  private def partitionConfig(format: String, range: String) = ConfigFactory.parseString(
+    s"""
+      |openapi = "spec.yaml"
+      |auth { type = none }
+      |tables {
+      |  events {
+      |    endpoint = "/events"
+      |    partition { type = date-range, column = day, range = "$range", start-param = from, end-param = to, format = "$format" }
+      |  }
+      |}
+      |""".stripMargin)
+
+  test("a range the format can't express fails at load (#321)") {
+    // 24 hourly partitions of a day would all send the same two dates and read the day 24 times.
+    val ex = intercept[IllegalArgumentException](Loader.load(partitionConfig("yyyy-MM-dd", "1 hour")))
+    assert(ex.getMessage.contains("whole number of days"), ex.getMessage)
+
+    val coarse = intercept[IllegalArgumentException](Loader.load(partitionConfig("yyyy-MM", "30 days")))
+    assert(coarse.getMessage.contains("doesn't change within a day"), coarse.getMessage)
+
+    // Whole days with a date format, and anything in seconds with the default, are fine.
+    Loader.load(partitionConfig("yyyy-MM-dd", "2 days"))
+    Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss'Z'", "90 minutes"))
+  }
 }

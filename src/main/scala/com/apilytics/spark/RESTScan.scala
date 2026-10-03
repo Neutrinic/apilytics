@@ -233,8 +233,8 @@ class RESTScan(
   ): Option[Array[InputPartition]] = {
     try {
       val formatter = DateTimeFormatter.ofPattern(config.format).withZone(ZoneOffset.UTC)
-      val startInstant = Instant.from(formatter.parse(start))
-      val endInstant = Instant.from(formatter.parse(end))
+      val startInstant = RESTScan.parseBoundary(formatter, start)
+      val endInstant = RESTScan.parseBoundary(formatter, end)
       val rangeMillis = config.range.toMillis
 
       // Generate partition ranges (iterative to avoid stack overflow)
@@ -268,7 +268,9 @@ class RESTScan(
         }.toArray)
       }
     } catch {
-      case e: java.time.format.DateTimeParseException =>
+      // DateTimeException, not only its parse subclass: a value can parse yet still not
+      // make an instant, and that one used to fail planning instead of falling back (#321).
+      case e: java.time.DateTimeException =>
         logWarning(s"Failed to parse date range values (start='$start', end='$end') " +
           s"with format '${config.format}': ${e.getMessage}. Using single partition.")
         None
@@ -413,6 +415,26 @@ class RESTScan(
 }
 
 object RESTScan {
+
+  /** A date-range bound as an instant, read with the partition's format (#321).
+    *
+    * A format with a time and a zone gives an instant directly; one without a zone is read
+    * as UTC; a date-only format such as `yyyy-MM-dd` gives that day's start, in UTC.
+    * `Instant.from` alone failed on a date-only format, with a `DateTimeException` that
+    * planning didn't catch.
+    */
+  private[spark] def parseBoundary(formatter: DateTimeFormatter, text: String): Instant = {
+    import java.time.temporal.{TemporalAccessor, TemporalQuery}
+    import java.time.{LocalDate, LocalDateTime}
+    val instant: TemporalQuery[Instant]             = (t: TemporalAccessor) => Instant.from(t)
+    val localDateTime: TemporalQuery[LocalDateTime] = (t: TemporalAccessor) => LocalDateTime.from(t)
+    val localDate: TemporalQuery[LocalDate]         = (t: TemporalAccessor) => LocalDate.from(t)
+    formatter.parseBest(text, instant, localDateTime, localDate) match {
+      case i: Instant        => i
+      case dt: LocalDateTime => dt.toInstant(ZoneOffset.UTC)
+      case d: LocalDate      => d.atStartOfDay(ZoneOffset.UTC).toInstant
+    }
+  }
 
   /** Why a table cannot be read as a stream, and what its config needs. Shared by the
     * catalog path and `format("apilytics")`, which reach the same limit by different routes. */
