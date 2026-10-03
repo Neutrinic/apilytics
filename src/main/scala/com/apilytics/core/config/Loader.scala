@@ -541,10 +541,6 @@ object Loader {
     cc
   }
 
-  /** Check if auth credentials would be sent over plaintext HTTP and warn.
-    * This catches accidental `http://` typos that would leak Bearer tokens,
-    * Basic Auth credentials, or API keys in plaintext.
-    */
   /** A date-range partition's boundaries have to be expressible in its format (#321).
     *
     * Each partition sends its bounds formatted with `format`. With `yyyy-MM-dd` and a range of
@@ -586,6 +582,10 @@ object Loader {
     }
   }
 
+  /** Check if auth credentials would be sent over plaintext HTTP and warn.
+    * This catches accidental `http://` typos that would leak Bearer tokens,
+    * Basic Auth credentials, or API keys in plaintext.
+    */
   private[config] def warnPlaintextCredentials(sc: SourceConfig): List[String] = {
     if (sc.auth.authType == AuthType.None) return Nil
 
