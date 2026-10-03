@@ -1311,22 +1311,40 @@ class LoaderSuite extends FunSuite {
     assert(warnings.head.contains("'since'") && warnings.head.contains("won't be sent"), warnings.head)
   }
 
-  test("a filter on a parameter pagination sends fails at load, defaults included (#312)") {
-    // Offset pagination sends `limit` unless told otherwise.
-    val ex = intercept[IllegalArgumentException](Loader.load(withTable(
+  test("a filter on a parameter pagination sends loads, with a warning, defaults included (#335)") {
+    // Offset pagination sends `limit` unless told otherwise. Rejecting this refused configs
+    // that load on 0.8.0; the filter is kept for Spark instead.
+    val sc = Loader.load(withTable(
       "style = offset",
       """filters = [ { param = "limit", column = "size", operators = ["eq"] } ]"""
-    )))
-    assert(ex.getMessage.contains("'limit'") && ex.getMessage.contains("page-size-param"), ex.getMessage)
+    ))
+    val warnings = Loader.checkParameterCollisions(sc)
+    assertEquals(warnings.size, 1)
+    assert(warnings.head.contains("'limit'") && warnings.head.contains("page-size-param") &&
+      warnings.head.contains("won't be sent"), warnings.head)
   }
 
-  test("a filter on a batch join's batch-param fails at load (#312)") {
-    val ex = intercept[IllegalArgumentException](Loader.load(withTable(
+  test("0.8.0's PokeAPI example, with its filter on pagination's limit, still loads (#335)") {
+    val example = ConfigFactory.parseString(
+      """
+        |openapi = "https://example.com/openapi.json"
+        |auth { type = none }
+        |pagination { style = offset, offset-param = "offset", page-size-param = "limit", max-page-size = 100, results-path = "/results" }
+        |tables { pokemon { endpoint = "/api/v2/pokemon", data-path = "/results",
+        |  filters = [ { param = "limit", column = "limit", operators = ["eq"] } ] } }
+        |""".stripMargin)
+    assertEquals(Loader.checkParameterCollisions(Loader.load(example)).size, 1)
+  }
+
+  test("a filter on a batch join's batch-param loads, with a warning (#335)") {
+    val sc = Loader.load(withTable(
       "style = none",
       """parent-table = "parents", parent-key = "id", join-strategy = "batch", batch-param = "ids",
         |filters = [ { param = "ids", column = "owner", operators = ["eq"] } ]""".stripMargin
-    )))
-    assert(ex.getMessage.contains("batch-param"), ex.getMessage)
+    ))
+    val warnings = Loader.checkParameterCollisions(sc)
+    assertEquals(warnings.size, 1)
+    assert(warnings.head.contains("batch-param") && warnings.head.contains("won't be sent"), warnings.head)
   }
 
   test("a timestamp checkpoint on a parameter pagination sends fails at load (#312)") {

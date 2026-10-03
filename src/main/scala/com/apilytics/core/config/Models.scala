@@ -104,7 +104,28 @@ final case class PaginationConfig(
     /** Maximum number of pages to fetch before stopping. Prevents infinite loops
       * when the API doesn't signal end-of-data. Default: 1000. */
     maxPages: Int = 1000
-)
+) {
+
+  /** The query parameters this pagination sends on every request, each with the setting it
+    * comes from. Defaults included: offset pagination sends `offset` and `limit` unless told
+    * otherwise. The streaming formats don't paginate, so they send none.
+    */
+  def sentParams(format: ResponseFormat): Map[String, String] =
+    if (format != ResponseFormat.Json) Map.empty
+    else style match {
+      case PaginationStyle.Cursor =>
+        Map(cursorParam.getOrElse("cursor") -> "pagination's cursor-param") ++
+          pageSizeParam.map(_ -> "pagination's page-size-param")
+      case PaginationStyle.Offset =>
+        Map(
+          offsetParam.getOrElse("offset")  -> "pagination's offset-param",
+          pageSizeParam.getOrElse("limit") -> "pagination's page-size-param"
+        )
+      case PaginationStyle.LinkHeader =>
+        pageSizeParam.map(_ -> "pagination's page-size-param").toMap
+      case PaginationStyle.None => Map.empty
+    }
+}
 
 final case class SchemaConfig(
     flattenDepth: Int = 2,
@@ -421,3 +442,25 @@ final case class SourceConfig(
     /** Cache configuration for parsed OpenAPI specs. */
     cache: CacheConfig = CacheConfig()
 )
+
+/** Query parameters that a table's other settings send on every request (#312, #335).
+  *
+  * A filter on one of them can't be sent: the other setting would replace its value, so the
+  * rows wouldn't match the WHERE. The scan builders keep such a predicate for Spark to apply,
+  * and the loader warns about it.
+  */
+object ReservedParams {
+
+  /** Parameters pagination and a batch join's `batch-param` send, with where each comes from.
+    * `tc` is the table whose requests are meant: an exploded view passes its base table's.
+    */
+  def setBy(tc: Option[TableConfig], sc: SourceConfig): Map[String, String] =
+    tc.flatMap(_.pagination).getOrElse(sc.pagination).sentParams(sc.http.responseFormat) ++
+      tc.flatMap(_.batchParam).map(_ -> "the batch join's batch-param")
+
+  /** Everything a filter can't be pushed on, with the reason, for the scan builders. */
+  def forFilters(tc: Option[TableConfig], sc: SourceConfig): Map[String, String] =
+    setBy(tc, sc).map { case (param, where) => param -> s"$where sets it on every request" } ++
+      tc.flatMap(_.checkpoint).flatMap(_.overriddenParam)
+        .map(_ -> "the timestamp checkpoint sets it on every request")
+}
