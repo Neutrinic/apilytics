@@ -51,7 +51,8 @@ installation, configuration, streaming, Declarative Pipelines, JDBC and BI tools
 partitioning, rate limits and troubleshooting.
 
 To build or contribute, see [Development](https://neutrinic.github.io/apilytics/latest/development/)
-and [CONTRIBUTING.md](CONTRIBUTING.md).
+and [CONTRIBUTING.md](CONTRIBUTING.md). [GOVERNANCE.md](GOVERNANCE.md) says who maintains the
+project and how decisions are made. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
