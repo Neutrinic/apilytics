@@ -83,18 +83,20 @@ class ParentKeyEncodingSuite extends FunSuite {
 
   test("keys with reserved characters are encoded, not parsed as URL syntax") {
     // `x#y` requested /users/x (the rest became a fragment), `p?admin=1` injected a query,
-    // `a/b` added a path segment, and `a b` failed the whole query with "Invalid URI".
+    // `a/b` added a path segment, and `a b` failed the whole query with "Invalid URI". A `..`
+    // key has to reach the server encoded, not walk up to /repos.
     server.stubFor(get(urlPathEqualTo("/users")).willReturn(okJson(
-      """[{"login": "x#y"}, {"login": "p?admin=1"}, {"login": "a b"}, {"login": "a/b"}, {"login": "plain"}]"""
+      """[{"login": "x#y"}, {"login": "p?admin=1"}, {"login": "a b"}, {"login": "a/b"}, {"login": ".."}, {"login": "plain"}]"""
     )))
     server.stubFor(get(urlPathMatching("/users/.+/repos")).willReturn(okJson("""[{"repo": "r"}]""")))
 
     val parents = spark.sql("SELECT _parent_login FROM api.default.repos").collect().map(_.getString(0)).toSet
 
-    assertEquals(parents, Set("x#y", "p?admin=1", "a b", "a/b", "plain"))
+    assertEquals(parents, Set("x#y", "p?admin=1", "a b", "a/b", "..", "plain"))
     val requested = server.getAllServeEvents.asScala.map(_.getRequest.getUrl).filter(_ != "/users").toSet
     assertEquals(requested, Set(
-      "/users/x%23y/repos", "/users/p%3Fadmin%3D1/repos", "/users/a%20b/repos", "/users/a%2Fb/repos", "/users/plain/repos"
+      "/users/x%23y/repos", "/users/p%3Fadmin%3D1/repos", "/users/a%20b/repos", "/users/a%2Fb/repos", "/users/%2E%2E/repos",
+      "/users/plain/repos"
     ))
   }
 
