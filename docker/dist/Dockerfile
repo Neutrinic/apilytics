@@ -41,9 +41,14 @@ RUN microdnf install -y shadow-utils && microdnf clean all && \
 # private to the user who installs it, and resolves its jars from their coursier cache.
 ARG ALMOND_VERSION=0.14.5
 ARG SCALA_KERNEL_VERSION=2.13.18
+# A pinned release, fetched with -f so an HTTP error fails here rather than being saved and
+# run as the launcher (#337). It used to come from git.io, GitHub's retired shortener, which
+# points at an unpinned branch; 2.0.16 is the launcher that branch serves.
+ARG COURSIER_VERSION=2.0.16
 USER spark
 WORKDIR /tmp
-RUN curl -Lo coursier https://git.io/coursier-cli && \
+RUN curl -fsSL --retry 3 -o coursier \
+      https://github.com/coursier/coursier/releases/download/v${COURSIER_VERSION}/coursier && \
     chmod +x coursier && \
     ./coursier launch --fork almond:${ALMOND_VERSION} --scala ${SCALA_KERNEL_VERSION} -- --install && \
     rm coursier
