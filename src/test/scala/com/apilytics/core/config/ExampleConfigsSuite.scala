@@ -95,4 +95,12 @@ class ExampleConfigsSuite extends FunSuite {
       assert(config.openapi.nonEmpty, s"${file.getPath} loaded with an empty openapi")
     }
   }
+
+  test("the GitHub example maps `since` to the column it filters (#306)") {
+    // A pushed predicate is never re-checked by Spark. GitHub's `since` returns issues
+    // updated after the time, so mapped to `created_at` it returned old issues updated since.
+    val issues = Loader.load("examples/github/github-config.conf").tables("issues")
+    val since  = issues.filters.filter(_.param == "since")
+    assertEquals(since.map(_.column), List("updated_at"))
+  }
 }
