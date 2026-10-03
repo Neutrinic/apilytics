@@ -1,0 +1,2570 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Query REST APIs with Spark SQL: any API with an OpenAPI spec becomes Spark tables">
+      
+      
+      
+        <link rel="canonical" href="https://neutrinic.github.io/apilytics/1.0/reference/configuration/">
+      
+      
+        <link rel="prev" href="../../configuration/checkpoints/">
+      
+      
+        <link rel="next" href="../../troubleshooting/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.67">
+    
+    
+      
+        <title>Configuration reference - APIlytics</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ae390e2.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.96d1a7e4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="APIlytics" class="md-header__button md-logo" aria-label="APIlytics" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            APIlytics
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configuration reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun-moon" viewBox="0 0 24 24"><path d="M12 2v2M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715M16 12a4 4 0 0 0-4-4M19 5l-1.256 1.256M20 12h2"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/Neutrinic/apilytics" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Neutrinic/apilytics
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="APIlytics" class="md-nav__button md-logo" aria-label="APIlytics" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    APIlytics
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Neutrinic/apilytics" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Neutrinic/apilytics
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Getting started
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_2">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Getting started
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Quick start
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Installation
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Using APIlytics
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_3">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Using APIlytics
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/catalogs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Catalogs
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/streaming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Streaming
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/pipelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Declarative Pipelines
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/jdbc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  JDBC and BI tools
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/joins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Parent-child joins
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/partitioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Partitioning
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/rate-limiting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Rate limiting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../deploying/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Deploying
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_4">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Deploying
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deploying/standalone/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Standalone
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deploying/yarn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  YARN
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deploying/kubernetes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Kubernetes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deploying/databricks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Databricks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deploying/emr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  EMR
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deploying/dataproc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Dataproc
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deploying/unsupported/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Unsupported and untested
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../configuration/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_5">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Configuration
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/credentials/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Credentials
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Schema
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/response-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Response formats
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/checkpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Checkpoints
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+            <label class="md-nav__title" for="__nav_6">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Reference
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration reference
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration reference
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#registering-a-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Registering a config
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#top-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Top level
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>auth</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pagination" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>pagination</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>schema</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#http" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>http</code>
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="http">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#response-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>response-cache</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>cache</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>tables</code>
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="tables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>filters</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#partition" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>partition</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parent-child-joins" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Parent-child joins
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aggregations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>aggregations</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>checkpoint</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#count-deprecated" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>count</code> (deprecated)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Troubleshooting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Privacy
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Development
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#registering-a-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Registering a config
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#top-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Top level
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>auth</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pagination" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>pagination</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>schema</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#http" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>http</code>
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="http">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#response-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>response-cache</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>cache</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>tables</code>
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="tables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>filters</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#partition" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>partition</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parent-child-joins" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Parent-child joins
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aggregations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>aggregations</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>checkpoint</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#count-deprecated" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>count</code> (deprecated)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+    
+      <li class="md-path__item">
+        <a href="././" class="md-path__link">
+          
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="configuration-reference">Configuration reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h1>
+<p>Every key a config file accepts, with its default. A key not listed here is rejected when
+the config loads, so a typo fails loudly instead of being silently ignored.</p>
+<p>Durations are written as <code>"30 seconds"</code>, <code>"30s"</code>, <code>"5 minutes"</code> or <code>"7 days"</code>.</p>
+<h2 id="registering-a-config">Registering a config<a class="headerlink" href="#registering-a-config" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spark.sql.catalog.&lt;name&gt;</code></td>
+<td><code>com.apilytics.spark.RESTCatalog</code>, registering a catalog called <code>&lt;name&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>spark.sql.catalog.&lt;name&gt;.config</code></td>
+<td>The config file's path on the driver.</td>
+</tr>
+<tr>
+<td><code>format("apilytics")</code> option <code>config</code></td>
+<td>The same path, for the <a href="../../getting-started/installation/#without-a-catalog-formatapilytics">data-source entry point</a>.</td>
+</tr>
+<tr>
+<td><code>format("apilytics")</code> option <code>table</code></td>
+<td>The table to read, as named under <code>tables</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>The file is read on the driver only. Executors receive the resolved settings with their
+tasks.</p>
+<h2 id="top-level">Top level<a class="headerlink" href="#top-level" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>openapi</code></td>
+<td>required</td>
+<td>The OpenAPI spec: a URL, an absolute path, or a path relative to the config file's directory.</td>
+</tr>
+<tr>
+<td><code>base-url</code></td>
+<td>the spec's first server</td>
+<td>The API's base URL, overriding the spec's <code>servers</code>.</td>
+</tr>
+<tr>
+<td><code>auth</code></td>
+<td>required</td>
+<td><a href="#auth">Authentication</a>.</td>
+</tr>
+<tr>
+<td><code>pagination</code></td>
+<td><code>style = none</code></td>
+<td><a href="#pagination">Pagination</a> for every table, unless a table sets its own.</td>
+</tr>
+<tr>
+<td><code>schema</code></td>
+<td></td>
+<td><a href="#schema">Schema</a>.</td>
+</tr>
+<tr>
+<td><code>http</code></td>
+<td></td>
+<td><a href="#http">HTTP</a>.</td>
+</tr>
+<tr>
+<td><code>tables</code></td>
+<td></td>
+<td><a href="#tables">Tables</a>, keyed by table name.</td>
+</tr>
+<tr>
+<td><code>cache</code></td>
+<td>disabled</td>
+<td><a href="#cache">Spec cache</a>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="auth"><code>auth</code><a class="headerlink" href="#auth" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>required</td>
+<td><code>none</code>, <code>bearer</code>, <code>basic</code>, <code>header</code> or <code>oauth2_client</code>.</td>
+</tr>
+<tr>
+<td><code>token</code></td>
+<td></td>
+<td>For <code>bearer</code>.</td>
+</tr>
+<tr>
+<td><code>username</code>, <code>password</code></td>
+<td></td>
+<td>For <code>basic</code>.</td>
+</tr>
+<tr>
+<td><code>header-name</code>, <code>header-value</code></td>
+<td></td>
+<td>For <code>header</code>.</td>
+</tr>
+<tr>
+<td><code>client-id</code>, <code>client-secret</code>, <code>token-url</code></td>
+<td></td>
+<td>For <code>oauth2_client</code>: the client-credentials flow. All three are required unless a pre-fetched <code>token</code> is given instead.</td>
+</tr>
+</tbody>
+</table>
+<p>Credentials sent over plain <code>http://</code>, in <code>base-url</code> or <code>token-url</code>, are logged as a
+security warning. See <a href="../../configuration/credentials/">Credentials</a>.</p>
+<h2 id="pagination"><code>pagination</code><a class="headerlink" href="#pagination" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>style</code></td>
+<td><code>none</code></td>
+<td><code>none</code>, <code>offset</code>, <code>cursor</code> or <code>link_header</code>.</td>
+</tr>
+<tr>
+<td><code>offset-param</code></td>
+<td><code>offset</code></td>
+<td>For <code>offset</code>: the query parameter holding the start offset.</td>
+</tr>
+<tr>
+<td><code>page-size-param</code></td>
+<td><code>limit</code> for <code>offset</code>; otherwise not sent</td>
+<td>The query parameter holding the page size. For <code>cursor</code> and <code>link_header</code>, no page size is sent unless this is set.</td>
+</tr>
+<tr>
+<td><code>max-page-size</code></td>
+<td><code>100</code></td>
+<td>The page size requested. A pushed-down <code>LIMIT</code> smaller than this is requested instead.</td>
+</tr>
+<tr>
+<td><code>results-path</code></td>
+<td>the table's <code>data-path</code></td>
+<td>For <code>offset</code>: a JSON pointer to the page's record array, used to count each page's records and recognise an empty last page. Without either, only a top-level array can be counted.</td>
+</tr>
+<tr>
+<td><code>cursor-path</code></td>
+<td>required for <code>cursor</code></td>
+<td>A JSON pointer to the next cursor in the response. The walk ends when it's missing or empty.</td>
+</tr>
+<tr>
+<td><code>cursor-param</code></td>
+<td><code>cursor</code></td>
+<td>For <code>cursor</code>: the query parameter that sends the next cursor.</td>
+</tr>
+<tr>
+<td><code>max-pages</code></td>
+<td><code>1000</code></td>
+<td>A safety limit on pages per walk, against an API that never stops.</td>
+</tr>
+</tbody>
+</table>
+<p><code>link_header</code> follows the <code>Link: rel="next"</code> response header, resolving a relative link
+against the request. With authentication configured, it only follows links on the API's
+own origin (scheme, host and port), because every request carries the source's
+credentials. A link to another origin, or from HTTPS to HTTP, fails the read rather than
+send them there. A <a href="#checkpoint">checkpoint</a>
+on a <code>link_header</code> source must use <code>mode = timestamp</code>, because the header carries no
+cursor or offset state to save.</p>
+<h2 id="schema"><code>schema</code><a class="headerlink" href="#schema" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mode</code></td>
+<td><code>strict</code></td>
+<td><code>strict</code> (typed columns) or <code>variant</code> (one VARIANT column). See <a href="../../configuration/schema/">Schema</a>.</td>
+</tr>
+<tr>
+<td><code>flatten-depth</code></td>
+<td><code>2</code></td>
+<td>Levels of nested objects flattened into columns. Deeper objects become JSON strings.</td>
+</tr>
+<tr>
+<td><code>array-handling</code></td>
+<td><code>keep_array</code></td>
+<td><code>keep_array</code>, <code>explode_view</code> or <code>both</code>.</td>
+</tr>
+<tr>
+<td><code>explode-outer</code></td>
+<td><code>false</code></td>
+<td>In exploded tables, keep a row for a record whose array is empty or null.</td>
+</tr>
+<tr>
+<td><code>arrow-batch-size</code></td>
+<td><code>4096</code></td>
+<td>Rows per Arrow batch handed to Spark.</td>
+</tr>
+<tr>
+<td><code>prefetch-batches</code></td>
+<td><code>2</code></td>
+<td>Batches fetched ahead of Spark, per partition. At least 1.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="http"><code>http</code><a class="headerlink" href="#http" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>timeout</code></td>
+<td><code>30 seconds</code></td>
+<td>Per request: connecting, sending, and receiving the response headers.</td>
+</tr>
+<tr>
+<td><code>max-retries</code></td>
+<td><code>5</code></td>
+<td>Retries for transient failures (429 and 5xx), with exponential backoff.</td>
+</tr>
+<tr>
+<td><code>max-backoff</code></td>
+<td><code>30 seconds</code></td>
+<td>The longest backoff between retries. A 429's <code>Retry-After</code> is honoured as given instead.</td>
+</tr>
+<tr>
+<td><code>rate-limit</code></td>
+<td>none</td>
+<td>Requests per second, shared between partitions. See <a href="../../using/rate-limiting/">Rate limiting</a>.</td>
+</tr>
+<tr>
+<td><code>response-format</code></td>
+<td><code>json</code></td>
+<td><code>json</code>, <code>ndjson</code> (also <code>jsonl</code>) or <code>sse</code>. See <a href="../../configuration/response-formats/">Response formats</a>.</td>
+</tr>
+<tr>
+<td><code>response-cache</code></td>
+<td>disabled</td>
+<td><a href="#response-cache">Response cache</a>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="response-cache"><code>response-cache</code><a class="headerlink" href="#response-cache" title="Permanent link">&para;</a></h3>
+<p>An in-memory cache of API responses, shared by the tasks in each JVM (the driver, and
+each executor). Useful when the same pages are read repeatedly within its TTL.</p>
+<p>Entries are keyed by host, credentials, path and query parameters, so catalogs in the same
+application never share responses, even when they request the same path. The credentials
+are hashed rather than stored.</p>
+<p>A query that mixes cached and fresh pages isn't a consistent snapshot of the API: pages
+cached at different times can overlap or miss records that moved between pages.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td><code>false</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>backend</code></td>
+<td><code>memory</code></td>
+<td>The only backend.</td>
+</tr>
+<tr>
+<td><code>ttl</code></td>
+<td><code>5 minutes</code></td>
+<td>How long a response is reused.</td>
+</tr>
+<tr>
+<td><code>max-entries</code></td>
+<td><code>1000</code></td>
+<td>Responses kept at most.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="cache"><code>cache</code><a class="headerlink" href="#cache" title="Permanent link">&para;</a></h2>
+<p>A cache of the parsed OpenAPI spec on local disk, so a large spec isn't fetched and parsed
+on every catalog load.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td><code>false</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>ttl</code></td>
+<td>indefinite</td>
+<td>How long a cached spec is trusted. Without a TTL, it's revalidated by ETag or file modification time.</td>
+</tr>
+<tr>
+<td><code>directory</code></td>
+<td><code>~/.apilytics/cache/</code></td>
+<td>Where cached specs are kept.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="tables"><code>tables</code><a class="headerlink" href="#tables" title="Permanent link">&para;</a></h2>
+<p>Each key under <code>tables</code> names a table.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>endpoint</code></td>
+<td>required</td>
+<td>The path, relative to the base URL. <code>{name}</code> placeholders are filled from a parent table.</td>
+</tr>
+<tr>
+<td><code>data-path</code></td>
+<td></td>
+<td>A JSON pointer to the records, when the response wraps them.</td>
+</tr>
+<tr>
+<td><code>pagination</code></td>
+<td>the source's</td>
+<td>This table's own <a href="#pagination">pagination</a>.</td>
+</tr>
+<tr>
+<td><code>filters</code></td>
+<td>none</td>
+<td><a href="#filters">Filter pushdown</a>.</td>
+</tr>
+<tr>
+<td><code>partition</code></td>
+<td>none</td>
+<td><a href="#partition">Partitioning</a>.</td>
+</tr>
+<tr>
+<td><code>parent-table</code>, <code>parent-key</code>, <code>join-strategy</code></td>
+<td></td>
+<td><a href="#parent-child-joins">Parent-child joins</a>.</td>
+</tr>
+<tr>
+<td><code>aggregations</code></td>
+<td>none</td>
+<td><a href="#aggregations">Aggregate pushdown</a>.</td>
+</tr>
+<tr>
+<td><code>count</code></td>
+<td>none</td>
+<td>Deprecated <a href="#count-deprecated"><code>COUNT(*)</code> pushdown</a>.</td>
+</tr>
+<tr>
+<td><code>checkpoint</code></td>
+<td>none</td>
+<td><a href="#checkpoint">Checkpoints</a>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="filters"><code>filters</code><a class="headerlink" href="#filters" title="Permanent link">&para;</a></h3>
+<p>A list of predicates that become query parameters:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>filters = [
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  { param = "state", column = "state", operators = ["eq"] }
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  { param = "since", column = "updated_at", operators = ["gt", "gte"] }
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>]
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>column</code></td>
+<td>The column the SQL predicate is on.</td>
+</tr>
+<tr>
+<td><code>operators</code></td>
+<td>Which predicates push: <code>eq</code> (<code>=</code>), <code>neq</code> (<code>&lt;&gt;</code>), <code>gt</code> (<code>&gt;</code>), <code>gte</code> (<code>&gt;=</code>), <code>lt</code> (<code>&lt;</code>), <code>lte</code> (<code>&lt;=</code>).</td>
+</tr>
+<tr>
+<td><code>param</code></td>
+<td>The query parameter the value is sent in.</td>
+</tr>
+</tbody>
+</table>
+<p>A <code>param</code> that something else sends on every request, whether pagination, a batch join's
+<code>batch-param</code> or the table's timestamp checkpoint, can't carry the filter's value: the other
+setting would replace it. Such a filter loads with a warning, and Spark applies it to the
+rows that come back instead of sending it. See <a href="../../configuration/checkpoints/">Checkpoints</a>.</p>
+<p>A predicate without a matching entry is applied by Spark after the rows arrive. See
+<a href="../../troubleshooting/#which-filters-reach-the-api">Troubleshooting</a>.</p>
+<h3 id="partition"><code>partition</code><a class="headerlink" href="#partition" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>date-range</code></td>
+<td><code>offset</code>, <code>enum</code> or <code>date-range</code>.</td>
+</tr>
+<tr>
+<td><code>size</code>, <code>count</code></td>
+<td>required for <code>offset</code></td>
+<td>Partition <code>i</code> covers offsets <code>[i * size, (i + 1) * size)</code>. Both at least 1.</td>
+</tr>
+<tr>
+<td><code>param</code>, <code>values</code></td>
+<td>required for <code>enum</code></td>
+<td>One partition per value, sent in <code>param</code>.</td>
+</tr>
+<tr>
+<td><code>column</code>, <code>range</code>, <code>start-param</code>, <code>end-param</code></td>
+<td>required for <code>date-range</code></td>
+<td>Splits the pushed-down window on <code>column</code> into chunks of <code>range</code>, which must be at least 1 millisecond.</td>
+</tr>
+<tr>
+<td><code>format</code></td>
+<td><code>yyyy-MM-dd'T'HH:mm:ss'Z'</code></td>
+<td>For <code>date-range</code>: how the bounds are written.</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="../../using/partitioning/">Partitioning</a> for which pagination each type works with.</p>
+<h3 id="parent-child-joins">Parent-child joins<a class="headerlink" href="#parent-child-joins" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>parent-table</code></td>
+<td></td>
+<td>The table whose rows drive the calls.</td>
+</tr>
+<tr>
+<td><code>parent-key</code></td>
+<td></td>
+<td>The parent column substituted into the endpoint's placeholder.</td>
+</tr>
+<tr>
+<td><code>join-strategy</code></td>
+<td><code>nested_loop</code></td>
+<td><code>nested_loop</code> (one call per parent row) or <code>batch</code> (many parent keys per call).</td>
+</tr>
+<tr>
+<td><code>batch-param</code></td>
+<td>required for <code>batch</code></td>
+<td>The query parameter carrying the batched keys. The endpoint can't have placeholders, so the parent key column is named after <code>parent-key</code>.</td>
+</tr>
+<tr>
+<td><code>batch-size</code></td>
+<td><code>100</code></td>
+<td>Parent keys per call.</td>
+</tr>
+<tr>
+<td><code>batch-separator</code></td>
+<td><code>,</code></td>
+<td>How the keys are joined.</td>
+</tr>
+<tr>
+<td><code>child-key-field</code></td>
+<td>derived from <code>parent-key</code></td>
+<td>For <code>batch</code>: the field in each child record that holds its parent's key, used to match results back to parents. Without it, common names derived from <code>parent-key</code> are tried.</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="../../using/joins/">Parent-child joins</a>.</p>
+<h3 id="aggregations"><code>aggregations</code><a class="headerlink" href="#aggregations" title="Permanent link">&para;</a></h3>
+<p>Aggregates that push down to an endpoint which computes them, keyed by a name you choose:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aggregations {
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  total_issues { function = "count", endpoint = "/search/issues", response-path = "/total_count"
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>                 params { q = "repo:owner/repo" } }
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>}
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>function</code></td>
+<td><code>count</code>, <code>sum</code>, <code>avg</code>, <code>min</code>, <code>max</code> or <code>custom</code>.</td>
+</tr>
+<tr>
+<td><code>column</code></td>
+<td>Required for <code>sum</code>, <code>avg</code>, <code>min</code> and <code>max</code>. For <code>count</code>: without it, the aggregation answers <code>COUNT(*)</code>; with it, only <code>COUNT(that column)</code>, which skips nulls.</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>Required for <code>custom</code>: the SQL function's name.</td>
+</tr>
+<tr>
+<td><code>endpoint</code></td>
+<td>The endpoint that returns the aggregate.</td>
+</tr>
+<tr>
+<td><code>response-path</code></td>
+<td>A JSON pointer to the value in its response.</td>
+</tr>
+<tr>
+<td><code>params</code></td>
+<td>Query parameters to send, as <code>name = value</code> pairs.</td>
+</tr>
+</tbody>
+</table>
+<p>Only <code>count</code>, <code>sum</code> and <code>avg</code> are pushed down. <code>min</code>, <code>max</code> and <code>custom</code> are accepted, but
+pushdown declines them at plan time and Spark computes them over a full scan, because
+their result type can't be decided before the data arrives. The decision is logged at
+INFO.</p>
+<h3 id="checkpoint"><code>checkpoint</code><a class="headerlink" href="#checkpoint" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td><code>false</code></td>
+<td>Can't be combined with <code>partition</code>: one checkpoint covers the whole table.</td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>required when enabled</td>
+<td>The directory for <code>&lt;table&gt;.checkpoint.json</code>: a local path, or <code>hdfs://</code>, <code>s3://</code>, <code>s3a://</code>, <code>gs://</code>.</td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td><code>cursor</code></td>
+<td><code>cursor</code>, <code>offset</code> or <code>timestamp</code>.</td>
+</tr>
+<tr>
+<td><code>timestamp-path</code></td>
+<td>required for <code>timestamp</code></td>
+<td>A JSON pointer to each record's timestamp.</td>
+</tr>
+<tr>
+<td><code>timestamp-param</code></td>
+<td>required for <code>timestamp</code></td>
+<td>The query parameter that sends the last timestamp.</td>
+</tr>
+</tbody>
+</table>
+<p><code>mode = timestamp</code>, with both of its keys, is also what lets a table
+<a href="../../using/streaming/">stream</a>. See <a href="../../configuration/checkpoints/">Checkpoints</a>.</p>
+<h3 id="count-deprecated"><code>count</code> (deprecated)<a class="headerlink" href="#count-deprecated" title="Permanent link">&para;</a></h3>
+<p><code>COUNT(*)</code> pushdown from before <code>aggregations</code>. It still works; a <code>count</code> aggregation does
+the same.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>endpoint</code></td>
+<td></td>
+<td>A dedicated count endpoint, such as <code>/items/count</code>.</td>
+</tr>
+<tr>
+<td><code>param</code></td>
+<td></td>
+<td>Or: a query parameter that makes the normal endpoint include a total.</td>
+</tr>
+<tr>
+<td><code>param-value</code></td>
+<td><code>true</code></td>
+<td>The value sent in <code>param</code>.</td>
+</tr>
+<tr>
+<td><code>response-path</code></td>
+<td>required</td>
+<td>A JSON pointer to the count in the response.</td>
+</tr>
+</tbody>
+</table>
+<p>One of <code>endpoint</code> or <code>param</code> is required. The equivalent aggregation:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a># Before
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>count { endpoint = "/items/count", response-path = "/total" }
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a># After
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>aggregations { total { function = "count", endpoint = "/items/count", response-path = "/total" } }
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../configuration/checkpoints/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Checkpoints">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Checkpoints
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../troubleshooting/" class="md-footer__link md-footer__link--next" aria-label="Next: Troubleshooting">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Troubleshooting
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache License 2.0
+    </div>
+  
+  Page views are counted with Scarf, without cookies.
+  <a href="../../privacy/">Privacy</a>
+  <img referrerpolicy="no-referrer-when-downgrade"
+       src="https://static.scarf.sh/a.png?x-pxid=1e51a527-bf6a-4a83-babb-1b615fb08342"
+       alt="" width="1" height="1" style="position: absolute">
+  
+    <br>
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog" role="status" aria-atomic="true">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      
+      
+        
+        
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.path","navigation.sections","navigation.top","navigation.tracking","search.highlight"],"redirect":null,"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"default":"latest","provider":"mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.67a597eb.min.js"></script>
+      
+    
+  </body>
+</html>
