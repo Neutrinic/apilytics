@@ -117,9 +117,12 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
 
             // Determine checkpoint state for this page:
             // - For cursor/offset modes, use the state from Paginator
-            // - For timestamp mode, extract max timestamp from records
+            // - For timestamp mode, only a record timestamp. A page without one, most often
+            //   an empty last page, used to fall back to the paginator's cursor, which
+            //   replaced the timestamp: the next run resumed by cursor with no `since` and
+            //   missed every update to earlier records (#311).
             val effectiveState = if (isTimestampMode) {
-              extractMaxTimestamp(records, timestampPointer).orElse(pageState)
+              extractMaxTimestamp(records, timestampPointer)
             } else {
               pageState
             }

@@ -149,6 +149,17 @@ class TimestampCheckpointSuite extends FunSuite {
     assert(Files.readString(checkpointFile).contains("2025-03-01T00:00:00Z"), Files.readString(checkpointFile))
   }
 
+  test("an empty last page doesn't replace the saved timestamp with a cursor (#311)") {
+    server.stubFor(get(urlPathEqualTo("/issues")).withQueryParam("cursor", absent())
+      .willReturn(okJson("""{"items": [{"id": 1, "updated_at": "2025-03-01T00:00:00Z"}], "next": "c2"}""")))
+    server.stubFor(get(urlPathEqualTo("/issues")).withQueryParam("cursor", equalTo("c2"))
+      .willReturn(okJson("""{"items": [], "next": ""}""")))
+
+    assertEquals(spark.sql("SELECT id FROM api.default.issues").count(), 1L)
+    val saved = Files.readString(checkpointFile)
+    assert(saved.contains("\"timestamp\"") && saved.contains("2025-03-01T00:00:00Z"), saved)
+  }
+
   test("timestamps compare as instants, not strings (#311)") {
     import RESTColumnarPartitionReader.laterTimestamp
     // As strings, ".5Z" sorts before "Z", and offsets don't order at all.

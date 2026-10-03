@@ -541,10 +541,6 @@ object Loader {
     cc
   }
 
-  /** Check if auth credentials would be sent over plaintext HTTP and warn.
-    * This catches accidental `http://` typos that would leak Bearer tokens,
-    * Basic Auth credentials, or API keys in plaintext.
-    */
   /** Two settings that set the same query parameter (#312).
     *
     * Only one value can be sent, so one setting silently replaced the other, and twice that
@@ -618,6 +614,10 @@ object Loader {
       case PaginationStyle.None => Map.empty
     }
 
+  /** Check if auth credentials would be sent over plaintext HTTP and warn.
+    * This catches accidental `http://` typos that would leak Bearer tokens,
+    * Basic Auth credentials, or API keys in plaintext.
+    */
   private[config] def warnPlaintextCredentials(sc: SourceConfig): List[String] = {
     if (sc.auth.authType == AuthType.None) return Nil
 
