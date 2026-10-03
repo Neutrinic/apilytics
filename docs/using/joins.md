@@ -17,7 +17,7 @@ FROM api.default.type_pokemon LIMIT 5;
 |---|---|
 | `endpoint` | The child endpoint. `{type_name}` is filled in from the parent row. |
 | `parent-table` | The table whose rows drive the calls. |
-| `parent-key` | The parent column substituted into the path. |
+| `parent-key` | The parent column substituted into the path, percent-encoded as one path segment: `a/b` is sent as `a%2Fb`. |
 | `data-path` | Where the child records sit in the response, when they are nested. |
 | `join-strategy` | `nested_loop` makes one call per parent row. `batch` sends many parent keys in one call; see below. |
 

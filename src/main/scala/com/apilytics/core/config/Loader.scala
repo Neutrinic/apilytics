@@ -167,6 +167,8 @@ object Loader {
       }
     }
 
+    checkParameterCollisions(sc)
+
     // Warn when auth credentials are configured over plaintext HTTP
     warnPlaintextCredentials(sc)
 
@@ -386,13 +388,15 @@ object Loader {
               s"(got '${config.getString("range")}')"
           )
         }
+        val format = if (config.hasPath("format")) config.getString("format")
+                     else "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        checkRangeFitsFormat(range, format)
         PartitionConfig.DateRange(
           column = config.getString("column"),
           range = range,
           startParam = config.getString("start-param"),
           endParam = config.getString("end-param"),
-          format = if (config.hasPath("format")) config.getString("format")
-                   else "yyyy-MM-dd'T'HH:mm:ss'Z'"
+          format = format
         )
 
       case "offset" =>
@@ -538,6 +542,120 @@ object Loader {
     }
 
     cc
+  }
+
+  /** Two settings that set the same query parameter (#312).
+    *
+    * Only one value can be sent, so one setting silently replaced the other, and twice that
+    * returned wrong rows without an error (#292, #310). A filter on the parameter a timestamp
+    * checkpoint sets is safe: the filter isn't pushed, and Spark applies it after the rows
+    * arrive. That's the setup the docs recommend, so it loads, with a warning that the filter
+    * won't reach the API. Any other collision has no safe reading, so it fails here: a filter
+    * or a checkpoint on a parameter pagination sends, or a filter on a batch join's
+    * `batch-param`.
+    *
+    * @return the warnings, for tests
+    */
+  private[config] def checkParameterCollisions(sc: SourceConfig): List[String] = {
+    val warnings = List.newBuilder[String]
+
+    sc.tables.foreach { case (name, tc) =>
+      val pagination = tc.pagination.getOrElse(sc.pagination)
+      val setBy: Map[String, String] =
+        paginationParams(pagination, sc.http.responseFormat) ++ tc.batchParam.map(_ -> "batch-param")
+      val checkpointParam = tc.checkpoint.flatMap(_.overriddenParam)
+
+      checkpointParam.foreach { param =>
+        setBy.get(param).foreach { where =>
+          throw new IllegalArgumentException(
+            s"Table '$name' sets query parameter '$param' from checkpoint.timestamp-param, but " +
+              s"$where sends that parameter too. Only one value can be sent, so one would " +
+              "replace the other. Use a different parameter for one of them."
+          )
+        }
+      }
+
+      tc.filters.foreach { f =>
+        setBy.get(f.param).foreach { where =>
+          throw new IllegalArgumentException(
+            s"Table '$name' has a filter on '${f.column}' sending query parameter '${f.param}', " +
+              s"but $where sends that parameter too. The filter's value would be replaced, and " +
+              "the rows wouldn't match the WHERE. Remove the filter, or map it to another " +
+              "parameter."
+          )
+        }
+        if (checkpointParam.contains(f.param)) {
+          val msg = s"Table '$name': the filter on '${f.column}' uses query parameter " +
+            s"'${f.param}', which the timestamp checkpoint sets on every request. The filter " +
+            "won't be sent to the API; Spark applies it to the rows that come back."
+          log.warn(msg)
+          warnings += msg
+        }
+      }
+    }
+
+    warnings.result()
+  }
+
+  /** The query parameters pagination sends, with the setting each comes from. Defaults
+    * included: offset pagination sends `offset` and `limit` unless told otherwise. The
+    * streaming formats don't paginate, so they send none.
+    */
+  private def paginationParams(p: PaginationConfig, format: ResponseFormat): Map[String, String] =
+    if (format != ResponseFormat.Json) Map.empty
+    else p.style match {
+      case PaginationStyle.Cursor =>
+        Map(p.cursorParam.getOrElse("cursor") -> "pagination's cursor-param") ++
+          p.pageSizeParam.map(_ -> "pagination's page-size-param")
+      case PaginationStyle.Offset =>
+        Map(
+          p.offsetParam.getOrElse("offset")  -> "pagination's offset-param",
+          p.pageSizeParam.getOrElse("limit") -> "pagination's page-size-param"
+        )
+      case PaginationStyle.LinkHeader =>
+        p.pageSizeParam.map(_ -> "pagination's page-size-param").toMap
+      case PaginationStyle.None => Map.empty
+    }
+
+  /** A date-range partition's boundaries have to be expressible in its format (#321).
+    *
+    * Each partition sends its bounds formatted with `format`. With `yyyy-MM-dd` and a range of
+    * one hour, the 24 partitions of a day all send the same two dates, so each fetches the
+    * whole day and the rows come back 24 times. The range must be a whole number of the
+    * format's smallest unit: the first of 1, 10 or 100 milliseconds, a second, minute, hour
+    * or day that changes its output. A format coarser than a day, such as `yyyy-MM`, can't bound fixed-size ranges.
+    */
+  private def checkRangeFitsFormat(range: FiniteDuration, format: String): Unit = {
+    import java.time.{Instant, ZoneOffset}
+    import java.time.format.DateTimeFormatter
+    val formatter = try DateTimeFormatter.ofPattern(format).withZone(ZoneOffset.UTC)
+      catch {
+        case e: IllegalArgumentException =>
+          throw new IllegalArgumentException(s"partition.format '$format' is not a valid pattern: ${e.getMessage}")
+      }
+    val origin = Instant.parse("2024-01-01T00:00:00Z")
+    // Partitions step in whole milliseconds, so a millisecond is the finest step that matters.
+    // `S` and `SS` fractions step in 100 and 10 milliseconds, so those are probed too.
+    val units = List(
+      1.milli -> "1 millisecond", 10.millis -> "10 milliseconds", 100.millis -> "100 milliseconds",
+      1.second -> "1 second", 1.minute -> "1 minute", 1.hour -> "1 hour", 1.day -> "1 day"
+    )
+    val unit   = units.find { case (u, _) => formatter.format(origin) != formatter.format(origin.plusMillis(u.toMillis)) }
+    unit match {
+      case Some((u, _)) if range.toMillis % u.toMillis == 0 => ()
+      case Some((_, name)) =>
+        throw new IllegalArgumentException(
+          s"partition.range '$range' isn't a multiple of $name, the smallest step " +
+            s"partition.format '$format' can express. Partitions would send the same bounds and " +
+            s"fetch the same rows more than once. Use a multiple of $name, or a format with " +
+            "finer fields."
+        )
+      case None =>
+        throw new IllegalArgumentException(
+          s"partition.format '$format' doesn't change within a day, so it can't express the " +
+            "bounds of fixed-size date ranges. Use a format with at least the day."
+        )
+    }
   }
 
   /** Check if auth credentials would be sent over plaintext HTTP and warn.

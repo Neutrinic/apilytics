@@ -4,6 +4,7 @@ import com.apilytics.core.config.{AggregationConfig, CheckpointMode, PartitionCo
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
+import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan, Statistics, SupportsReportStatistics}
 import org.apache.spark.sql.connector.read.streaming.MicroBatchStream
 import org.apache.spark.sql.types.StructType
@@ -20,6 +21,9 @@ class RESTScan(
     pushedAggregation: Option[Aggregation] = None,
     resolvedAggConfigs: List[AggregationConfig] = Nil
 ) extends Scan with Batch with SupportsReportStatistics with Logging {
+
+  /** Counts of converted and NULLed values, in the SQL tab next to the scan (#309). */
+  override def supportedCustomMetrics(): Array[CustomMetric] = ConversionMetrics.supported
 
   /** Schema of what this scan actually produces.
     *
@@ -233,17 +237,21 @@ class RESTScan(
   ): Option[Array[InputPartition]] = {
     try {
       val formatter = DateTimeFormatter.ofPattern(config.format).withZone(ZoneOffset.UTC)
-      val startInstant = Instant.from(formatter.parse(start))
-      val endInstant = Instant.from(formatter.parse(end))
+      val startInstant = RESTScan.parseBoundary(formatter, start)
+      val endInstant = RESTScan.parseBoundary(formatter, end)
       val rangeMillis = config.range.toMillis
 
-      // Generate partition ranges (iterative to avoid stack overflow)
-      val ranges = generateRanges(startInstant.toEpochMilli, endInstant.toEpochMilli, rangeMillis)
-
-      if (ranges.isEmpty) {
+      if (!startInstant.isBefore(endInstant)) {
         logInfo("Date range is empty (start >= end), returning empty partition list")
         Some(Array.empty)
       } else {
+        // Partitions step in whole milliseconds. A window shorter than one truncates to
+        // nothing, so it gets a single partition rather than none.
+        val ranges = generateRanges(startInstant.toEpochMilli, endInstant.toEpochMilli, rangeMillis) match {
+          case Nil    => List((startInstant.toEpochMilli, endInstant.toEpochMilli))
+          case ranges => ranges
+        }
+
         val numPartitions = ranges.size
         val shares = rateLimitShares(numPartitions)
 
@@ -256,8 +264,10 @@ class RESTScan(
         }
 
         Some(ranges.zipWithIndex.map { case ((rangeStart, rangeEnd), idx) =>
-          val startStr = formatter.format(Instant.ofEpochMilli(rangeStart))
-          val endStr = formatter.format(Instant.ofEpochMilli(rangeEnd))
+          // The outer bounds are the query's own: truncated to milliseconds, a format with
+          // finer fields lost the start and end of the window it was asked for.
+          val startStr = if (idx == 0) start else formatter.format(Instant.ofEpochMilli(rangeStart))
+          val endStr   = if (idx == numPartitions - 1) end else formatter.format(Instant.ofEpochMilli(rangeEnd))
 
           // Replace date range params with partition-specific values
           val partitionParams = pushedParams
@@ -268,7 +278,9 @@ class RESTScan(
         }.toArray)
       }
     } catch {
-      case e: java.time.format.DateTimeParseException =>
+      // DateTimeException, not only its parse subclass: a value can parse yet still not
+      // make an instant, and that one used to fail planning instead of falling back (#321).
+      case e: java.time.DateTimeException =>
         logWarning(s"Failed to parse date range values (start='$start', end='$end') " +
           s"with format '${config.format}': ${e.getMessage}. Using single partition.")
         None
@@ -413,6 +425,26 @@ class RESTScan(
 }
 
 object RESTScan {
+
+  /** A date-range bound as an instant, read with the partition's format (#321).
+    *
+    * A format with a time and a zone gives an instant directly; one without a zone is read
+    * as UTC; a date-only format such as `yyyy-MM-dd` gives that day's start, in UTC.
+    * `Instant.from` alone failed on a date-only format, with a `DateTimeException` that
+    * planning didn't catch.
+    */
+  private[spark] def parseBoundary(formatter: DateTimeFormatter, text: String): Instant = {
+    import java.time.temporal.{TemporalAccessor, TemporalQuery}
+    import java.time.{LocalDate, LocalDateTime}
+    val instant: TemporalQuery[Instant]             = (t: TemporalAccessor) => Instant.from(t)
+    val localDateTime: TemporalQuery[LocalDateTime] = (t: TemporalAccessor) => LocalDateTime.from(t)
+    val localDate: TemporalQuery[LocalDate]         = (t: TemporalAccessor) => LocalDate.from(t)
+    formatter.parseBest(text, instant, localDateTime, localDate) match {
+      case i: Instant        => i
+      case dt: LocalDateTime => dt.toInstant(ZoneOffset.UTC)
+      case d: LocalDate      => d.atStartOfDay(ZoneOffset.UTC).toInstant
+    }
+  }
 
   /** Why a table cannot be read as a stream, and what its config needs. Shared by the
     * catalog path and `format("apilytics")`, which reach the same limit by different routes. */

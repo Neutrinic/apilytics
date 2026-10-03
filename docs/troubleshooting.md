@@ -22,6 +22,9 @@ and which ones Spark applied itself, because the table has no matching `filters`
 INFO FilterPushdown: Filters applied locally by Spark: author = 'octocat'
 ```
 
+A filter on a table's timestamp checkpoint parameter is always applied by Spark: the
+checkpoint sets that parameter on every request, so the filter's value couldn't be sent.
+
 A slow query is usually a local filter: Spark has to read every page to apply it. Add a
 `filters` entry for that column if the API supports the parameter. See
 [Configuration](configuration/index.md#filters).

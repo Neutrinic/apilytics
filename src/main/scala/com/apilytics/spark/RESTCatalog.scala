@@ -70,6 +70,9 @@ class RESTCatalog extends CatalogPlugin with TableCatalog with SupportsNamespace
     // Endpoint matching, config-path overrides, synthetic endpoints for config-only
     // tables and record-schema resolution all happen in the source catalog (#191).
     val spec = source.table(tableName).getOrElse(throw new NoSuchTableException(ident))
+    if (config.schema.mode == SchemaMode.Strict) {
+      source.unmatchedReason(tableName).foreach(reason => throw new IllegalArgumentException(reason))
+    }
 
     val arrowSchema = SchemaMapper.toArrowSchemaWithMode(
       spec.schema,
