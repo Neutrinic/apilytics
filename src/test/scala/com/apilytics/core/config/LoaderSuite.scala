@@ -1297,16 +1297,18 @@ class LoaderSuite extends FunSuite {
       |tables { items { endpoint = "/items", $table } }
       |""".stripMargin)
 
+  /** The warnings loading `config` logs: what a user loading it is told. */
+  private def warningsLoading(config: com.typesafe.config.Config): List[String] = Loader.loadWithWarnings(config)._2
+
   private val timestampCheckpoint =
     """checkpoint { enabled = true, path = "/tmp/cp", mode = timestamp, timestamp-param = "since", timestamp-path = "/updated_at" }"""
 
   test("a filter on the timestamp checkpoint's parameter loads, with a warning (#312)") {
     // The docs' setup. Since #310 the filter stays with Spark, so it's safe.
-    val sc = Loader.load(withTable(
+    val warnings = warningsLoading(withTable(
       "style = none",
       s"""filters = [ { param = "since", column = "updated_at", operators = ["gte"] } ], $timestampCheckpoint"""
     ))
-    val warnings = Loader.checkParameterCollisions(sc)
     assertEquals(warnings.size, 1)
     assert(warnings.head.contains("'since'") && warnings.head.contains("won't be sent"), warnings.head)
   }
@@ -1314,11 +1316,10 @@ class LoaderSuite extends FunSuite {
   test("a filter on a parameter pagination sends loads, with a warning, defaults included (#335)") {
     // Offset pagination sends `limit` unless told otherwise. Rejecting this refused configs
     // that load on 0.8.0; the filter is kept for Spark instead.
-    val sc = Loader.load(withTable(
+    val warnings = warningsLoading(withTable(
       "style = offset",
       """filters = [ { param = "limit", column = "size", operators = ["eq"] } ]"""
     ))
-    val warnings = Loader.checkParameterCollisions(sc)
     assertEquals(warnings.size, 1)
     assert(warnings.head.contains("'limit'") && warnings.head.contains("page-size-param") &&
       warnings.head.contains("won't be sent"), warnings.head)
@@ -1333,16 +1334,25 @@ class LoaderSuite extends FunSuite {
         |tables { pokemon { endpoint = "/api/v2/pokemon", data-path = "/results",
         |  filters = [ { param = "limit", column = "limit", operators = ["eq"] } ] } }
         |""".stripMargin)
-    assertEquals(Loader.checkParameterCollisions(Loader.load(example)).size, 1)
+    assertEquals(warningsLoading(example).count(_.contains("'limit'")), 1)
+  }
+
+  test("batch-param is reserved only for a batch join (#335)") {
+    // A nested-loop join never sends batch-param, so a filter on that name is a plain filter.
+    val warnings = warningsLoading(withTable(
+      "style = none",
+      """parent-table = "parents", parent-key = "id", join-strategy = "nested_loop", batch-param = "ids",
+        |filters = [ { param = "ids", column = "owner", operators = ["eq"] } ]""".stripMargin
+    ))
+    assertEquals(warnings.filter(_.contains("'ids'")), Nil)
   }
 
   test("a filter on a batch join's batch-param loads, with a warning (#335)") {
-    val sc = Loader.load(withTable(
+    val warnings = warningsLoading(withTable(
       "style = none",
       """parent-table = "parents", parent-key = "id", join-strategy = "batch", batch-param = "ids",
         |filters = [ { param = "ids", column = "owner", operators = ["eq"] } ]""".stripMargin
     ))
-    val warnings = Loader.checkParameterCollisions(sc)
     assertEquals(warnings.size, 1)
     assert(warnings.head.contains("batch-param") && warnings.head.contains("won't be sent"), warnings.head)
   }

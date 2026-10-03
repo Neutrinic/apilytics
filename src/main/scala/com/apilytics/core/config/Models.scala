@@ -453,10 +453,12 @@ object ReservedParams {
 
   /** Parameters pagination and a batch join's `batch-param` send, with where each comes from.
     * `tc` is the table whose requests are meant: an exploded view passes its base table's.
+    * Only a batch join sends `batch-param`; a nested-loop join ignores it.
     */
   def setBy(tc: Option[TableConfig], sc: SourceConfig): Map[String, String] =
     tc.flatMap(_.pagination).getOrElse(sc.pagination).sentParams(sc.http.responseFormat) ++
-      tc.flatMap(_.batchParam).map(_ -> "the batch join's batch-param")
+      tc.filter(_.joinStrategy.contains(JoinStrategy.Batch)).flatMap(_.batchParam)
+        .map(_ -> "the batch join's batch-param")
 
   /** Everything a filter can't be pushed on, with the reason, for the scan builders. */
   def forFilters(tc: Option[TableConfig], sc: SourceConfig): Map[String, String] =

@@ -13,7 +13,7 @@ object Loader {
   def load(path: String): SourceConfig = {
     val file   = new java.io.File(path)
     val config = ConfigFactory.parseFile(file).resolve()
-    val sc     = readSourceConfig(config)
+    val sc     = readSourceConfig(config)._1
     sc.copy(openapi = resolveSpecLocation(sc.openapi, Option(file.getAbsoluteFile.getParentFile)))
   }
 
@@ -41,11 +41,15 @@ object Loader {
     else configDir.map(dir => new java.io.File(dir, location).getPath).getOrElse(location)
   }
 
-  def load(config: Config): SourceConfig = {
-    readSourceConfig(config.resolve())
-  }
+  def load(config: Config): SourceConfig = loadWithWarnings(config)._1
 
-  private def readSourceConfig(config: Config): SourceConfig = {
+  /** The config, and the warnings logged while loading it, for tests: they show what a user
+    * loading the config is told, through the same path `load` takes.
+    */
+  private[config] def loadWithWarnings(config: Config): (SourceConfig, List[String]) =
+    readSourceConfig(config.resolve())
+
+  private def readSourceConfig(config: Config): (SourceConfig, List[String]) = {
     rejectUnknownKeys(config)
 
     val sc = SourceConfig(
@@ -167,12 +171,12 @@ object Loader {
       }
     }
 
-    checkParameterCollisions(sc)
+    val collisions = checkParameterCollisions(sc)
 
     // Warn when auth credentials are configured over plaintext HTTP
-    warnPlaintextCredentials(sc)
+    val plaintext = warnPlaintextCredentials(sc)
 
-    sc
+    (sc, collisions ++ plaintext)
   }
 
   private def readAuth(config: Config): AuthConfig = {
