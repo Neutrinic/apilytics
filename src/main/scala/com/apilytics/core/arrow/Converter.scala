@@ -34,41 +34,50 @@ object Converter {
       stats: ConversionStats = ConversionStats.ignore
   ): VectorSchemaRoot = {
     val root = VectorSchemaRoot.create(schema, allocator)
-    root.setRowCount(records.size)
+    // The caller registers the batch for release only once it has it. If filling it throws,
+    // close it here, or its memory stays allocated and closing the reader reports a leak
+    // on top of the real error (#307).
+    try {
+      root.setRowCount(records.size)
 
-    val fields = schema.getFields.asScala.toList
+      val fields = schema.getFields.asScala.toList
 
-    fields.foreach { field =>
-      val vector = root.getVector(field.getName)
-      vector.allocateNew()
+      fields.foreach { field =>
+        val vector = root.getVector(field.getName)
+        vector.allocateNew()
 
-      // Check if this is a variant field (entire JSON as string)
-      val isVariant = Option(field.getMetadata)
-        .flatMap(m => Option(m.get(SchemaMapper.VariantKey)))
-        .contains("true")
+        // Check if this is a variant field (entire JSON as string)
+        val isVariant = Option(field.getMetadata)
+          .flatMap(m => Option(m.get(SchemaMapper.VariantKey)))
+          .contains("true")
 
-      if (isVariant) {
-        // Write entire record as JSON string
-        records.zipWithIndex.foreach { case (record, idx) =>
-          writeValue(vector, idx, record, field.getType, field.getName, stats)
+        if (isVariant) {
+          // Write entire record as JSON string
+          records.zipWithIndex.foreach { case (record, idx) =>
+            writeValue(vector, idx, record, field.getType, field.getName, stats)
+          }
+        } else {
+          // Read the original JSON path from field metadata (set by SchemaMapper)
+          val pathParts = Option(field.getMetadata)
+            .flatMap(m => Option(m.get(SchemaMapper.JsonPathKey)))
+            .map(_.split(",").toList)
+            .getOrElse(List(field.getName))
+
+          records.zipWithIndex.foreach { case (record, idx) =>
+            val value = navigateJson(record, pathParts)
+            writeValue(vector, idx, value, field.getType, field.getName, stats)
+          }
         }
-      } else {
-        // Read the original JSON path from field metadata (set by SchemaMapper)
-        val pathParts = Option(field.getMetadata)
-          .flatMap(m => Option(m.get(SchemaMapper.JsonPathKey)))
-          .map(_.split(",").toList)
-          .getOrElse(List(field.getName))
 
-        records.zipWithIndex.foreach { case (record, idx) =>
-          val value = navigateJson(record, pathParts)
-          writeValue(vector, idx, value, field.getType, field.getName, stats)
-        }
+        vector.setValueCount(records.size)
       }
 
-      vector.setValueCount(records.size)
+      root
+    } catch {
+      case t: Throwable =>
+        root.close()
+        throw t
     }
-
-    root
   }
 
   /** Extract records from a JSON response using a JSON Pointer to the data array. */

@@ -167,6 +167,27 @@ class ConverterSuite extends FunSuite {
     assertEquals(ts.nulled, 2L)
   }
 
+  test("a batch that fails partway is closed, not leaked (#307)") {
+    // Four columns, and room for about two: allocating the third fails after the first two
+    // hold memory. Unclosed, that memory made closing the reader fail with a leak on top of
+    // the real error.
+    val schema = SchemaMapper.toArrowSchema(SourceSchema.ObjectType(
+      (1 to 4).map(i => s"c$i" -> SourceSchema.StringType()).toMap
+    ))
+    val records = List(parse("""{"c1": "a", "c2": "b", "c3": "c", "c4": "d"}""").toOption.get)
+    val full = {
+      val probe = allocator.newChildAllocator("probe", 0, Long.MaxValue)
+      try { Converter.toArrow(records, schema, probe).close(); probe.getPeakMemoryAllocation }
+      finally probe.close()
+    }
+
+    val limited = allocator.newChildAllocator("limited", 0, full / 2)
+    try {
+      intercept[org.apache.arrow.memory.OutOfMemoryException](Converter.toArrow(records, schema, limited))
+      assertEquals(limited.getAllocatedMemory, 0L)
+    } finally limited.close()
+  }
+
   test("a JSON null or a missing field is NULL without counting (#309)") {
     val (read, stats, warnings) = readColumn(SourceSchema.IntegerType(), "null")
     assertEquals(read, List(None))
