@@ -387,14 +387,18 @@ object Client {
       }
 
     /** How long a 429's `Retry-After` asks us to wait: a number of seconds or an HTTP date.
-      * A date already past means no wait; a value that is neither falls back to backoff.
-      * Shared by full-body and streamed requests, which used to read it differently: streams
-      * ignored dates and retried early, spending attempts and permits on more 429s.
+      * A date already past means no wait; a value that is neither, or too large to be a
+      * duration, falls back to backoff. Shared by full-body and streamed requests, which used
+      * to read it differently: streams ignored dates and retried early, spending attempts and
+      * permits on more 429s.
+      *
+      * The server's wait is honoured even beyond `max-backoff`, which bounds only our own
+      * backoff: retrying sooner would only draw another 429.
       */
     private def retryAfterDelay(resp: org.http4s.Response[IO], attempt: Int): Option[FiniteDuration] =
       resp.headers.get(CIString("Retry-After")).map { nel =>
         val v = nel.head.value.trim
-        v.toLongOption.map(s => math.max(s, 0L).seconds).getOrElse {
+        v.toLongOption.flatMap(s => scala.util.Try(math.max(s, 0L).seconds).toOption).getOrElse {
           scala.util.Try {
             val epoch = java.time.ZonedDateTime.parse(v, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toEpochSecond
             math.max(epoch - Instant.now.getEpochSecond, 0L).seconds

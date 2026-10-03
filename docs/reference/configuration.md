@@ -81,7 +81,7 @@ cursor or offset state to save.
 |---|---|---|
 | `timeout` | `30 seconds` | Per request: connecting, sending, and receiving the response headers. |
 | `max-retries` | `5` | Retries for transient failures (429 and 5xx), with exponential backoff. |
-| `max-backoff` | `30 seconds` | The longest wait between retries. |
+| `max-backoff` | `30 seconds` | The longest backoff between retries. A 429's `Retry-After` is honoured as given instead. |
 | `rate-limit` | none | Requests per second, shared between partitions. See [Rate limiting](../using/rate-limiting.md). |
 | `response-format` | `json` | `json`, `ndjson` (also `jsonl`) or `sse`. See [Response formats](../configuration/response-formats.md). |
 | `response-cache` | disabled | [Response cache](#response-cache). |

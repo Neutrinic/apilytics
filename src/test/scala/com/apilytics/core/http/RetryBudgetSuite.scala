@@ -144,4 +144,27 @@ class RetryBudgetSuite extends FunSuite {
       } finally server.stop()
     }
   }
+
+  test("a Retry-After too large for a duration falls back to backoff instead of failing") {
+    // `Long.MaxValue.seconds` throws: the request failed rather than retrying.
+    val server = new com.github.tomakehurst.wiremock.WireMockServer(
+      com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig().dynamicPort()
+    )
+    server.start()
+    try {
+      import com.github.tomakehurst.wiremock.client.WireMock._
+      import com.github.tomakehurst.wiremock.stubbing.Scenario
+      server.stubFor(get(urlPathEqualTo("/x")).inScenario("429").whenScenarioStateIs(Scenario.STARTED)
+        .willReturn(aResponse().withStatus(429).withHeader("Retry-After", Long.MaxValue.toString))
+        .willSetStateTo("ok"))
+      server.stubFor(get(urlPathEqualTo("/x")).inScenario("429").whenScenarioStateIs("ok")
+        .willReturn(okJson("""{"id": 1}""")))
+
+      val cfg = HttpConfig(maxRetries = 1, maxBackoff = 10.millis, timeout = 5.seconds)
+      val response = Client.resource(cfg, AuthConfig(authType = AuthType.None)).use { client =>
+        client.get(Uri.unsafeFromString(s"http://localhost:${server.port()}/x"))
+      }.timeout(30.seconds).unsafeRunSync()
+      assertEquals(response.status, 200)
+    } finally server.stop()
+  }
 }

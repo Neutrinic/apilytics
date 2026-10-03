@@ -30,4 +30,6 @@ A true global limit under any cluster shape needs driver-coordinated permits, wh
 tracked in [#205](https://github.com/Neutrinic/apilytics/issues/205).
 
 Transient failures (429 and 5xx) are retried with exponential backoff, up to
-`http.max-retries` attempts and `http.max-backoff` between them.
+`http.max-retries` attempts and `http.max-backoff` between them. A 429 that says how long
+to wait, with `Retry-After` in seconds or as a date, is retried after exactly that, even
+beyond `max-backoff`: retrying sooner would only draw another 429.
