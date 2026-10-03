@@ -13,6 +13,13 @@ Strict mode uses the OpenAPI schema to produce typed columns. Nested objects are
 to `flatten-depth` levels. Anything deeper becomes a JSON string, which `parse_json()`
 can read if you need it.
 
+Columns come from the schema of each endpoint's `200` (or `default`) response, under
+`application/json`, `application/json` with parameters such as `; charset=utf-8`, any
+`+json` type such as `application/hal+json`, or `*/*`, in that order of preference. A table
+whose endpoint has no such response fails when it's queried, naming the content types the
+spec does offer: in strict mode it would have no columns. Variant mode needs no schema, so
+there the table still loads.
+
 Every column is nullable, including fields the spec marks `required`. A required field
 can still be null in the data: inside an optional parent object that's missing, when it's
 also declared `nullable: true`, or when the API breaks its own spec. A non-nullable column
