@@ -99,10 +99,12 @@ so no upgrade is required for existing users.
 - **Values that need converting are counted in the Spark UI.** The scan's node in the SQL tab
   shows **values converted** and **values replaced with NULL**, and the first NULL in each
   column, in each task, is logged naming the column and the value (#309).
-- **Settings that send the same query parameter are checked when a config loads.** A filter,
-  or a timestamp checkpoint, on a parameter pagination sends, or a filter on a batch join's
-  `batch-param`, is rejected, since only one value could be sent. A filter on the timestamp
-  checkpoint's parameter loads with a warning that Spark applies it instead (#312).
+- **Settings that send the same query parameter are checked when a config loads.** A filter
+  on a parameter that pagination, a batch join's `batch-param` or the timestamp checkpoint
+  sends couldn't carry its value, and pushed, it returned rows outside the `WHERE`. Such a
+  filter now loads with a warning and is applied by Spark instead of being sent. A timestamp
+  checkpoint on a parameter that pagination or a batch join sends is rejected, since both
+  have to send their value (#312, #335).
 
 ### Fixed
 
