@@ -129,7 +129,7 @@ class AggregationPushdownSuite extends FunSuite {
     // Spark aggregates the scanned rows itself; the aggregate endpoint is never called.
     val rows = spark.sql("SELECT MAX(number) FROM api.default.issues").collect()
 
-    assertEquals(rows.head.getInt(0), 32, "MAX over an int column stays an int")
+    assertEquals(rows.head.getLong(0), 32L, "MAX over a bigint column stays a bigint")
     server.verify(0, getRequestedFor(urlPathEqualTo("/stats")))
   }
 

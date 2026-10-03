@@ -75,13 +75,17 @@ class OAuth2TokenManager private (
                 tokenRef.set(Some(cached)).as(accessToken)
 
               case Left(_) =>
+                // A successful token response is made of credentials, under whatever name
+                // the IdP chose (`accessToken`, say), so no value of it goes into the error,
+                // which reaches logs. The field names are enough to see what was sent (#315).
+                val fields = json.asObject.map(_.keys.mkString(", ")).getOrElse("none: not a JSON object")
                 IO.raiseError(ApiError(
                   message = "OAuth2 response missing access_token field",
                   endpoint = endpoint,
                   method = Method.POST,
                   params = Map.empty,
                   statusCode = code,
-                  responseBody = json.noSpaces,
+                  responseBody = s"(values withheld) fields: $fields",
                   requestId = ApiError.extractRequestId(hdrs),
                   retryAttempt = 0
                 ))

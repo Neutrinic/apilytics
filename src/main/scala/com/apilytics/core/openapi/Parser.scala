@@ -84,23 +84,61 @@ object Parser {
       .map(_.getUrl)
       .getOrElse("")
 
-    val endpoints = Option(api.getPaths).map(_.asScala).getOrElse(Map.empty).flatMap {
-      case (path, pathItem) =>
-        Option(pathItem.getGet).flatMap { op =>
-          extractGetEndpoint(path, op)
-        }
-    }.toList
+    val gets = Option(api.getPaths).map(_.asScala).getOrElse(Map.empty).toList.flatMap {
+      case (path, pathItem) => Option(pathItem.getGet).map(path -> _)
+    }
+    val endpoints = gets.flatMap { case (path, op) => extractGetEndpoint(path, op) }
 
-    ParsedSpec(baseUrl = baseUrl, endpoints = endpoints)
+    // GET endpoints with a response but none we read, and the content types they do offer,
+    // so a table pointed at one can be told why it has no columns (#319).
+    val read = endpoints.map(_.path).toSet
+    val unreadable = gets.collect {
+      case (path, op) if !read.contains(path) && okContent(op).exists(!_.isEmpty) =>
+        path -> okContent(op).map(_.keySet.asScala.toList.sorted).getOrElse(Nil)
+    }.toMap
+
+    ParsedSpec(baseUrl = baseUrl, endpoints = endpoints, unreadable = unreadable)
   }
 
-  private def extractGetEndpoint(path: String, op: io.swagger.v3.oas.models.Operation): Option[Endpoint] = {
-    val responseSchema = for {
+  private def okContent(op: io.swagger.v3.oas.models.Operation): Option[io.swagger.v3.oas.models.media.Content] =
+    for {
       responses <- Option(op.getResponses)
       okResp    <- Option(responses.get("200")).orElse(Option(responses.get("default")))
       content   <- Option(okResp.getContent)
-      json      <- Option(content.get("application/json"))
-      schema    <- Option(json.getSchema)
+    } yield content
+
+  /** The JSON media type of a response, in order of preference (#319).
+    *
+    * Only an exact `application/json` used to count, so `application/json; charset=utf-8`,
+    * `application/hal+json`, `application/vnd.api+json` and springdoc's default wildcard
+    * type all dropped the endpoint, and a table configured on it resolved with no columns.
+    * Now: `application/json`, then the same with parameters, then any `+json` type, then
+    * the wildcard, among the media types that have a schema.
+    */
+  private[openapi] def jsonMediaType(content: io.swagger.v3.oas.models.media.Content): Option[io.swagger.v3.oas.models.media.MediaType] = {
+    // A media type without a schema gives no columns, so it can't win over one that has.
+    val entries = content.asScala.toList.filter(e => e._2 != null && e._2.getSchema != null)
+    jsonPreferences.iterator.map(p => entries.find(e => p(e._1)).map(_._2)).collectFirst { case Some(m) => m }
+  }
+
+  private def baseType(key: String): String = key.split(';').head.trim.toLowerCase(java.util.Locale.ROOT)
+
+  // RFC 6839 allows the `+json` suffix on any type, not only `application/`.
+  private val jsonPreferences: List[String => Boolean] = List(
+    _ == "application/json",
+    baseType(_) == "application/json",
+    baseType(_).endsWith("+json"),
+    baseType(_) == "*/*"
+  )
+
+  /** Whether a response media type is one the reader takes as JSON. */
+  private[apilytics] def isJsonMediaType(key: String): Boolean = jsonPreferences.exists(_(key))
+
+  private def extractGetEndpoint(path: String, op: io.swagger.v3.oas.models.Operation): Option[Endpoint] = {
+    val responseSchema = for {
+      content <- okContent(op)
+      json    <- jsonMediaType(content)
+      schema  <- Option(json.getSchema)
     } yield schema
 
     responseSchema.flatMap { schema =>
@@ -203,5 +241,7 @@ object Parser {
 @SerialVersionUID(1L)
 final case class ParsedSpec(
     baseUrl: String,
-    endpoints: List[Endpoint]
+    endpoints: List[Endpoint],
+    /** GET paths with a response in no format we read, and the content types they offer. */
+    unreadable: Map[String, List[String]] = Map.empty
 ) extends Serializable

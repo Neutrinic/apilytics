@@ -86,7 +86,7 @@ class OffsetPartitionSuite extends FunSuite {
         var acc = List.empty[Int]
         while (reader.next()) {
           val b = reader.get()
-          acc ++= (0 until b.numRows()).map(i => b.column(0).getInt(i))
+          acc ++= (0 until b.numRows()).map(i => b.column(0).getLong(i).toInt)
         }
         acc
       } finally reader.close()

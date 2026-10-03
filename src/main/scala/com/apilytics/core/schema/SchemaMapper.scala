@@ -111,11 +111,14 @@ object SchemaMapper {
         case SourceSchema.StringType(_) =>
           List(field(fullName, new ArrowType.Utf8(), nullable, segments))
 
-        case SourceSchema.IntegerType(Some("int64")) =>
-          List(field(fullName, new ArrowType.Int(64, true), nullable, segments))
+        // Only an explicit int32 is 32-bit. An OpenAPI integer without a format has no size
+        // limit, and IDs and epoch milliseconds routinely pass 2^31: as `int` they became NULL
+        // (#308).
+        case SourceSchema.IntegerType(Some("int32")) =>
+          List(field(fullName, new ArrowType.Int(32, true), nullable, segments))
 
         case SourceSchema.IntegerType(_) =>
-          List(field(fullName, new ArrowType.Int(32, true), nullable, segments))
+          List(field(fullName, new ArrowType.Int(64, true), nullable, segments))
 
         case SourceSchema.NumberType(_) =>
           List(field(fullName, new ArrowType.FloatingPoint(org.apache.arrow.vector.types.FloatingPointPrecision.DOUBLE), nullable, segments))

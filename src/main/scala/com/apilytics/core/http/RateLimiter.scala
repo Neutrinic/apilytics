@@ -16,8 +16,8 @@ import scala.concurrent.duration._
   * attempt concurrent access. This is intentional for single-partition scans.
   * If parallel partition reads are added later, this becomes a bottleneck.
   *
-  * Note: Rate limiting is applied to initial requests only, not retries. If a
-  * request fails and retries 3 times, those retries don't count against the limit.
+  * Every attempt takes a permit: retries after a 429, a 5xx or a network error, and the
+  * re-issue after an OAuth2 token refresh, count against the limit like any request (#279).
   */
 trait RateLimiter {
   /** Acquire a permit to make a request. Blocks until rate limit allows. */
