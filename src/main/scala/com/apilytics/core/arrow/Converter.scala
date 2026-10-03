@@ -143,9 +143,10 @@ object Converter {
         write(value.asString.flatMap(readDate), "date")(d => v.setSafe(idx, d.toEpochDay.toInt))
 
       case (v: TimeStampMicroTZVector, _: ArrowType.Timestamp) =>
-        write(value.asString.flatMap(readTimestamp), "timestamp") { instant =>
-          v.setSafe(idx, instant.getEpochSecond * 1_000_000 + instant.getNano / 1000)
+        val micros = value.asString.flatMap(readTimestamp).flatMap { r =>
+          toSparkMicros(r.value).map(Read(_, r.converted))
         }
+        write(micros, "timestamp")(v.setSafe(idx, _))
 
       case _ =>
         setNull(vector, idx)
@@ -170,11 +171,30 @@ object Converter {
 
   private def readDouble(value: Json): Option[Read[Double]] =
     value.asNumber match {
-      case Some(n) => Some(Read(n.toDouble, converted = false))
+      case Some(n) => Some(n.toDouble).filter(finite).map(Read(_, converted = false))
       case None =>
         value.asString.collect { case s @ DecimalText() => s }
-          .flatMap(_.toDoubleOption).map(Read(_, converted = true))
+          .flatMap(_.toDoubleOption).filter(finite).map(Read(_, converted = true))
     }
+
+  /** `1e309` is valid JSON, as a number or a string, but overflows a double to Infinity. */
+  private def finite(d: Double): Boolean = java.lang.Double.isFinite(d)
+
+  // Spark's DateType and TimestampType cover years 1 to 9999. Java parses far wider, and
+  // beyond that a date's epoch day overflows an Int and a timestamp's microseconds a Long,
+  // wrapping into a wrong value rather than failing.
+  private val SparkMinDate = java.time.LocalDate.of(1, 1, 1)
+  private val SparkMaxDate = java.time.LocalDate.of(9999, 12, 31)
+  private val SparkMinMicros = toMicros(java.time.Instant.parse("0001-01-01T00:00:00Z"))
+  private val SparkMaxMicros = toMicros(java.time.Instant.parse("9999-12-31T23:59:59.999999Z"))
+
+  private def toMicros(i: java.time.Instant): Long =
+    Math.addExact(Math.multiplyExact(i.getEpochSecond, 1_000_000L), (i.getNano / 1000).toLong)
+
+  /** An instant as Spark's microseconds, if it's in Spark's range. */
+  private def toSparkMicros(i: java.time.Instant): Option[Long] =
+    try Some(toMicros(i)).filter(m => m >= SparkMinMicros && m <= SparkMaxMicros)
+    catch { case _: ArithmeticException => None }
 
   private def readBoolean(value: Json): Option[Read[Boolean]] =
     value.asBoolean match {
@@ -187,7 +207,9 @@ object Converter {
     }
 
   private def readDate(s: String): Option[Read[java.time.LocalDate]] =
-    try Some(Read(java.time.LocalDate.parse(s), converted = false))
+    try Some(java.time.LocalDate.parse(s))
+      .filter(d => !d.isBefore(SparkMinDate) && !d.isAfter(SparkMaxDate))
+      .map(Read(_, converted = false))
     catch { case _: java.time.DateTimeException => None }
 
   /** An ISO-8601 instant, read as the timestamp column it came from would read it.

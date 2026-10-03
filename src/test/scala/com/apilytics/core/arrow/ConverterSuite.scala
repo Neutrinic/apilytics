@@ -149,6 +149,24 @@ class ConverterSuite extends FunSuite {
     assertEquals((stats.converted, stats.nulled), (3L, 3L))
   }
 
+  test("values outside what Spark can hold are NULL, not wrapped or infinite (#309)") {
+    val (doubles, ds, _) = readColumn(SourceSchema.NumberType(), "\"1e309\"", "1e309", "\"1e308\"")
+    assertEquals(doubles, List(None, None, Some(1e308)))
+    assertEquals((ds.converted, ds.nulled), (1L, 2L))
+
+    val (dates, dts, _) = readColumn(SourceSchema.StringType(Some("date")), "\"+10000-01-01\"", "\"9999-12-31\"")
+    assertEquals(dates, List(None, Some(java.time.LocalDate.of(9999, 12, 31).toEpochDay.toInt)))
+    assertEquals(dts.nulled, 1L)
+
+    val (stamps, ts, _) = readColumn(
+      SourceSchema.StringType(Some("date-time")),
+      "\"+999999999-01-01T00:00:00Z\"", "\"+10000-01-01T00:00:00Z\"", "\"9999-12-31T23:59:59Z\""
+    )
+    assertEquals(stamps.take(2), List(None, None))
+    assert(stamps(2).isDefined)
+    assertEquals(ts.nulled, 2L)
+  }
+
   test("a JSON null or a missing field is NULL without counting (#309)") {
     val (read, stats, warnings) = readColumn(SourceSchema.IntegerType(), "null")
     assertEquals(read, List(None))
