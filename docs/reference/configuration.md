@@ -149,10 +149,10 @@ filters = [
 | `operators` | Which predicates push: `eq` (`=`), `neq` (`<>`), `gt` (`>`), `gte` (`>=`), `lt` (`<`), `lte` (`<=`). |
 | `param` | The query parameter the value is sent in. |
 
-A `param` that pagination or a batch join's `batch-param` also sends is rejected at load:
-only one value could be sent. One that the table's timestamp checkpoint sends loads with a
-warning, and that filter is applied by Spark rather than sent. See
-[Checkpoints](../configuration/checkpoints.md).
+A `param` that something else sends on every request, whether pagination, a batch join's
+`batch-param` or the table's timestamp checkpoint, can't carry the filter's value: the other
+setting would replace it. Such a filter loads with a warning, and Spark applies it to the
+rows that come back instead of sending it. See [Checkpoints](../configuration/checkpoints.md).
 
 A predicate without a matching entry is applied by Spark after the rows arrive. See
 [Troubleshooting](../troubleshooting.md#which-filters-reach-the-api).
