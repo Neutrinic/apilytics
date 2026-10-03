@@ -550,8 +550,8 @@ object Loader {
     * Each partition sends its bounds formatted with `format`. With `yyyy-MM-dd` and a range of
     * one hour, the 24 partitions of a day all send the same two dates, so each fetches the
     * whole day and the rows come back 24 times. The range must be a whole number of the
-    * format's smallest unit: the first of a millisecond, second, minute, hour or day that
-    * changes its output. A format coarser than a day, such as `yyyy-MM`, can't bound fixed-size ranges.
+    * format's smallest unit: the first of 1, 10 or 100 milliseconds, a second, minute, hour
+    * or day that changes its output. A format coarser than a day, such as `yyyy-MM`, can't bound fixed-size ranges.
     */
   private def checkRangeFitsFormat(range: FiniteDuration, format: String): Unit = {
     import java.time.{Instant, ZoneOffset}
@@ -563,16 +563,20 @@ object Loader {
       }
     val origin = Instant.parse("2024-01-01T00:00:00Z")
     // Partitions step in whole milliseconds, so a millisecond is the finest step that matters.
-    val units  = List(1.milli -> "millisecond", 1.second -> "second", 1.minute -> "minute", 1.hour -> "hour", 1.day -> "day")
+    // `S` and `SS` fractions step in 100 and 10 milliseconds, so those are probed too.
+    val units = List(
+      1.milli -> "1 millisecond", 10.millis -> "10 milliseconds", 100.millis -> "100 milliseconds",
+      1.second -> "1 second", 1.minute -> "1 minute", 1.hour -> "1 hour", 1.day -> "1 day"
+    )
     val unit   = units.find { case (u, _) => formatter.format(origin) != formatter.format(origin.plusMillis(u.toMillis)) }
     unit match {
       case Some((u, _)) if range.toMillis % u.toMillis == 0 => ()
       case Some((_, name)) =>
         throw new IllegalArgumentException(
-          s"partition.range '$range' isn't a whole number of ${name}s, the smallest step " +
+          s"partition.range '$range' isn't a multiple of $name, the smallest step " +
             s"partition.format '$format' can express. Partitions would send the same bounds and " +
-            s"fetch the same rows more than once. Use a range in whole ${name}s, or a format " +
-            "with finer fields."
+            s"fetch the same rows more than once. Use a multiple of $name, or a format with " +
+            "finer fields."
         )
       case None =>
         throw new IllegalArgumentException(

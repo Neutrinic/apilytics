@@ -780,7 +780,7 @@ class DateRangePartitioningSuite extends FunSuite {
   test("a range the format can't express fails at load (#321)") {
     // 24 hourly partitions of a day would all send the same two dates and read the day 24 times.
     val ex = intercept[IllegalArgumentException](Loader.load(partitionConfig("yyyy-MM-dd", "1 hour")))
-    assert(ex.getMessage.contains("whole number of days"), ex.getMessage)
+    assert(ex.getMessage.contains("a multiple of 1 day"), ex.getMessage)
 
     val coarse = intercept[IllegalArgumentException](Loader.load(partitionConfig("yyyy-MM", "30 days")))
     assert(coarse.getMessage.contains("doesn't change within a day"), coarse.getMessage)
@@ -791,6 +791,12 @@ class DateRangePartitioningSuite extends FunSuite {
     Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss'Z'", "90 minutes"))
     Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss.SSS", "500 milliseconds"))
     val subSecond = intercept[IllegalArgumentException](Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss'Z'", "500 milliseconds")))
-    assert(subSecond.getMessage.contains("whole number of seconds"), subSecond.getMessage)
+    assert(subSecond.getMessage.contains("a multiple of 1 second"), subSecond.getMessage)
+
+    // Tenths and hundredths: `S` steps in 100 ms, `SS` in 10 ms.
+    Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss.S", "100 milliseconds"))
+    Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss.SS", "10 milliseconds"))
+    val tenths = intercept[IllegalArgumentException](Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss.S", "50 milliseconds")))
+    assert(tenths.getMessage.contains("a multiple of 100 milliseconds"), tenths.getMessage)
   }
 }
