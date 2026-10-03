@@ -79,9 +79,10 @@ object Loader {
       }
     }
 
-    // Validate: checkpoint with link-header pagination is not supported
-    if (sc.pagination.style == PaginationStyle.LinkHeader) {
-      sc.tables.foreach { case (name, tc) =>
+    // Validate: checkpoint with link-header pagination is not supported. Each table's own
+    // pagination decides, which may override the source's either way (#317).
+    sc.tables.foreach { case (name, tc) =>
+      if (tc.pagination.getOrElse(sc.pagination).style == PaginationStyle.LinkHeader) {
         tc.checkpoint.foreach { cc =>
           if (cc.enabled && cc.mode != CheckpointMode.Timestamp) {
             throw new IllegalArgumentException(

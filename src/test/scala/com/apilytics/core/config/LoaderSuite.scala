@@ -1262,6 +1262,32 @@ class LoaderSuite extends FunSuite {
     assert(ex.getMessage.contains("missing token-url"), ex.getMessage)
   }
 
+  private def linkHeaderConfig(sourceStyle: String, tablePagination: String) = ConfigFactory.parseString(
+    s"""
+      |openapi = "https://example.com/openapi.json"
+      |auth { type = none }
+      |pagination { style = $sourceStyle, cursor-path = "/next" }
+      |tables {
+      |  events {
+      |    endpoint = "/events"
+      |    $tablePagination
+      |    checkpoint { enabled = true, path = "/tmp/cp", mode = cursor }
+      |  }
+      |}
+      |""".stripMargin)
+
+  test("a table's own link-header pagination rejects a cursor checkpoint (#317)") {
+    val ex = intercept[IllegalArgumentException](
+      Loader.load(linkHeaderConfig("cursor", "pagination { style = link_header }"))
+    )
+    assert(ex.getMessage.contains("link-header pagination"), ex.getMessage)
+  }
+
+  test("a table overriding link-header pagination with cursor keeps its cursor checkpoint (#317)") {
+    val sc = Loader.load(linkHeaderConfig("link_header", """pagination { style = cursor, cursor-path = "/next" }"""))
+    assertEquals(sc.tables("events").pagination.map(_.style), Some(PaginationStyle.Cursor))
+  }
+
   /** A source with one table, `items`, holding `table`'s keys. */
   private def withTable(pagination: String, table: String) = ConfigFactory.parseString(
     s"""

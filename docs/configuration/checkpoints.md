@@ -40,7 +40,7 @@ tables {
     endpoint = "/events"
     checkpoint {
       enabled = true
-      path = "/tmp/apilytics/checkpoints"  # a local path, or s3a://, gs://, hdfs://
+      path = "/tmp/apilytics/checkpoints"  # a local path, or s3a://, gs://, abfss://, ...
       mode = "cursor"                      # cursor | offset | timestamp
     }
   }
@@ -84,9 +84,11 @@ A checkpoint can't be combined with [partitioning](../using/partitioning.md): it
 position for the whole table, so every partition would resume from the same place. A
 config with both is rejected at load.
 
-Each table's checkpoint is stored as `<table-name>.checkpoint.json` under `path`. Local
-paths are written directly. Remote paths (`hdfs://`, `s3://`, `s3a://`, `gs://`) go
-through Hadoop's FileSystem, so the cluster needs the matching connector.
+Each table's checkpoint is stored as `<table-name>.checkpoint.json` under `path`. A plain
+path, such as `/tmp/checkpoints` or a Databricks `/Volumes/...` path, is written directly.
+A path with a scheme, such as `hdfs://`, `s3a://`, `gs://`, `abfss://`, `wasbs://`, `dbfs:/`
+or `file://`, goes through Hadoop's FileSystem, so the cluster needs the matching connector.
+A plain local path is on each executor's own disk: on a cluster, use shared storage.
 
 Timestamp mode is also what lets a table [stream](../using/streaming.md). A streaming
 query keeps its offsets in its own `checkpointLocation`, not in this file.
