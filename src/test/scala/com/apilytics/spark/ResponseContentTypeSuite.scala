@@ -38,6 +38,24 @@ class ResponseContentTypeSuite extends FunSuite {
       |          content:
       |            text/csv:
       |              schema: { type: string }
+      |  /reports/latest:
+      |    get:
+      |      responses:
+      |        "200":
+      |          description: ok
+      |          content:
+      |            text/csv:
+      |              schema: { type: string }
+      |  /reports/{id}:
+      |    get:
+      |      parameters:
+      |        - { name: id, in: path, required: true, schema: { type: string } }
+      |      responses:
+      |        "200":
+      |          description: ok
+      |          content:
+      |            application/json:
+      |              schema: { type: object, properties: { id: { type: string } } }
       |  /raw:
       |    get:
       |      responses:
@@ -63,6 +81,7 @@ class ResponseContentTypeSuite extends FunSuite {
          |  report { endpoint = "/report" }
          |  listing { endpoint = "/report" }
          |  raw    { endpoint = "/raw" }
+         |  latest { endpoint = "/reports/latest" }
          |}
          |""".stripMargin
     Files.writeString(dir.resolve("strict.conf"), conf("strict"))
@@ -116,5 +135,12 @@ class ResponseContentTypeSuite extends FunSuite {
     val ex = intercept[Exception](spark.table("api.default.raw"))
     val msg = Iterator.iterate[Throwable](ex)(_.getCause).takeWhile(_ != null).map(_.getMessage).mkString(" | ")
     assert(msg.contains("application/json") && msg.contains("no object schema"), msg)
+  }
+
+  test("a concrete CSV path doesn't take its columns from a JSON template that also matches it") {
+    // /reports/latest is CSV; /reports/{id} is JSON and matches it as a template.
+    val ex = intercept[Exception](spark.table("api.default.latest"))
+    val msg = Iterator.iterate[Throwable](ex)(_.getCause).takeWhile(_ != null).map(_.getMessage).mkString(" | ")
+    assert(msg.contains("'latest'") && msg.contains("text/csv"), msg)
   }
 }

@@ -74,10 +74,14 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
     */
   def unmatchedReason(name: String): Option[String] =
     config.tables.get(name).flatMap { tc =>
-      val byPath  = spec.endpoints.find(_.path == tc.endpoint).orElse(findByPathTemplate(tc.endpoint))
-      val offered = spec.unreadable.collectFirst {
-        case (path, types) if path == tc.endpoint || pathMatches(tc.endpoint, path) => types
-      }
+      // A concrete path in the spec wins over a template, as OpenAPI matches them: a CSV
+      // `/reports/latest` mustn't take its columns from a JSON `/reports/{id}`.
+      val exactUnreadable = spec.unreadable.get(tc.endpoint)
+      val byPath = spec.endpoints.find(_.path == tc.endpoint)
+        .orElse(if (exactUnreadable.isDefined) None else findByPathTemplate(tc.endpoint))
+      val offered = exactUnreadable.orElse(spec.unreadable.collectFirst {
+        case (path, types) if pathMatches(tc.endpoint, path) => types
+      })
       // A table whose own path the spec describes without usable JSON fails even if another
       // endpoint shares its name: borrowing that endpoint's schema gave the wrong columns.
       val unmatched = byPath.isEmpty && (offered.isDefined || findEndpoint(name).isEmpty)
