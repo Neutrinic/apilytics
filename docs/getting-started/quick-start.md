@@ -16,12 +16,16 @@ docker run -it --rm ghcr.io/neutrinic/apilytics:latest
 # The same, with the bundled GitHub config instead
 docker run -it --rm ghcr.io/neutrinic/apilytics:latest --config /opt/apilytics/examples/github/github-config.conf
 
-# Your own config file
-docker run -it --rm -v /path/to/my.conf:/config.conf ghcr.io/neutrinic/apilytics:latest --config /config.conf
+# Your own config: mount the directory holding it, and its spec if that's a local file
+docker run -it --rm -v /path/to/my-configs:/config:ro ghcr.io/neutrinic/apilytics:latest --config /config/my.conf
 
 # Everything the image can do
 docker run --rm ghcr.io/neutrinic/apilytics:latest --help
 ```
+
+A config's `openapi` path, when it isn't a URL, is read relative to the config file, so a
+local spec has to be mounted beside it: mounting the config file alone leaves the spec
+outside the container. See [Configuration](../configuration/index.md).
 
 The bundled configs:
 
