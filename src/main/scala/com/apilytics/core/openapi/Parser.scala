@@ -113,19 +113,26 @@ object Parser {
     * `application/hal+json`, `application/vnd.api+json` and springdoc's default wildcard
     * type all dropped the endpoint, and a table configured on it resolved with no columns.
     * Now: `application/json`, then the same with parameters, then any `+json` type, then
-    * the wildcard.
+    * the wildcard, among the media types that have a schema.
     */
   private[openapi] def jsonMediaType(content: io.swagger.v3.oas.models.media.Content): Option[io.swagger.v3.oas.models.media.MediaType] = {
-    val entries = content.asScala.toList.filter(_._2 != null)
-    def base(key: String) = key.split(';').head.trim.toLowerCase(java.util.Locale.ROOT)
-    val preferences: List[String => Boolean] = List(
-      _ == "application/json",
-      base(_) == "application/json",
-      k => base(k).startsWith("application/") && base(k).endsWith("+json"),
-      base(_) == "*/*"
-    )
-    preferences.iterator.map(p => entries.find(e => p(e._1)).map(_._2)).collectFirst { case Some(m) => m }
+    // A media type without a schema gives no columns, so it can't win over one that has.
+    val entries = content.asScala.toList.filter(e => e._2 != null && e._2.getSchema != null)
+    jsonPreferences.iterator.map(p => entries.find(e => p(e._1)).map(_._2)).collectFirst { case Some(m) => m }
   }
+
+  private def baseType(key: String): String = key.split(';').head.trim.toLowerCase(java.util.Locale.ROOT)
+
+  // RFC 6839 allows the `+json` suffix on any type, not only `application/`.
+  private val jsonPreferences: List[String => Boolean] = List(
+    _ == "application/json",
+    baseType(_) == "application/json",
+    baseType(_).endsWith("+json"),
+    baseType(_) == "*/*"
+  )
+
+  /** Whether a response media type is one the reader takes as JSON. */
+  private[apilytics] def isJsonMediaType(key: String): Boolean = jsonPreferences.exists(_(key))
 
   private def extractGetEndpoint(path: String, op: io.swagger.v3.oas.models.Operation): Option[Endpoint] = {
     val responseSchema = for {

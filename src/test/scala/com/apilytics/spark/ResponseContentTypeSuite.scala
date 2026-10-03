@@ -21,6 +21,7 @@ class ResponseContentTypeSuite extends FunSuite {
       |paths:
       |  /items:
       |    get:
+      |      operationId: listing
       |      responses:
       |        "200":
       |          description: ok
@@ -37,6 +38,13 @@ class ResponseContentTypeSuite extends FunSuite {
       |          content:
       |            text/csv:
       |              schema: { type: string }
+      |  /raw:
+      |    get:
+      |      responses:
+      |        "200":
+      |          description: ok
+      |          content:
+      |            application/json: {}
       |""".stripMargin
 
   override def beforeEach(context: BeforeEach): Unit = {
@@ -53,6 +61,8 @@ class ResponseContentTypeSuite extends FunSuite {
          |tables {
          |  items  { endpoint = "/items" }
          |  report { endpoint = "/report" }
+         |  listing { endpoint = "/report" }
+         |  raw    { endpoint = "/raw" }
          |}
          |""".stripMargin
     Files.writeString(dir.resolve("strict.conf"), conf("strict"))
@@ -93,5 +103,18 @@ class ResponseContentTypeSuite extends FunSuite {
 
   test("in variant mode, the same table still loads") {
     assertEquals(spark.table("apiv.default.report").columns.toList, List("value"))
+  }
+
+  test("a configured path the spec describes as CSV doesn't borrow a same-named endpoint's columns") {
+    // `listing` is /items' operationId. Matched by name, /report took /items' JSON columns.
+    val ex = intercept[Exception](spark.table("api.default.listing"))
+    val msg = Iterator.iterate[Throwable](ex)(_.getCause).takeWhile(_ != null).map(_.getMessage).mkString(" | ")
+    assert(msg.contains("'listing'") && msg.contains("text/csv"), msg)
+  }
+
+  test("a JSON response without a schema is reported as that, not as non-JSON") {
+    val ex = intercept[Exception](spark.table("api.default.raw"))
+    val msg = Iterator.iterate[Throwable](ex)(_.getCause).takeWhile(_ != null).map(_.getMessage).mkString(" | ")
+    assert(msg.contains("application/json") && msg.contains("no object schema"), msg)
   }
 }

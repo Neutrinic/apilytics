@@ -867,4 +867,17 @@ class ParserSuite extends FunSuite {
     val result = Parser.parseContent(specWithContent("/both" -> "*/*|application/json"))
     assertEquals(result.endpoints.head.responseSchema.properties.keySet, Set("applicat"))
   }
+
+  test("a +json type outside application/ is read, and a schema-less type doesn't win (#319)") {
+    val spec =
+      """{ "openapi": "3.0.0", "info": { "title": "t", "version": "1" }, "paths": {
+        |  "/vendor": { "get": { "responses": { "200": { "description": "ok", "content": {
+        |    "text/vnd.example+json": { "schema": { "type": "object", "properties": { "v": { "type": "string" } } } } } } } } },
+        |  "/split": { "get": { "responses": { "200": { "description": "ok", "content": {
+        |    "application/json": {},
+        |    "application/hal+json": { "schema": { "type": "object", "properties": { "h": { "type": "string" } } } } } } } } }
+        |} }""".stripMargin
+    val endpoints = Parser.parseContent(spec).endpoints.map(e => e.path -> e.responseSchema.properties.keySet).toMap
+    assertEquals(endpoints, Map("/vendor" -> Set("v"), "/split" -> Set("h")))
+  }
 }

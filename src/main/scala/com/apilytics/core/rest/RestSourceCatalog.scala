@@ -1,7 +1,7 @@
 package com.apilytics.core.rest
 
 import com.apilytics.core.config.SourceConfig
-import com.apilytics.core.openapi.{Endpoint, ParsedSpec, SpecCache}
+import com.apilytics.core.openapi.{Endpoint, ParsedSpec, Parser, SpecCache}
 import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.source.{SourceCatalog, TableSpec}
 import org.slf4j.LoggerFactory
@@ -73,20 +73,29 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
     * spec does describe the path, but only in formats the reader doesn't read, it lists them.
     */
   def unmatchedReason(name: String): Option[String] =
-    config.tables.get(name).filter(_ => findEndpoint(name).isEmpty).map { tc =>
+    config.tables.get(name).flatMap { tc =>
+      val byPath  = spec.endpoints.find(_.path == tc.endpoint).orElse(findByPathTemplate(tc.endpoint))
       val offered = spec.unreadable.collectFirst {
         case (path, types) if path == tc.endpoint || pathMatches(tc.endpoint, path) => types
       }
-      val why = offered match {
-        case Some(types) =>
-          s"The spec describes it, but its response is only ${types.mkString(", ")}, none of " +
-            "them JSON."
-        case None =>
-          "The spec doesn't describe a GET endpoint at that path."
+      // A table whose own path the spec describes without usable JSON fails even if another
+      // endpoint shares its name: borrowing that endpoint's schema gave the wrong columns.
+      val unmatched = byPath.isEmpty && (offered.isDefined || findEndpoint(name).isEmpty)
+      Option.when(unmatched) {
+        val why = offered match {
+          case Some(types) if types.exists(Parser.isJsonMediaType) =>
+            s"The spec describes it as ${types.mkString(", ")}, but with no object schema to " +
+              "take columns from."
+          case Some(types) =>
+            s"The spec describes it, but its response is only ${types.mkString(", ")}, none of " +
+              "them JSON."
+          case None =>
+            "The spec doesn't describe a GET endpoint at that path."
+        }
+        s"Table '$name' has endpoint '${tc.endpoint}', which has no response schema to take " +
+          s"columns from, so in strict mode it would have none. $why Use schema mode " +
+          "'variant', or an endpoint the spec describes with a JSON response."
       }
-      s"Table '$name' has endpoint '${tc.endpoint}', which has no response schema to take " +
-        s"columns from, so in strict mode it would have none. $why Use schema mode " +
-        "'variant', or an endpoint the spec describes with a JSON response."
     }
 
   /** Record schema for a table: the response schema resolved down to one row. */
