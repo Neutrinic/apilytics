@@ -111,4 +111,37 @@ class RetryBudgetSuite extends FunSuite {
       )
     }
   }
+
+  test("a Retry-After date is honoured by streamed requests as by full-body ones") {
+    // Streams read only a number of seconds, so a date fell back to the (short) backoff and
+    // retried before the server allowed.
+    for (format <- List(ResponseFormat.Json, ResponseFormat.NDJSON)) {
+      val server = new com.github.tomakehurst.wiremock.WireMockServer(
+        com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig().dynamicPort()
+      )
+      server.start()
+      try {
+        import com.github.tomakehurst.wiremock.client.WireMock._
+        import com.github.tomakehurst.wiremock.stubbing.Scenario
+        val retryAt = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).plusSeconds(3)
+          .format(java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+        server.stubFor(get(urlPathEqualTo("/x")).inScenario("429").whenScenarioStateIs(Scenario.STARTED)
+          .willReturn(aResponse().withStatus(429).withHeader("Retry-After", retryAt))
+          .willSetStateTo("ok"))
+        server.stubFor(get(urlPathEqualTo("/x")).inScenario("429").whenScenarioStateIs("ok")
+          .willReturn(okJson("""{"id": 1}""")))
+
+        val cfg = HttpConfig(maxRetries = 1, maxBackoff = 10.millis, timeout = 5.seconds, responseFormat = format)
+        val started = System.nanoTime()
+        Client.resource(cfg, AuthConfig(authType = AuthType.None)).use { client =>
+          client.getStreaming(Uri.unsafeFromString(s"http://localhost:${server.port()}/x"), Map.empty, format)
+            .compile.toList
+        }.timeout(30.seconds).unsafeRunSync()
+        val waited = (System.nanoTime() - started) / 1000000
+
+        // The date has whole-second precision, so the wait is at least about two seconds.
+        assert(waited >= 1500, s"$format retried after ${waited}ms, before the Retry-After date")
+      } finally server.stop()
+    }
+  }
 }

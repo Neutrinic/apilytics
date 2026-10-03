@@ -333,11 +333,8 @@ object Client {
 
             case 429 if attempt < httpConfig.maxRetries =>
               // Rate limited - release connection, then wait
-              val retryAfter = resp.headers.get(CIString("Retry-After")).map { nel =>
-                nel.head.value.toLongOption.map(_.seconds).getOrElse(exponentialBackoff(attempt))
-              }
               resp.body.compile.drain.guarantee(release)
-                .as(Left(retryAfter.getOrElse(exponentialBackoff(attempt))))
+                .as(Left(retryAfterDelay(resp, attempt).getOrElse(exponentialBackoff(attempt))))
 
             case code if code >= 500 && attempt < httpConfig.maxRetries =>
               // Server error - release connection, then wait
@@ -389,6 +386,22 @@ object Client {
         case Attempt.Fail(error) => IO.raiseError(error)
       }
 
+    /** How long a 429's `Retry-After` asks us to wait: a number of seconds or an HTTP date.
+      * A date already past means no wait; a value that is neither falls back to backoff.
+      * Shared by full-body and streamed requests, which used to read it differently: streams
+      * ignored dates and retried early, spending attempts and permits on more 429s.
+      */
+    private def retryAfterDelay(resp: org.http4s.Response[IO], attempt: Int): Option[FiniteDuration] =
+      resp.headers.get(CIString("Retry-After")).map { nel =>
+        val v = nel.head.value.trim
+        v.toLongOption.map(s => math.max(s, 0L).seconds).getOrElse {
+          scala.util.Try {
+            val epoch = java.time.ZonedDateTime.parse(v, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toEpochSecond
+            math.max(epoch - Instant.now.getEpochSecond, 0L).seconds
+          }.getOrElse(exponentialBackoff(attempt))
+        }
+      }
+
     /** One request, and what to do about its result. */
     private def attemptOnce(
         req: Request[IO],
@@ -408,17 +421,9 @@ object Client {
             resp.as[Json].map(json => Attempt.Done(ApiResponse(json, code, hdrs)))
 
           case 429 if attempt < httpConfig.maxRetries =>
-            val retryAfter = resp.headers.get(CIString("Retry-After")).map { nel =>
-              val v = nel.head.value
-              v.toLongOption.map(_.seconds).getOrElse {
-                scala.util.Try {
-                  val epoch = java.time.ZonedDateTime.parse(v, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toEpochSecond
-                  (epoch - Instant.now.getEpochSecond).seconds
-                }.getOrElse(exponentialBackoff(attempt))
-              }
-            }
             // Drain response body before retry
-            resp.body.compile.drain.as(Attempt.Retry(retryAfter.getOrElse(exponentialBackoff(attempt))))
+            resp.body.compile.drain
+              .as(Attempt.Retry(retryAfterDelay(resp, attempt).getOrElse(exponentialBackoff(attempt))))
 
           case code if code >= 500 && attempt < httpConfig.maxRetries =>
             resp.body.compile.drain.as(Attempt.Retry(exponentialBackoff(attempt)))
