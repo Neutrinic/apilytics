@@ -160,11 +160,16 @@ class RetryBudgetSuite extends FunSuite {
       server.stubFor(get(urlPathEqualTo("/x")).inScenario("429").whenScenarioStateIs("ok")
         .willReturn(okJson("""{"id": 1}""")))
 
-      val cfg = HttpConfig(maxRetries = 1, maxBackoff = 10.millis, timeout = 5.seconds)
+      // Backoff is in whole seconds: the first retry waits 1 s, under a 2 s max-backoff.
+      val cfg = HttpConfig(maxRetries = 1, maxBackoff = 2.seconds, timeout = 5.seconds)
+      val started = System.nanoTime()
       val response = Client.resource(cfg, AuthConfig(authType = AuthType.None)).use { client =>
         client.get(Uri.unsafeFromString(s"http://localhost:${server.port()}/x"))
       }.timeout(30.seconds).unsafeRunSync()
+      val waited = (System.nanoTime() - started) / 1000000
+
       assertEquals(response.status, 200)
+      assert(waited >= 900, s"retried after ${waited}ms, not after the 1 s backoff")
     } finally server.stop()
   }
 }
