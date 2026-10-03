@@ -550,8 +550,8 @@ object Loader {
     * Each partition sends its bounds formatted with `format`. With `yyyy-MM-dd` and a range of
     * one hour, the 24 partitions of a day all send the same two dates, so each fetches the
     * whole day and the rows come back 24 times. The range must be a whole number of the
-    * format's smallest unit: the first of a second, minute, hour or day that changes its
-    * output. A format coarser than a day, such as `yyyy-MM`, can't bound fixed-size ranges.
+    * format's smallest unit: the first of a millisecond, second, minute, hour or day that
+    * changes its output. A format coarser than a day, such as `yyyy-MM`, can't bound fixed-size ranges.
     */
   private def checkRangeFitsFormat(range: FiniteDuration, format: String): Unit = {
     import java.time.{Instant, ZoneOffset}
@@ -562,7 +562,8 @@ object Loader {
           throw new IllegalArgumentException(s"partition.format '$format' is not a valid pattern: ${e.getMessage}")
       }
     val origin = Instant.parse("2024-01-01T00:00:00Z")
-    val units  = List(1.second -> "second", 1.minute -> "minute", 1.hour -> "hour", 1.day -> "day")
+    // Partitions step in whole milliseconds, so a millisecond is the finest step that matters.
+    val units  = List(1.milli -> "millisecond", 1.second -> "second", 1.minute -> "minute", 1.hour -> "hour", 1.day -> "day")
     val unit   = units.find { case (u, _) => formatter.format(origin) != formatter.format(origin.plusMillis(u.toMillis)) }
     unit match {
       case Some((u, _)) if range.toMillis % u.toMillis == 0 => ()

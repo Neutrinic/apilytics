@@ -737,8 +737,25 @@ class DateRangePartitioningSuite extends FunSuite {
   }
 
   test("a format without a zone reads its bounds as UTC (#321)") {
-    val parts = dateScan("yyyy-MM-dd'T'HH:mm", 12.hours, "2024-01-01T00:00", "2024-01-02T00:00").planInputPartitions()
-    assertEquals(parts.length, 2)
+    // Under a non-UTC default zone, so a reading in the JVM's zone would show: New York is
+    // five hours behind UTC in January.
+    val default = java.util.TimeZone.getDefault
+    java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/New_York"))
+    try {
+      val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm").withZone(java.time.ZoneOffset.UTC)
+      assertEquals(RESTScan.parseBoundary(formatter, "2024-01-01T00:00"), java.time.Instant.parse("2024-01-01T00:00:00Z"))
+      assertEquals(
+        RESTScan.parseBoundary(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(java.time.ZoneOffset.UTC), "2024-01-01"),
+        java.time.Instant.parse("2024-01-01T00:00:00Z")
+      )
+
+      val parts = dateScan("yyyy-MM-dd'T'HH:mm", 12.hours, "2024-01-01T00:00", "2024-01-02T00:00").planInputPartitions()
+        .map(_.asInstanceOf[RESTInputPartition].pushedParams).toList
+      assertEquals(
+        parts.map(p => (p("from"), p("to"))),
+        List("2024-01-01T00:00" -> "2024-01-01T12:00", "2024-01-01T12:00" -> "2024-01-02T00:00")
+      )
+    } finally java.util.TimeZone.setDefault(default)
   }
 
   test("a bound that parses but isn't a date falls back to one partition (#321)") {
@@ -768,8 +785,12 @@ class DateRangePartitioningSuite extends FunSuite {
     val coarse = intercept[IllegalArgumentException](Loader.load(partitionConfig("yyyy-MM", "30 days")))
     assert(coarse.getMessage.contains("doesn't change within a day"), coarse.getMessage)
 
-    // Whole days with a date format, and anything in seconds with the default, are fine.
+    // Whole days with a date format, anything in seconds with the default, and milliseconds
+    // with a millisecond format, are fine.
     Loader.load(partitionConfig("yyyy-MM-dd", "2 days"))
     Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss'Z'", "90 minutes"))
+    Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss.SSS", "500 milliseconds"))
+    val subSecond = intercept[IllegalArgumentException](Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss'Z'", "500 milliseconds")))
+    assert(subSecond.getMessage.contains("whole number of seconds"), subSecond.getMessage)
   }
 }
