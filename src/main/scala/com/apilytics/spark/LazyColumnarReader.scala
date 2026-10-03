@@ -93,12 +93,34 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
   private var currentBatch: ColumnarBatch = _
   private var currentRoot: VectorSchemaRoot = _
 
+  /** Every Arrow batch allocated and not yet released, from `arrowToBatch` until it is
+    * closed.
+    *
+    * close() cancels the producer, and the producer can be holding a batch the queue never
+    * saw: converted, then parked offering it to a full queue, or between the two. Nothing
+    * else refers to that batch, so it went unclosed and `allocator.close()` failed the task
+    * with "Memory was leaked by query" (#307). A satisfied LIMIT, `show()` or `take()` hit it
+    * routinely. close() releases whatever is still here before closing the allocator, so no
+    * allocated batch can be dropped, wherever cancellation lands.
+    *
+    * Written by the producer fiber and the task thread, hence concurrent. Keyed by the
+    * batch, which compares by identity.
+    */
+  private val inFlight = new java.util.concurrent.ConcurrentHashMap[ColumnarBatch, VectorSchemaRoot]()
+
+  /** Close a batch and its root, once. Variant batches have no root and aren't tracked. */
+  private def release(batch: ColumnarBatch, root: VectorSchemaRoot): Unit =
+    if (root == null) batch.close()
+    else if (inFlight.remove(batch) != null) {
+      batch.close()
+      root.close()
+    }
+
   override def next(): Boolean = {
     start().queue.take.unsafeRunSync() match {
       case Some(Right((batch, root))) =>
         // Release the previous batch before storing the new one
-        if (currentBatch != null) currentBatch.close()
-        if (currentRoot != null) currentRoot.close() // null for variant path (no Arrow)
+        if (currentBatch != null) release(currentBatch, currentRoot)
         currentBatch = batch
         currentRoot = root
         true
@@ -142,13 +164,16 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
     }
 
     // 3. Close current batch + root
-    if (currentBatch != null) currentBatch.close()
-    if (currentRoot != null) currentRoot.close()
+    if (currentBatch != null) release(currentBatch, currentRoot)
 
-    // 4. Release the source session
+    // 4. Close any batch the producer allocated but never queued, or the drainer took but
+    // was cancelled before closing. The producer and drainer have stopped, so this is final.
+    inFlight.asScala.toList.foreach { case (batch, root) => release(batch, root) }
+
+    // 5. Release the source session
     if (r != null) r.releaseSession.unsafeRunSync()
 
-    // 5. Close Arrow allocator (verifies all memory released)
+    // 6. Close Arrow allocator (verifies all memory released)
     allocator.close()
   }
 
@@ -162,9 +187,7 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
     queue.take.flatMap { item =>
       IO {
         item.foreach {
-          case Right((batch, root)) =>
-            batch.close()
-            if (root != null) root.close()
+          case Right((batch, root)) => release(batch, root)
           case Left(_) => // errors are irrelevant once we are closing
         }
       }.flatMap(_ => drainLoop(queue))
@@ -174,9 +197,7 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
     var item = queue.tryTake.unsafeRunSync()
     while (item.isDefined) {
       item.flatten.foreach {
-        case Right((batch, root)) =>
-          batch.close()
-          if (root != null) root.close() // null for variant path (no Arrow)
+        case Right((batch, root)) => release(batch, root)
         case Left(_) => // discard errors during drain
       }
       item = queue.tryTake.unsafeRunSync()
@@ -184,6 +205,9 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
   }
 
   /** Wrap Arrow VectorSchemaRoot as ColumnarBatch with null-safe column vector wrappers.
+    *
+    * Call it as soon as `root` is allocated: it registers the pair, so close() releases it
+    * even if the producer is cancelled before the batch reaches the queue (#307).
     *
     * We use NullSafeArrowColumnVector instead of Spark's ArrowColumnVector because
     * Arrow's underlying vector.get() throws IllegalStateException on null values.
@@ -195,6 +219,7 @@ abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
     }.toArray
     val batch = new ColumnarBatch(vectors.asInstanceOf[Array[org.apache.spark.sql.vectorized.ColumnVector]])
     batch.setNumRows(root.getRowCount)
+    inFlight.put(batch, root)
     batch
   }
 }
