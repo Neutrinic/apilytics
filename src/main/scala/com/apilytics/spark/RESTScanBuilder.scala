@@ -1,6 +1,6 @@
 package com.apilytics.spark
 
-import com.apilytics.core.config.{AggregationConfig, AggregationFunction, AggregationResultType, CountConfig, FilterConfig}
+import com.apilytics.core.config.{AggregationConfig, AggregationFunction, AggregationResultType, CountConfig, FilterConfig, ReservedParams}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.expressions.NamedReference
 import org.apache.spark.sql.connector.expressions.aggregate._
@@ -24,8 +24,7 @@ class RESTScanBuilder(table: RESTTable) extends ScanBuilder
     table.tableConfig.map(_.filters).getOrElse(Nil)
 
   override protected def reservedParams: Map[String, String] =
-    table.tableConfig.flatMap(_.checkpoint).flatMap(_.overriddenParam)
-      .map(_ -> "the timestamp checkpoint sets it on every request").toMap
+    ReservedParams.forFilters(table.tableConfig, table.sourceConfig)
 
   /** Legacy count config for backwards compatibility. */
   private val countConfig: Option[CountConfig] =
