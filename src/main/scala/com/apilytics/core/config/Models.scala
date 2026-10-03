@@ -185,14 +185,20 @@ final case class CheckpointConfig(
       * e.g., "/updated_at" or "/created_at".
       *
       * The referenced field must contain ISO-8601 formatted strings
-      * (e.g., "2024-01-15T10:30:00Z"). The max timestamp per page is determined
-      * by lexicographic comparison, which only yields correct temporal ordering
-      * for ISO-8601 with fixed-width components and consistent timezone (UTC). */
+      * (e.g., "2024-01-15T10:30:00Z"). The checkpoint saves the latest across the
+      * whole read, compared as instants. */
     timestampPath: Option[String] = None,
     /** Query parameter to filter by timestamp (for timestamp mode).
       * e.g., "since" or "updated_after" */
     timestampParam: Option[String] = None
-)
+) {
+
+  /** The query parameter this checkpoint sets on every request, replacing any value a pushed
+    * filter put there: a timestamp checkpoint's `timestamp-param` (#310). Batch reads set it
+    * from the saved checkpoint, streaming reads from each batch's start offset.
+    */
+  def overriddenParam: Option[String] = timestampParam.filter(_ => mode == CheckpointMode.Timestamp)
+}
 
 final case class FilterConfig(
     param: String,

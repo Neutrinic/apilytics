@@ -23,6 +23,10 @@ class RESTScanBuilder(table: RESTTable) extends ScanBuilder
   override protected val filterConfigs: List[FilterConfig] =
     table.tableConfig.map(_.filters).getOrElse(Nil)
 
+  override protected def reservedParams: Map[String, String] =
+    table.tableConfig.flatMap(_.checkpoint).flatMap(_.overriddenParam)
+      .map(_ -> "the timestamp checkpoint sets it on every request").toMap
+
   /** Legacy count config for backwards compatibility. */
   private val countConfig: Option[CountConfig] =
     table.tableConfig.flatMap(_.count)

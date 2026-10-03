@@ -74,7 +74,11 @@ WHERE created_at >= '2026-01-01T00:00:00Z' AND created_at < '2026-01-29T00:00:00
 If either bound isn't pushed down, because the query doesn't filter on it or no filter
 maps it to its parameter, the read falls back to a single partition and logs a warning.
 The bounds are written in `format`, `yyyy-MM-dd'T'HH:mm:ss'Z'` by default, so a pushed
-value has to parse in that format.
+value has to parse in that format. A format without a zone is read as UTC, and a date-only
+format such as `yyyy-MM-dd` as the start of the day in UTC. The `range` has to be a whole
+number of the smallest step the format can write: whole days for `yyyy-MM-dd`. Otherwise
+several partitions would send the same bounds and read the same rows, so the config is
+rejected at load.
 
 ## Parameters pagination already uses
 

@@ -13,6 +13,12 @@ trait FilterPushdown extends Logging {
 
   protected def filterConfigs: List[FilterConfig]
 
+  /** Query parameters something else sets on every request, each with the reason. A predicate
+    * on one stays with Spark: pushing it would be a promise the request can't keep, since the
+    * other setting replaces the value sent, and rows outside the WHERE would come back (#310).
+    */
+  protected def reservedParams: Map[String, String] = Map.empty
+
   protected var pushedParams: Map[String, String] = Map.empty
   protected var pushedLimit: Option[Int] = None
   protected var _pushedPredicates: Array[Predicate] = Array.empty
@@ -34,6 +40,12 @@ trait FilterPushdown extends Logging {
     val locals  = Array.newBuilder[Predicate]
 
     results.foreach {
+      case (p, Some((param, _))) if reservedParams.contains(param) =>
+        logInfo(
+          s"Filter ${formatPredicate(p)} matches parameter '$param', but ${reservedParams(param)}; " +
+            "Spark will apply this filter after the rows arrive."
+        )
+        locals += p
       case (p, Some((param, value))) if claimed.add(param) => pushed += ((p, param, value))
       case (p, Some((param, _))) =>
         logInfo(

@@ -40,7 +40,7 @@ tables {
     endpoint = "/events"
     checkpoint {
       enabled = true
-      path = "/tmp/apilytics/checkpoints"  # a local path, or s3a://, gs://, hdfs://
+      path = "/tmp/apilytics/checkpoints"  # a local path, or s3a://, gs://, abfss://, ...
       mode = "cursor"                      # cursor | offset | timestamp
     }
   }
@@ -71,13 +71,24 @@ tables {
 }
 ```
 
+The checkpoint saves the latest timestamp of the whole read, compared as instants, so the
+order the API serves pages in doesn't matter.
+
+Every request carries the checkpoint's value in `timestamp-param`. A `filters` entry on the
+same parameter, such as `since` mapped to `updated_at`, therefore isn't sent to the API: Spark
+applies that filter to the rows that come back, and the config logs a warning saying so when
+it loads. A `timestamp-param` that pagination also sends, such as its `cursor-param`, is
+rejected at load, since only one value could be sent.
+
 A checkpoint can't be combined with [partitioning](../using/partitioning.md): it's one
 position for the whole table, so every partition would resume from the same place. A
 config with both is rejected at load.
 
-Each table's checkpoint is stored as `<table-name>.checkpoint.json` under `path`. Local
-paths are written directly. Remote paths (`hdfs://`, `s3://`, `s3a://`, `gs://`) go
-through Hadoop's FileSystem, so the cluster needs the matching connector.
+Each table's checkpoint is stored as `<table-name>.checkpoint.json` under `path`. A plain
+path, such as `/tmp/checkpoints` or a Databricks `/Volumes/...` path, is written directly.
+A path with a scheme, such as `hdfs://`, `s3a://`, `gs://`, `abfss://`, `wasbs://`, `dbfs:/`
+or `file://`, goes through Hadoop's FileSystem, so the cluster needs the matching connector.
+A plain local path is on each executor's own disk: on a cluster, use shared storage.
 
 Timestamp mode is also what lets a table [stream](../using/streaming.md). A streaming
 query keeps its offsets in its own `checkpointLocation`, not in this file.

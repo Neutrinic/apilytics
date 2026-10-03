@@ -1261,4 +1261,88 @@ class LoaderSuite extends FunSuite {
     )
     assert(ex.getMessage.contains("missing token-url"), ex.getMessage)
   }
+
+  private def linkHeaderConfig(sourceStyle: String, tablePagination: String) = ConfigFactory.parseString(
+    s"""
+      |openapi = "https://example.com/openapi.json"
+      |auth { type = none }
+      |pagination { style = $sourceStyle, cursor-path = "/next" }
+      |tables {
+      |  events {
+      |    endpoint = "/events"
+      |    $tablePagination
+      |    checkpoint { enabled = true, path = "/tmp/cp", mode = cursor }
+      |  }
+      |}
+      |""".stripMargin)
+
+  test("a table's own link-header pagination rejects a cursor checkpoint (#317)") {
+    val ex = intercept[IllegalArgumentException](
+      Loader.load(linkHeaderConfig("cursor", "pagination { style = link_header }"))
+    )
+    assert(ex.getMessage.contains("link-header pagination"), ex.getMessage)
+  }
+
+  test("a table overriding link-header pagination with cursor keeps its cursor checkpoint (#317)") {
+    val sc = Loader.load(linkHeaderConfig("link_header", """pagination { style = cursor, cursor-path = "/next" }"""))
+    assertEquals(sc.tables("events").pagination.map(_.style), Some(PaginationStyle.Cursor))
+  }
+
+  /** A source with one table, `items`, holding `table`'s keys. */
+  private def withTable(pagination: String, table: String) = ConfigFactory.parseString(
+    s"""
+      |openapi = "https://example.com/openapi.json"
+      |auth { type = none }
+      |pagination { $pagination }
+      |tables { items { endpoint = "/items", $table } }
+      |""".stripMargin)
+
+  private val timestampCheckpoint =
+    """checkpoint { enabled = true, path = "/tmp/cp", mode = timestamp, timestamp-param = "since", timestamp-path = "/updated_at" }"""
+
+  test("a filter on the timestamp checkpoint's parameter loads, with a warning (#312)") {
+    // The docs' setup. Since #310 the filter stays with Spark, so it's safe.
+    val sc = Loader.load(withTable(
+      "style = none",
+      s"""filters = [ { param = "since", column = "updated_at", operators = ["gte"] } ], $timestampCheckpoint"""
+    ))
+    val warnings = Loader.checkParameterCollisions(sc)
+    assertEquals(warnings.size, 1)
+    assert(warnings.head.contains("'since'") && warnings.head.contains("won't be sent"), warnings.head)
+  }
+
+  test("a filter on a parameter pagination sends fails at load, defaults included (#312)") {
+    // Offset pagination sends `limit` unless told otherwise.
+    val ex = intercept[IllegalArgumentException](Loader.load(withTable(
+      "style = offset",
+      """filters = [ { param = "limit", column = "size", operators = ["eq"] } ]"""
+    )))
+    assert(ex.getMessage.contains("'limit'") && ex.getMessage.contains("page-size-param"), ex.getMessage)
+  }
+
+  test("a filter on a batch join's batch-param fails at load (#312)") {
+    val ex = intercept[IllegalArgumentException](Loader.load(withTable(
+      "style = none",
+      """parent-table = "parents", parent-key = "id", join-strategy = "batch", batch-param = "ids",
+        |filters = [ { param = "ids", column = "owner", operators = ["eq"] } ]""".stripMargin
+    )))
+    assert(ex.getMessage.contains("batch-param"), ex.getMessage)
+  }
+
+  test("a timestamp checkpoint on a parameter pagination sends fails at load (#312)") {
+    val ex = intercept[IllegalArgumentException](Loader.load(withTable(
+      """style = cursor, cursor-path = "/next", cursor-param = "since"""",
+      timestampCheckpoint
+    )))
+    assert(ex.getMessage.contains("checkpoint.timestamp-param") && ex.getMessage.contains("cursor-param"), ex.getMessage)
+  }
+
+  test("a filter on a parameter the table's pagination doesn't send loads (#312)") {
+    // Cursor pagination sends no `offset`, so a filter on it collides with nothing.
+    val sc = Loader.load(withTable(
+      """style = cursor, cursor-path = "/next"""",
+      """filters = [ { param = "offset", column = "o", operators = ["eq"] } ]"""
+    ))
+    assertEquals(Loader.checkParameterCollisions(sc), Nil)
+  }
 }

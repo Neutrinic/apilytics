@@ -132,6 +132,15 @@ object Client {
       case _ => Resource.pure(None)
     }
 
+  /** What one request attempt leads to (#313). */
+  private sealed trait Attempt
+  private object Attempt {
+    final case class Done(response: ApiResponse)  extends Attempt
+    final case class Retry(delay: FiniteDuration) extends Attempt
+    case object RefreshAuth                       extends Attempt
+    final case class Fail(error: Throwable)       extends Attempt
+  }
+
   class RestClient(
       underlying: Http4sClient[IO],
       httpConfig: HttpConfig,
@@ -270,76 +279,87 @@ object Client {
         baseReq: Request[IO],
         format: ResponseFormat,
         attempt: Int = 0
-    ): Stream[IO, Byte] = {
-      Stream.eval(rateLimiter.acquire) >>
-        Stream.eval(Ref.of[IO, Boolean](false)).flatMap { emitted =>
-        Stream.eval(applyAuth(baseReq)).flatMap { req =>
-          // First, check the response status to decide if we should retry
-          // Use .use for retry cases to properly scope the connection
-          Stream.eval(underlying.run(req).allocated).flatMap { case (resp, release) =>
-            resp.status.code match {
-              case code if code >= 200 && code < 300 =>
-                // Success - stream body and release connection when done. The flag flips
-                // on the first chunk handed downstream, which is the point after which a
-                // retry would duplicate rather than recover.
-                resp.body.chunks
-                  .evalTap(_ => emitted.set(true))
-                  .flatMap(Stream.chunk)
-                  .onFinalize(release)
+    ): Stream[IO, Byte] =
+      // As in executeWithRetry, the next attempt starts outside this attempt's error handler.
+      // Appended inside it, a retry that hit a network error restarted the chain from this
+      // attempt, sending more requests than max-retries allows (#313).
+      Stream.eval(openStream(baseReq, attempt)).flatMap {
+        case Left(delay) =>
+          Stream.exec(IO.sleep(delay)) ++ streamBodyWithRetry(baseReq, format, attempt + 1)
 
-              case 429 if attempt < httpConfig.maxRetries =>
-                // Rate limited - release connection, sleep, then retry
-                val retryAfter = resp.headers.get(CIString("Retry-After")).map { nel =>
-                  val v = nel.head.value
-                  v.toLongOption.map(_.seconds).getOrElse(exponentialBackoff(attempt))
-                }
-                val delay = retryAfter.getOrElse(exponentialBackoff(attempt))
-                Stream.exec(resp.body.compile.drain *> release *> IO.sleep(delay)) ++
-                  streamBodyWithRetry(baseReq, format, attempt + 1)
-
-              case code if code >= 500 && attempt < httpConfig.maxRetries =>
-                // Server error - release connection, sleep, then retry
-                val delay = exponentialBackoff(attempt)
-                Stream.exec(resp.body.compile.drain *> release *> IO.sleep(delay)) ++
-                  streamBodyWithRetry(baseReq, format, attempt + 1)
-
-              case code =>
-                // Non-retryable error - release connection and raise error
-                Stream.eval(
-                  readErrorBody(resp).flatMap { body =>
-                    release *> IO.raiseError(ApiError.httpError(
-                      endpoint = req.uri.path.renderString,
-                      method = req.method,
-                      params = Map.empty,
-                      statusCode = code,
-                      responseBody = body,
-                      headers = resp.headers.headers.map(h => h.name.toString -> h.value).toMap,
-                      retryAttempt = attempt
-                    ))
+        case Right((resp, release)) =>
+          Stream.eval(Ref.of[IO, Boolean](false)).flatMap { emitted =>
+            // Stream the body and release the connection when done. The flag flips on the
+            // first chunk handed downstream, which is the point after which a retry would
+            // duplicate rather than recover.
+            resp.body.chunks
+              .evalTap(_ => emitted.set(true))
+              .flatMap(Stream.chunk)
+              .onFinalize(release)
+              .handleErrorWith {
+                // Retry transient network failures, but only while nothing has been emitted.
+                // Past that point the request cannot be replayed without duplicating records.
+                case e if isTransientNetworkError(e) && attempt < httpConfig.maxRetries =>
+                  Stream.eval(emitted.get).flatMap {
+                    case false =>
+                      Stream.exec(IO.sleep(exponentialBackoff(attempt))) ++
+                        streamBodyWithRetry(baseReq, format, attempt + 1)
+                    case true =>
+                      Stream.exec(IO(
+                        LoggerFactory.getLogger(getClass).warn(
+                          "Connection failed after records were already delivered; not retrying, " +
+                            "because re-issuing the request would replay them."
+                        )
+                      )) ++ Stream.raiseError[IO](e)
                   }
-                ).drain
-            }
+                case e => Stream.raiseError[IO](e)
+              }
           }
-        }.handleErrorWith {
-          // Retry transient network failures, but only while nothing has been emitted.
-          // Past that point the request cannot be replayed without duplicating records.
-          case e if isTransientNetworkError(e) && attempt < httpConfig.maxRetries =>
-            Stream.eval(emitted.get).flatMap {
-              case false =>
-                val delay = exponentialBackoff(attempt)
-                Stream.exec(IO.sleep(delay)) ++ streamBodyWithRetry(baseReq, format, attempt + 1)
-              case true =>
-                Stream.exec(IO(
-                  LoggerFactory.getLogger(getClass).warn(
-                    "Connection failed after records were already delivered; not retrying, " +
-                      "because re-issuing the request would replay them."
-                  )
-                )) ++ Stream.raiseError[IO](e)
-            }
-          case e => Stream.raiseError[IO](e)
+      }
+
+    /** One streaming request: the open response and its release, or how long to wait before
+      * the next attempt. Each retry path releases its connection before returning, so no
+      * connection is held through the backoff.
+      */
+    private def openStream(
+        baseReq: Request[IO],
+        attempt: Int
+    ): IO[Either[FiniteDuration, (org.http4s.Response[IO], IO[Unit])]] =
+      (rateLimiter.acquire *> applyAuth(baseReq)).flatMap { req =>
+        underlying.run(req).allocated.flatMap { case (resp, release) =>
+          resp.status.code match {
+            case code if code >= 200 && code < 300 =>
+              IO.pure(Right((resp, release)))
+
+            case 429 if attempt < httpConfig.maxRetries =>
+              // Rate limited - release connection, then wait
+              resp.body.compile.drain.guarantee(release)
+                .as(Left(retryAfterDelay(resp, attempt).getOrElse(exponentialBackoff(attempt))))
+
+            case code if code >= 500 && attempt < httpConfig.maxRetries =>
+              // Server error - release connection, then wait
+              resp.body.compile.drain.guarantee(release).as(Left(exponentialBackoff(attempt)))
+
+            case code =>
+              // Non-retryable error - release connection and raise error
+              readErrorBody(resp).guarantee(release).flatMap { body =>
+                IO.raiseError(ApiError.httpError(
+                  endpoint = req.uri.path.renderString,
+                  method = req.method,
+                  params = Map.empty,
+                  statusCode = code,
+                  responseBody = body,
+                  headers = resp.headers.headers.map(h => h.name.toString -> h.value).toMap,
+                  retryAttempt = attempt
+                ))
+              }
+          }
         }
-        }
-    }
+      }.handleErrorWith {
+        case e if isTransientNetworkError(e) && attempt < httpConfig.maxRetries =>
+          IO.pure(Left(exponentialBackoff(attempt)))
+        case e => IO.raiseError(e)
+      }
 
     private def executeWithRetry(
         req: Request[IO],
@@ -348,7 +368,52 @@ object Client {
         params: Map[String, String],
         attempt: Int,
         authRetried: Boolean
-    ): IO[ApiResponse] = {
+    ): IO[ApiResponse] =
+      // One attempt decides what happens next; the sleep and the next attempt run after its
+      // connection is released. The 5xx and 429 retries used to recurse inside the attempt's
+      // `.use`, under the network-error handler of the attempt before: a retry that then hit
+      // a network error was caught there and restarted the chain, so max-retries 5 could send
+      // 11 requests (#313). The connection was also held through each backoff.
+      attemptOnce(req, endpoint, params, attempt, authRetried).flatMap {
+        case Attempt.Done(response) => IO.pure(response)
+        case Attempt.Retry(delay) =>
+          IO.sleep(delay) *> executeWithRetry(req, baseReq, endpoint, params, attempt + 1, authRetried)
+        case Attempt.RefreshAuth =>
+          // Token may have expired - refresh once and retry
+          tokenManager.get.refreshToken *> applyAuth(baseReq).flatMap { newReq =>
+            executeWithRetry(newReq, baseReq, endpoint, params, attempt, authRetried = true)
+          }
+        case Attempt.Fail(error) => IO.raiseError(error)
+      }
+
+    /** How long a 429's `Retry-After` asks us to wait: a number of seconds or an HTTP date.
+      * A date already past means no wait; a value that is neither, or too large to be a
+      * duration, falls back to backoff. Shared by full-body and streamed requests, which used
+      * to read it differently: streams ignored dates and retried early, spending attempts and
+      * permits on more 429s.
+      *
+      * The server's wait is honoured even beyond `max-backoff`, which bounds only our own
+      * backoff: retrying sooner would only draw another 429.
+      */
+    private def retryAfterDelay(resp: org.http4s.Response[IO], attempt: Int): Option[FiniteDuration] =
+      resp.headers.get(CIString("Retry-After")).map { nel =>
+        val v = nel.head.value.trim
+        v.toLongOption.flatMap(s => scala.util.Try(math.max(s, 0L).seconds).toOption).getOrElse {
+          scala.util.Try {
+            val epoch = java.time.ZonedDateTime.parse(v, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toEpochSecond
+            math.max(epoch - Instant.now.getEpochSecond, 0L).seconds
+          }.getOrElse(exponentialBackoff(attempt))
+        }
+      }
+
+    /** One request, and what to do about its result. */
+    private def attemptOnce(
+        req: Request[IO],
+        endpoint: String,
+        params: Map[String, String],
+        attempt: Int,
+        authRetried: Boolean
+    ): IO[Attempt] = {
       // A permit per attempt, not per call: retries after 429, 5xx or a network error, and
       // the re-issue after an OAuth2 refresh, are requests too. Taking one only before the
       // first attempt let a burst of failures be retried above `rate-limit` (#279).
@@ -357,40 +422,22 @@ object Client {
 
         resp.status.code match {
           case code if code >= 200 && code < 300 =>
-            resp.as[Json].map(json => ApiResponse(json, code, hdrs))
+            resp.as[Json].map(json => Attempt.Done(ApiResponse(json, code, hdrs)))
 
           case 429 if attempt < httpConfig.maxRetries =>
-            val retryAfter = resp.headers.get(CIString("Retry-After")).map { nel =>
-              val v = nel.head.value
-              v.toLongOption.map(_.seconds).getOrElse {
-                scala.util.Try {
-                  val epoch = java.time.ZonedDateTime.parse(v, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toEpochSecond
-                  (epoch - Instant.now.getEpochSecond).seconds
-                }.getOrElse(exponentialBackoff(attempt))
-              }
-            }
-            val delay = retryAfter.getOrElse(exponentialBackoff(attempt))
             // Drain response body before retry
-            resp.body.compile.drain *> IO.sleep(delay) *>
-              executeWithRetry(req, baseReq, endpoint, params, attempt + 1, authRetried)
+            resp.body.compile.drain
+              .as(Attempt.Retry(retryAfterDelay(resp, attempt).getOrElse(exponentialBackoff(attempt))))
 
           case code if code >= 500 && attempt < httpConfig.maxRetries =>
-            val delay = exponentialBackoff(attempt)
-            resp.body.compile.drain *> IO.sleep(delay) *>
-              executeWithRetry(req, baseReq, endpoint, params, attempt + 1, authRetried)
+            resp.body.compile.drain.as(Attempt.Retry(exponentialBackoff(attempt)))
 
           case 401 if !authRetried && tokenManager.isDefined =>
-            // Token may have expired - refresh once and retry
-            resp.body.compile.drain *>
-              tokenManager.get.refreshToken.flatMap { _ =>
-                applyAuth(baseReq).flatMap { newReq =>
-                  executeWithRetry(newReq, baseReq, endpoint, params, attempt, authRetried = true)
-                }
-              }
+            resp.body.compile.drain.as(Attempt.RefreshAuth)
 
           case 401 | 403 =>
-            readErrorBody(resp).flatMap { body =>
-              IO.raiseError(ApiError.authFailed(
+            readErrorBody(resp).map { body =>
+              Attempt.Fail(ApiError.authFailed(
                 endpoint = endpoint,
                 method = req.method,
                 params = params,
@@ -402,8 +449,8 @@ object Client {
             }
 
           case code =>
-            readErrorBody(resp).flatMap { body =>
-              IO.raiseError(ApiError.httpError(
+            readErrorBody(resp).map { body =>
+              Attempt.Fail(ApiError.httpError(
                 endpoint = endpoint,
                 method = req.method,
                 params = params,
@@ -417,9 +464,7 @@ object Client {
       }.handleErrorWith {
         // Retry on network-level transient failures (connection timeout, socket errors, etc.)
         case e if isTransientNetworkError(e) && attempt < httpConfig.maxRetries =>
-          val delay = exponentialBackoff(attempt)
-          IO.sleep(delay) *>
-            executeWithRetry(req, baseReq, endpoint, params, attempt + 1, authRetried)
+          IO.pure(Attempt.Retry(exponentialBackoff(attempt)))
         case e => IO.raiseError(e)
       }
     }

@@ -18,6 +18,27 @@ object ParentChildUtils {
       .orElse(json.asBoolean.map(_.toString))
   }
 
+  /** A parent key as one URL path segment (#318).
+    *
+    * Substituted as is, the key was parsed as URL syntax: `x#y` requested `/parents/x`,
+    * `p?admin=1` added a query, `a/b` added a segment, and `a b` failed the query with
+    * "Invalid URI". Everything but RFC 3986's unreserved characters is percent-encoded as
+    * UTF-8, `/` included, and so are the dots of a `.` or `..` key, which would otherwise
+    * walk the path.
+    */
+  def encodePathSegment(value: String): String =
+    if (value == "." || value == "..") value.replace(".", "%2E")
+    else {
+      val out = new StringBuilder
+      value.getBytes(java.nio.charset.StandardCharsets.UTF_8).foreach { b =>
+        val c = (b & 0xff).toChar
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || "-._~".indexOf(c) >= 0)
+          out += c
+        else out ++= f"%%${b & 0xff}%02X"
+      }
+      out.result()
+    }
+
   /** Enrich a child record with the parent key column.
     * Preserves the original JSON type of the parent key.
     */

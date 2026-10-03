@@ -92,12 +92,18 @@ class LazyColumnarReaderShutdownSuite extends FunSuite {
     )
   }
 
-  /** Run `body` on a daemon thread, returning false if it has not finished in time. */
+  /** Run `body` on a daemon thread, returning false if it has not finished in time.
+    *
+    * An exception `body` throws is rethrown here. It used to be lost with the thread, so a
+    * close() that failed — leaking Arrow memory, say — passed as long as it returned (#307).
+    */
   private def completesWithin(timeout: FiniteDuration)(body: => Unit): Boolean = {
-    val t = new Thread(() => body)
+    @volatile var failure: Throwable = null
+    val t = new Thread(() => try body catch { case e: Throwable => failure = e })
     t.setDaemon(true)
     t.start()
     t.join(timeout.toMillis)
+    if (failure != null) throw failure
     !t.isAlive
   }
 
@@ -129,6 +135,20 @@ class LazyColumnarReaderShutdownSuite extends FunSuite {
       completesWithin(15.seconds)(reader.close()),
       "close() deadlocked after a partial read"
     )
+  }
+
+  test("close() after one batch releases every batch it allocated (#307)") {
+    // Spark stops a LIMIT, show() or take() after the rows it needs, usually while the
+    // producer holds a converted batch it has not yet offered to the full queue. close()
+    // cancelled the producer and that batch was never closed, so the allocator found the
+    // leak and threw "Memory was leaked by query", failing about 40% of these.
+    stubPages(pages = 20, perPage = 50)
+    (1 to 50).foreach { i =>
+      val reader = new RESTColumnarPartitionReader(partition(perPage = 50, batchSize = 25, prefetch = 1))
+      assert(reader.next())
+      try reader.close()
+      catch { case e: Throwable => fail(s"close() failed on iteration $i: $e", e) }
+    }
   }
 
   test("close() returns after the stream is fully drained") {
