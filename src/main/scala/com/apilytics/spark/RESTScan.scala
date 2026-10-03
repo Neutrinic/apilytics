@@ -237,13 +237,17 @@ class RESTScan(
       val endInstant = RESTScan.parseBoundary(formatter, end)
       val rangeMillis = config.range.toMillis
 
-      // Generate partition ranges (iterative to avoid stack overflow)
-      val ranges = generateRanges(startInstant.toEpochMilli, endInstant.toEpochMilli, rangeMillis)
-
-      if (ranges.isEmpty) {
+      if (!startInstant.isBefore(endInstant)) {
         logInfo("Date range is empty (start >= end), returning empty partition list")
         Some(Array.empty)
       } else {
+        // Partitions step in whole milliseconds. A window shorter than one truncates to
+        // nothing, so it gets a single partition rather than none.
+        val ranges = generateRanges(startInstant.toEpochMilli, endInstant.toEpochMilli, rangeMillis) match {
+          case Nil    => List((startInstant.toEpochMilli, endInstant.toEpochMilli))
+          case ranges => ranges
+        }
+
         val numPartitions = ranges.size
         val shares = rateLimitShares(numPartitions)
 
@@ -256,8 +260,10 @@ class RESTScan(
         }
 
         Some(ranges.zipWithIndex.map { case ((rangeStart, rangeEnd), idx) =>
-          val startStr = formatter.format(Instant.ofEpochMilli(rangeStart))
-          val endStr = formatter.format(Instant.ofEpochMilli(rangeEnd))
+          // The outer bounds are the query's own: truncated to milliseconds, a format with
+          // finer fields lost the start and end of the window it was asked for.
+          val startStr = if (idx == 0) start else formatter.format(Instant.ofEpochMilli(rangeStart))
+          val endStr   = if (idx == numPartitions - 1) end else formatter.format(Instant.ofEpochMilli(rangeEnd))
 
           // Replace date range params with partition-specific values
           val partitionParams = pushedParams

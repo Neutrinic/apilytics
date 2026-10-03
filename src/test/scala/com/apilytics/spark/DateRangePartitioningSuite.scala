@@ -799,4 +799,20 @@ class DateRangePartitioningSuite extends FunSuite {
     val tenths = intercept[IllegalArgumentException](Loader.load(partitionConfig("yyyy-MM-dd'T'HH:mm:ss.S", "50 milliseconds")))
     assert(tenths.getMessage.contains("a multiple of 100 milliseconds"), tenths.getMessage)
   }
+
+  test("a format finer than milliseconds keeps the query's exact outer bounds (#321)") {
+    // Bounds truncated to whole milliseconds dropped .002000 to .002500 from the window.
+    val micro = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"
+    val parts = dateScan(micro, 1.milli, "2024-01-01T00:00:00.000500Z", "2024-01-01T00:00:00.002500Z")
+      .planInputPartitions().map(_.asInstanceOf[RESTInputPartition].pushedParams).toList
+    assertEquals(parts.map(p => (p("from"), p("to"))), List(
+      "2024-01-01T00:00:00.000500Z" -> "2024-01-01T00:00:00.001000Z",
+      "2024-01-01T00:00:00.001000Z" -> "2024-01-01T00:00:00.002500Z"
+    ))
+
+    // A window inside one millisecond is one partition, not none.
+    val tiny = dateScan(micro, 1.milli, "2024-01-01T00:00:00.000500Z", "2024-01-01T00:00:00.000800Z")
+      .planInputPartitions().map(_.asInstanceOf[RESTInputPartition].pushedParams).toList
+    assertEquals(tiny.map(p => (p("from"), p("to"))), List("2024-01-01T00:00:00.000500Z" -> "2024-01-01T00:00:00.000800Z"))
+  }
 }
