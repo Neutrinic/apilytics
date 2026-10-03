@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-08-26
+## [1.0.0] - 2026-10-03
 
 First stable release. The version marks architectural stability rather than a burst of
 features: the source layer is protocol-neutral, one jar covers the whole Spark 4.x line,
@@ -18,6 +18,11 @@ and the published coordinate is settled.
   point of the change — the ignored key meant the setting never applied — but it will
   break configs that appeared to work (#234).
 - **Scala 2.13.18** minimum, required by SIP-51 given the dependency classpath.
+- **An `integer` without `format: int32` is now a `bigint` column, not an `int`.** An
+  OpenAPI `integer` without a format has no size limit, and IDs and epoch milliseconds
+  routinely pass 2^31: as `int`, a value such as `3000000000` became NULL without an error.
+  Only an explicit `int32` is still an `int`. A query or a table that relied on the old type
+  may need a cast. The Schema page now documents how every OpenAPI type maps to Spark (#308).
 
 The coordinate is unchanged: **`io.github.neutrinic:apilytics_2.13`**, as in 0.8.0. An
 earlier plan to move the Spark line into the artifact name was reverted once one jar was
@@ -91,6 +96,13 @@ so no upgrade is required for existing users.
   the catalog like any other Spark job. The image now ships the Spark Connect Python
   client that SDP requires, and `spark-pipelines` is a recognised entrypoint command
   (#35).
+- **Values that need converting are counted in the Spark UI.** The scan's node in the SQL tab
+  shows **values converted** and **values replaced with NULL**, and the first NULL in each
+  column, in each task, is logged naming the column and the value (#309).
+- **Settings that send the same query parameter are checked when a config loads.** A filter,
+  or a timestamp checkpoint, on a parameter pagination sends, or a filter on a batch join's
+  `batch-param`, is rejected, since only one value could be sent. A filter on the timestamp
+  checkpoint's parameter loads with a warning that Spark applies it instead (#312).
 
 ### Fixed
 
@@ -290,6 +302,72 @@ so no upgrade is required for existing users.
 - **Security pins never reached consumers** — `dependencyOverrides` is resolution-time only
   and is not published, so released artifacts resolved vulnerable transitive versions.
   Fixed at the source by upgrading `swagger-parser` (#188).
+- **The GitHub example's date filter returned the wrong issues.** It pushed
+  `WHERE created_at >= X` as GitHub's `since=X`, which means *updated* after `X`, and a pushed
+  predicate isn't re-checked, so issues created long before `X` came back. `since` now maps to
+  `updated_at`. The example also listed `like` and `in` as filter operators, which don't exist,
+  and its date-range sketch used `since`/`until` on GitHub's `/events`, which takes neither (#306).
+- **A read Spark stopped early could fail with "Memory was leaked by query".** A satisfied
+  `LIMIT`, `show()`, `take()` or `first()` closes the reader while it is still fetching ahead.
+  A batch it had converted but not yet queued was never released, so closing the reader's
+  memory allocator failed the task: in local mode (spark-shell, notebooks, the Docker image)
+  the query failed, and on a cluster the task was retried, calling the API again. Every batch
+  is now tracked from allocation until it is released (#307).
+- **One malformed date or timestamp failed the whole read.** A record with
+  `"updated_at": ""` failed the task with `DateTimeParseException`, naming neither the column
+  nor the record. A value that doesn't fit or doesn't parse now becomes NULL, and is counted.
+  A value with exactly one reading is converted: `"42"` into a number column, `"true"` into
+  a boolean, a timestamp with a space for `T` or without a zone (read as UTC). Epoch numbers in
+  a timestamp column, fractions in an integer column and out-of-range `int32` values stay
+  NULL, since reading them would mean guessing, and so do numbers too large for a `double`
+  and dates outside Spark's years 1 to 9999. The Schema page lists the rules (#309).
+- **A timestamp checkpoint replaced a filter on the same parameter, returning rows outside
+  the `WHERE`.** With `since` both a filter on `updated_at` and the checkpoint's
+  `timestamp-param`, the setup the docs recommend, `WHERE updated_at >= X` was sent as
+  `since=X`, then replaced by the older saved checkpoint, and Spark, having dropped the
+  pushed predicate, returned everything updated since the checkpoint. A filter on the
+  checkpoint's parameter is now applied by Spark instead of being sent (#310).
+- **A timestamp checkpoint saved the last page's latest timestamp, not the read's.** With
+  pages served newest first, GitHub's default, it saved the oldest page's, so the next run
+  read everything again. It now keeps the latest across the whole read, compared as instants
+  rather than as strings. A page with no timestamps, such as an empty last page, also
+  replaced the timestamp with the paginator's cursor, so the next run sent no `since` and
+  missed updates to earlier records; such a page now leaves it alone (#311).
+- **`max-retries` was exceeded when server errors and network errors mixed.** A retry after a
+  5xx or 429 ran inside the attempt that received it, so when it then hit a network error,
+  that attempt's handler started the chain again: a server answering 500 and then resetting
+  connections got 11 requests with `max-retries = 5`. Each one also took a rate-limit permit,
+  and the connection was held through every backoff. Each attempt now ends before the next
+  one starts, for full-body JSON and streamed NDJSON and SSE alike. Streamed requests
+  also honour a `Retry-After` given as a date, as full-body requests did, rather than retrying
+  early (#313).
+- **Checkpoints on Azure, DBFS or a `file://` path were written to local disk.** Only
+  `hdfs://`, `s3://`, `s3a://` and `gs://` paths went through Hadoop's FileSystem: an
+  `abfss://`, `wasbs://`, `dbfs:/` or `file://` path became a relative directory under the
+  executor's working directory, so the checkpoint didn't persist and the next run started
+  over. Any path with a URI scheme now goes through Hadoop (#316).
+- **The link-header checkpoint check ignored a table's own pagination.** A table setting
+  `link_header` itself could load with a `cursor` checkpoint, which never saves, and a table
+  overriding a source's `link_header` with `cursor` was wrongly rejected (#317).
+- **A parent key was put into the child's URL path without encoding.** A key containing `#`,
+  `?`, `/` or a space was read as URL syntax: `x#y` requested the child of `x`, and its rows
+  were labelled `x#y`; `p?admin=1` added a query parameter; `a b` failed the whole query
+  with "Invalid URI". The key is now percent-encoded as one path segment. A key meant to
+  supply several segments, such as GitHub's `full_name` (`owner/repo`), is now sent as one
+  segment, `owner%2Frepo`, which such an API won't find (#318).
+- **A response under any content type but exactly `application/json` gave a table with no
+  columns.** `application/json; charset=utf-8`, `application/hal+json`,
+  `application/vnd.api+json` and springdoc's default `*/*` were all skipped, so a table on
+  such an endpoint resolved with no columns and no warning. Those are now read, in that order
+  of preference after `application/json`. In strict mode, a table whose endpoint still has no
+  JSON response fails when queried, listing the content types the spec offers. Cached spec
+  parses from earlier versions are discarded (#319).
+- **A date-only partition `format` failed the query instead of partitioning it.** With
+  `format = "yyyy-MM-dd"`, planning threw `DateTimeException: Unable to obtain Instant from
+  TemporalAccessor`. A date-only bound is now read as the start of that day in UTC, and a
+  bound that parses but isn't a date falls back to one partition as documented. A `range` the
+  format can't express, such as one hour with `yyyy-MM-dd`, is rejected at load: its
+  partitions would all send the same dates and read the same rows (#321).
 
 ### Removed
 
@@ -324,15 +402,21 @@ so no upgrade is required for existing users.
 - Security scans use the NVD bulk data feed instead of paging the API — runs went from
   timing out after hours to about seven minutes (#197).
 
+### Security
+
+- **An OAuth2 token response without `access_token` could put the token in logs.** An IdP that
+  answered `accessToken`, say, had the whole response copied into the error message. The error
+  now lists the response's field names only (#315).
+
 ### Known limitations
 
 - `MIN`/`MAX` and custom aggregates are not pushed down; they fall back to a full scan with
   Spark computing the result (#213).
 - Aggregate pushdown is REST-specific and will not carry to future protocols without
   further work.
-- Filter pushdown covers `=`, `>`, `>=`, `<`, `<=` for columns declared in a table's
+- Filter pushdown covers `=`, `<>`, `>`, `>=`, `<`, `<=` for columns declared in a table's
   `filters` config. Anything else filters client-side after a full scan.
-- Read-only. No writes, no streaming source yet (#36).
+- Read-only: no writes.
 
 ## [0.8.0] - 2026-02-28
 
