@@ -22,6 +22,9 @@ class RESTScan(
     resolvedAggConfigs: List[AggregationConfig] = Nil
 ) extends Scan with Batch with SupportsReportStatistics with Logging {
 
+  /** Counts of converted and NULLed values, in the SQL tab next to the scan (#309). */
+  override def supportedCustomMetrics(): Array[CustomMetric] = ConversionMetrics.supported
+
   /** Schema of what this scan actually produces.
     *
     * Once an aggregation is pushed, that is one row of aggregate values — not table
@@ -29,9 +32,6 @@ class RESTScan(
     * the table schema regardless made Spark assert on the column count and fail the
     * query during optimization, so COUNT pushdown never worked (#212).
     */
-  /** Counts of converted and NULLed values, in the SQL tab next to the scan (#309). */
-  override def supportedCustomMetrics(): Array[CustomMetric] = ConversionMetrics.supported
-
   override def readSchema(): StructType =
     if (pushedAggregation.isDefined) aggregateSchema
     else prunedSchema.getOrElse(table.schema())
