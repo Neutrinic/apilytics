@@ -32,7 +32,8 @@ class SchemaMapperSuite extends FunSuite {
 
     val ageField = fields.find(_.getName == "age").get
     assert(ageField.getType.isInstanceOf[ArrowType.Int])
-    assertEquals(ageField.getType.asInstanceOf[ArrowType.Int].getBitWidth, 32)
+    // No format: an OpenAPI integer has no size limit, so it's 64-bit (#308).
+    assertEquals(ageField.getType.asInstanceOf[ArrowType.Int].getBitWidth, 64)
     assert(ageField.isNullable)
 
     val scoreField = fields.find(_.getName == "score").get
@@ -40,6 +41,19 @@ class SchemaMapperSuite extends FunSuite {
 
     val activeField = fields.find(_.getName == "active").get
     assert(activeField.getType.isInstanceOf[ArrowType.Bool])
+  }
+
+  test("only an explicit int32 is a 32-bit column (#308)") {
+    val fields = SchemaMapper.toArrowSchema(
+      SourceSchema.ObjectType(Map(
+        "plain" -> SourceSchema.IntegerType(),
+        "int32" -> SourceSchema.IntegerType(Some("int32")),
+        "int64" -> SourceSchema.IntegerType(Some("int64")),
+        "other" -> SourceSchema.IntegerType(Some("uint32"))
+      ))
+    ).getFields.asScala.map(f => f.getName -> f.getType.asInstanceOf[ArrowType.Int].getBitWidth).toMap
+
+    assertEquals(fields, Map("plain" -> 64, "int32" -> 32, "int64" -> 64, "other" -> 64))
   }
 
   test("nested object flattens with underscore naming") {

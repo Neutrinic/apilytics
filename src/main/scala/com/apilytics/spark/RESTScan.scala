@@ -4,6 +4,7 @@ import com.apilytics.core.config.{AggregationConfig, CheckpointMode, PartitionCo
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
+import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read.{Batch, InputPartition, PartitionReaderFactory, Scan, Statistics, SupportsReportStatistics}
 import org.apache.spark.sql.connector.read.streaming.MicroBatchStream
 import org.apache.spark.sql.types.StructType
@@ -20,6 +21,9 @@ class RESTScan(
     pushedAggregation: Option[Aggregation] = None,
     resolvedAggConfigs: List[AggregationConfig] = Nil
 ) extends Scan with Batch with SupportsReportStatistics with Logging {
+
+  /** Counts of converted and NULLed values, in the SQL tab next to the scan (#309). */
+  override def supportedCustomMetrics(): Array[CustomMetric] = ConversionMetrics.supported
 
   /** Schema of what this scan actually produces.
     *

@@ -27,7 +27,7 @@ import org.apache.spark.sql.SparkSession
   * and persists the final state via stream onFinalize — all within the IO context,
   * avoiding cross-thread mutation.
   */
-class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyColumnarReader with Logging {
+class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyColumnarReader {
 
   override protected val allocator: RootAllocator = new RootAllocator()
   override protected val arrowSchema: ArrowSchema = ArrowSchema.fromJSON(partition.arrowSchemaJson)
@@ -142,7 +142,7 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
                   case SchemaMode.Variant =>
                     (VariantBatch.fromRecords(chunk), null: VectorSchemaRoot)
                   case _ =>
-                    val root = Converter.toArrow(chunk, arrowSchema, allocator)
+                    val root = Converter.toArrow(chunk, arrowSchema, allocator, conversionStats)
                     (arrowToBatch(root), root)
                 }
               }
@@ -238,18 +238,13 @@ class RESTColumnarPartitionReader(partition: RESTInputPartition) extends LazyCol
 
 object RESTColumnarPartitionReader {
 
-  /** Parse an API timestamp into an instant.
+  /** Parse an API timestamp into an instant, as a timestamp column reads it.
     *
-    * Accepts both `2026-01-15T10:00:00Z` and offset forms like `2026-01-15T11:00:00+01:00`,
-    * with or without fractional seconds. Returns None for anything else — epoch seconds,
-    * non-ISO formats — so the caller can decide, and every caller here keeps the record
-    * rather than dropping data it cannot place.
+    * Accepts `2026-01-15T10:00:00Z`, offset forms like `2026-01-15T11:00:00+01:00`, a space
+    * in place of `T`, and no zone (UTC), with or without fractional seconds. Returns None for
+    * anything else — epoch seconds, non-ISO formats — so the caller can decide, and every
+    * caller here keeps the record rather than dropping data it cannot place.
     */
   private[spark] def parseInstant(value: String): Option[java.time.Instant] =
-    try Some(java.time.Instant.parse(value))
-    catch {
-      case _: Exception =>
-        try Some(java.time.OffsetDateTime.parse(value).toInstant)
-        catch { case _: Exception => None }
-    }
+    com.apilytics.core.arrow.Converter.parseTimestamp(value)
 }

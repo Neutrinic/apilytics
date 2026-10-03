@@ -3,10 +3,13 @@ package com.apilytics.spark
 import cats.effect.IO
 import cats.effect.std.Queue
 import cats.effect.unsafe.implicits.global
+import com.apilytics.core.arrow.ConversionStats
 import com.apilytics.core.source.{RecordSession, RecordSource}
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.types.pojo.{Schema => ArrowSchema}
+import org.apache.spark.internal.Logging
+import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.vectorized.ColumnarBatch
 
@@ -18,7 +21,15 @@ import scala.jdk.CollectionConverters._
   * Spark's synchronous next()/get()/close() interface dequeues one batch at a time,
   * so peak memory scales with batch size, not total partition size.
   */
-abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] {
+abstract class LazyColumnarReader extends PartitionReader[ColumnarBatch] with Logging {
+
+  /** What conversion did to this task's values: what was converted, what became NULL. The
+    * first NULL in each column is logged; all of them are counted in the Spark UI (#309).
+    */
+  protected val conversionStats: ConversionStats = new ConversionStats(msg => logWarning(msg))
+
+  override def currentMetricsValues(): Array[CustomTaskMetric] =
+    ConversionMetrics.taskValues(conversionStats)
 
   // Subclasses provide these:
   protected def allocator: RootAllocator
