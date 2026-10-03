@@ -370,6 +370,12 @@ so no upgrade is required for existing users.
   bound that parses but isn't a date falls back to one partition as documented. A `range` the
   format can't express, such as one hour with `yyyy-MM-dd`, is rejected at load: its
   partitions would all send the same dates and read the same rows (#321).
+- **The quick start's own-config command lost a local spec.** It mounted only the config
+  file, so a config naming a spec beside it, as the PokeAPI one does, failed with "Unable to
+  read location". The quick start and the image's `--help` now mount the config's directory.
+  The example notebooks no longer point at the repository's compose setup, the Scala one
+  loads the Spark the image ships (4.2.0, not 4.0.0), and the PySpark one passes notebook
+  schema validation (#333).
 
 ### Removed
 
