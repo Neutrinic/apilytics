@@ -22,6 +22,12 @@ http {
 These formats bypass pagination, because they represent one continuous stream. Use
 `LIMIT` in SQL to cap the number of records read.
 
+With `ndjson`, strict mode takes its columns from the record the spec describes under the
+endpoint's NDJSON response (`application/x-ndjson`, `application/jsonl` and similar): an
+object, or an array whose items are the records. If the spec gives no record there, for
+example just `type: string`, use variant mode instead. SSE streams are read in variant mode:
+specs describe their events too differently to take columns from.
+
 Working examples:
 [`examples/lichess/lichess-ndjson.conf`](https://github.com/Neutrinic/apilytics/blob/main/examples/lichess/lichess-ndjson.conf)
 and

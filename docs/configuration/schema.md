@@ -18,7 +18,8 @@ Columns come from the schema of each endpoint's `200` (or `default`) response, u
 `+json` type such as `application/hal+json`, or `*/*`, in that order of preference. A table
 whose endpoint has no such response fails when it's queried, naming the content types the
 spec does offer: in strict mode it would have no columns. Variant mode needs no schema, so
-there the table still loads.
+there the table still loads. A source reading NDJSON takes its columns from the record
+under the NDJSON response instead; see [Response formats](response-formats.md).
 
 Every column is nullable, including fields the spec marks `required`. A required field
 can still be null in the data: inside an optional parent object that's missing, when it's

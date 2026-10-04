@@ -1,6 +1,6 @@
 package com.apilytics.core.rest
 
-import com.apilytics.core.config.SourceConfig
+import com.apilytics.core.config.{ResponseFormat, SourceConfig}
 import com.apilytics.core.openapi.{Endpoint, ParsedSpec, Parser, SpecCache}
 import com.apilytics.core.schema.SourceSchema
 import com.apilytics.core.source.{SourceCatalog, TableSpec}
@@ -18,6 +18,22 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
   private val log = LoggerFactory.getLogger(getClass)
 
   private val spec: ParsedSpec = SpecCache.getOrParse(config.openapi, config.cache)
+
+  /** Whether this source reads NDJSON, so a table can take its columns from the record an
+    * NDJSON response describes. A JSON source can't read that body, so it never does (#345).
+    */
+  private val readsNdjson = config.http.responseFormat == ResponseFormat.NDJSON
+
+  /** Endpoints a configured path can resolve to. For an NDJSON source, an endpoint whose NDJSON
+    * response describes its records comes first: those records are what the reader parses.
+    */
+  private def candidates: List[Endpoint] =
+    if (readsNdjson) spec.ndjsonEndpoints ++ spec.endpoints else spec.endpoints
+
+  private def exactEndpoint(path: String): Option[Endpoint] = candidates.find(_.path == path)
+
+  private def templateEndpoint(path: String): Option[Endpoint] =
+    candidates.find(ep => pathMatches(path, ep.path))
 
   /** Base URL, preferring an explicit override over the spec's own server entry. */
   val baseUrl: String = config.baseUrl.getOrElse(spec.baseUrl)
@@ -77,8 +93,8 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
       // A concrete path in the spec wins over a template, as OpenAPI matches them: a CSV
       // `/reports/latest` mustn't take its columns from a JSON `/reports/{id}`.
       val exactUnreadable = spec.unreadable.get(tc.endpoint)
-      val byPath = spec.endpoints.find(_.path == tc.endpoint)
-        .orElse(if (exactUnreadable.isDefined) None else findByPathTemplate(tc.endpoint))
+      val byPath = exactEndpoint(tc.endpoint)
+        .orElse(if (exactUnreadable.isDefined) None else templateEndpoint(tc.endpoint))
       val offered = exactUnreadable.orElse(spec.unreadable.collectFirst {
         case (path, types) if pathMatches(tc.endpoint, path) => types
       })
@@ -87,6 +103,9 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
       val unmatched = byPath.isEmpty && (offered.isDefined || findEndpoint(name).isEmpty)
       Option.when(unmatched) {
         val why = offered match {
+          case Some(types) if readsNdjson && types.exists(Parser.isNdjsonMediaType) =>
+            s"The spec describes it as ${types.mkString(", ")}, but with no record schema " +
+              "under it to take columns from."
           case Some(types) if types.exists(Parser.isJsonMediaType) =>
             s"The spec describes it as ${types.mkString(", ")}, but with no object schema to " +
               "take columns from."
@@ -96,9 +115,12 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
           case None =>
             "The spec doesn't describe a GET endpoint at that path."
         }
+        val fix =
+          if (readsNdjson) "or describe the records under the endpoint's NDJSON response in the spec."
+          else "or an endpoint the spec describes with a JSON response."
         s"Table '$name' has endpoint '${tc.endpoint}', which has no response schema to take " +
           s"columns from, so in strict mode it would have none. $why Use schema mode " +
-          "'variant', or an endpoint the spec describes with a JSON response."
+          s"'variant', $fix"
       }
     }
 
@@ -121,7 +143,7 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
     config.tables
       .get(name)
       .flatMap { tc =>
-        spec.endpoints.find(_.path == tc.endpoint).orElse(findByPathTemplate(tc.endpoint))
+        exactEndpoint(tc.endpoint).orElse(templateEndpoint(tc.endpoint))
       }
       .orElse {
         spec.endpoints.find { ep =>

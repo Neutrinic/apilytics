@@ -97,8 +97,46 @@ object Parser {
         path -> okContent(op).map(_.keySet.asScala.toList.sorted).getOrElse(Nil)
     }.toMap
 
-    ParsedSpec(baseUrl = baseUrl, endpoints = endpoints, unreadable = unreadable)
+    // Records an NDJSON or JSON Lines response describes, for sources that read NDJSON (#345).
+    // Each line is one record, like the items of a top-level array, so the record is stored
+    // the way a top-level array response is: wrapped as `data`, which table resolution unwraps.
+    val ndjsonEndpoints = gets.flatMap { case (path, op) =>
+      ndjsonRecordSchema(op).map { record =>
+        Endpoint(
+          path = path,
+          operationId = Option(op.getOperationId),
+          responseSchema = SourceSchema.ObjectType(Map("data" -> SourceSchema.ArrayType(record))),
+          queryParams = queryParams(op)
+        )
+      }
+    }
+
+    ParsedSpec(baseUrl = baseUrl, endpoints = endpoints, unreadable = unreadable, ndjsonEndpoints = ndjsonEndpoints)
   }
+
+  /** The record an NDJSON or JSON Lines response describes: its schema, if that's an object,
+    * or the item of an array of objects, which some specs give for the stream as a whole.
+    * None when there's no such response, or its schema is no record (`type: string`, say).
+    */
+  private def ndjsonRecordSchema(op: io.swagger.v3.oas.models.Operation): Option[SourceSchema.ObjectType] =
+    okContent(op).flatMap { content =>
+      content.asScala.toList
+        .collect { case (key, media) if media != null && media.getSchema != null && isNdjsonMediaType(key) => media.getSchema }
+        .iterator.map(convertSchema).collectFirst {
+          case obj: SourceSchema.ObjectType                         => obj
+          case SourceSchema.ArrayType(obj: SourceSchema.ObjectType) => obj
+        }
+    }
+
+  // Media types for one JSON value per line, which is what the NDJSON reader parses.
+  // `application/json-seq` isn't one: it starts each record with an RS character.
+  private val ndjsonTypes = Set(
+    "application/x-ndjson", "application/ndjson", "application/jsonl", "application/x-jsonlines",
+    "application/jsonlines"
+  )
+
+  /** Whether a response media type is newline-delimited JSON, which an NDJSON source reads. */
+  private[apilytics] def isNdjsonMediaType(key: String): Boolean = ndjsonTypes.contains(baseType(key))
 
   private def okContent(op: io.swagger.v3.oas.models.Operation): Option[io.swagger.v3.oas.models.media.Content] =
     for {
@@ -154,24 +192,25 @@ object Parser {
         case _ => None
       }
     }.map { objSchema =>
-      val params = Option(op.getParameters).map(_.asScala.toList).getOrElse(Nil)
-        .filter(_.getIn == "query")
-        .map { p =>
-          QueryParam(
-            name = p.getName,
-            schema = Option(p.getSchema).map(convertSchema).getOrElse(SourceSchema.UnknownType),
-            required = Option(p.getRequired).map(_.booleanValue()).getOrElse(false)
-          )
-        }
-
       Endpoint(
         path = path,
         operationId = Option(op.getOperationId),
         responseSchema = objSchema,
-        queryParams = params
+        queryParams = queryParams(op)
       )
     }
   }
+
+  private def queryParams(op: io.swagger.v3.oas.models.Operation): List[QueryParam] =
+    Option(op.getParameters).map(_.asScala.toList).getOrElse(Nil)
+      .filter(_.getIn == "query")
+      .map { p =>
+        QueryParam(
+          name = p.getName,
+          schema = Option(p.getSchema).map(convertSchema).getOrElse(SourceSchema.UnknownType),
+          required = Option(p.getRequired).map(_.booleanValue()).getOrElse(false)
+        )
+      }
 
   private def convertSchema(schema: SwaggerSchema[_]): SourceSchema = {
     if (schema == null) return SourceSchema.UnknownType
@@ -241,5 +280,9 @@ final case class ParsedSpec(
     baseUrl: String,
     endpoints: List[Endpoint],
     /** GET paths with a response in no format we read, and the content types they offer. */
-    unreadable: Map[String, List[String]] = Map.empty
+    unreadable: Map[String, List[String]] = Map.empty,
+    /** GET endpoints whose NDJSON or JSON Lines response describes a record, stored as a
+      * top-level array response is (`data` wrapping the record). Used only by NDJSON sources.
+      */
+    ndjsonEndpoints: List[Endpoint] = Nil
 ) extends Serializable
