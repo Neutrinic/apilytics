@@ -185,6 +185,32 @@ class ParserSuite extends FunSuite {
     assertEquals(props("metadata"), SourceSchema.VariantType)
   }
 
+  /** An object with `id` and `name` declared, and `additionalProperties` set to `ap`. */
+  private def objectWithAdditionalProperties(ap: String): SourceSchema = {
+    val spec =
+      s"""{ "openapi": "3.0.0", "info": { "title": "t", "version": "1" }, "paths": { "/items": { "get": {
+         |  "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": {
+         |    "type": "object",
+         |    "properties": { "row": {
+         |      "type": "object",
+         |      "properties": { "id": { "type": "integer" }, "name": { "type": "string" } },
+         |      "additionalProperties": $ap
+         |    } }
+         |  } } } } } } } } }""".stripMargin
+    Parser.parseContent(spec).endpoints.head.responseSchema.properties("row")
+  }
+
+  test("declared properties stay typed columns whatever additionalProperties says (#341)") {
+    // `true` only allows fields beyond those listed, which is the default anyway. It used to
+    // turn the object into a VARIANT and throw its declared fields away.
+    val expected = SourceSchema.ObjectType(Map(
+      "id"   -> SourceSchema.IntegerType(),
+      "name" -> SourceSchema.StringType()
+    ))
+    for (ap <- List("true", "false", """{ "type": "string" }"""))
+      assertEquals(objectWithAdditionalProperties(ap), expected, s"additionalProperties: $ap")
+  }
+
   test("empty object (no properties) produces VariantType") {
     val spec =
       """{

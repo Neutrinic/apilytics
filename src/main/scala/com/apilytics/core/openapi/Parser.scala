@@ -181,13 +181,6 @@ object Parser {
       return SourceSchema.VariantType
     }
 
-    // Check for additionalProperties: true (free-form object)
-    val hasAdditionalProps = Option(schema.getAdditionalProperties).exists {
-      case b: java.lang.Boolean => b
-      case _: SwaggerSchema[_]  => true
-      case _                    => false
-    }
-
     // OpenAPI 3.0 uses getType(), OpenAPI 3.1 uses getTypes() (array of types)
     // For 3.1 with multiple non-null types (union), return VariantType
     val tpe = Option(schema.getType).map(_.toString)
@@ -213,15 +206,20 @@ object Parser {
       case Some("array") =>
         val items = Option(schema.getItems).map(convertSchema).getOrElse(SourceSchema.UnknownType)
         SourceSchema.ArrayType(items)
-      case Some("object") if hasProps && !hasAdditionalProps =>
-        // Object with defined properties - flatten to typed columns
+      case Some("object") if hasProps =>
+        // Object with declared properties - flatten to typed columns. `additionalProperties`
+        // doesn't change that: it only allows fields beyond those listed, which JSON Schema
+        // allows by default anyway, and an undeclared field is skipped like any other. It used
+        // to turn the whole object into a VARIANT, throwing the declared fields away, which
+        // on a row object collapsed the table to its response wrapper (#341).
         val props = schema.getProperties.asScala.map {
           case (name, propSchema) => name -> convertSchema(propSchema)
         }.toMap
         val required = Option(schema.getRequired).map(_.asScala.toSet).getOrElse(Set.empty)
         SourceSchema.ObjectType(props, required)
       case Some("object") =>
-        // Object with additionalProperties or no properties - VARIANT
+        // No declared properties: a free-form object, or a map (`additionalProperties` alone,
+        // such as `{"en": "...", "fr": "..."}`), whose keys aren't known up front - VARIANT
         SourceSchema.VariantType
       case None if hasProps =>
         // Missing type but has properties - treat as object

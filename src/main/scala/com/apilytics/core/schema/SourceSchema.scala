@@ -24,8 +24,8 @@ object SourceSchema {
 
   /** Value whose shape cannot be pinned down by the source's own schema language.
     *
-    * From OpenAPI that means additionalProperties, an empty object, a missing type,
-    * or anyOf/oneOf. In strict mode this becomes a JSON string column; only in
+    * From OpenAPI that means an object with no declared properties (empty, or a map given
+    * only by additionalProperties), a missing type, or anyOf/oneOf. In strict mode this becomes a JSON string column; only in
     * variant mode does it reach Spark's native VARIANT.
     */
   @SerialVersionUID(1L) case object VariantType extends SourceSchema
