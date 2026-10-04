@@ -96,7 +96,7 @@ object SchemaMapper {
           List(field(fullName, new ArrowType.Utf8(), nullable, segments))
 
         case SourceSchema.ObjectType(_, _) | SourceSchema.VariantType =>
-          // Empty object or VARIANT (additionalProperties, anyOf, oneOf, missing type)
+          // Empty object or VARIANT (no declared properties, anyOf, oneOf, missing type)
           List(field(fullName, new ArrowType.Utf8(), nullable, segments))
 
         case SourceSchema.ArrayType(_) =>

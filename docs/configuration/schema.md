@@ -37,10 +37,14 @@ would let Spark drop `IS NULL` filters on it, and with them those rows.
 | `string` with `format: date-time` | `timestamp` |
 | any other `string` | `string` |
 | an array, or an object deeper than `flatten-depth` | `string`, holding the JSON |
+| an object with no declared `properties`, such as a map given only by `additionalProperties` | `string`, holding the JSON |
 
 An `integer` without a format has no size limit in OpenAPI, and IDs and epoch milliseconds
 routinely pass the 32-bit range, so only an explicit `int32` is an `int`. A `bigint` holds
 any value up to 2^63 − 1.
+
+Columns come from the fields a spec declares. A field the API sends but the spec doesn't
+declare is skipped, including when the spec allows extra fields with `additionalProperties`.
 
 ### Values that don't match their column
 
