@@ -1,8 +1,13 @@
 name: Docker
 
+# The release image: ghcr.io/neutrinic/apilytics:X.Y.Z, :X.Y and :latest, from a release tag.
+# Only this workflow moves `latest`, so `latest` is always the newest release. It used to follow
+# every push to main, which put unreleased code behind the README's quick start (#339). Builds
+# of main are tagged `dev` by dev.yml. A manual run must be started on a release tag; on a
+# branch it has no tag to push.
+
 on:
   push:
-    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -27,8 +32,9 @@ jobs:
 
       - uses: sbt/setup-sbt@v1
 
+      # Built against Spark 4.0.0, as the jar on Maven Central is.
       - name: Build JAR
-        run: sbt assembly
+        run: sbt -DsparkVersion=4.0.0 assembly
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -43,11 +49,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
