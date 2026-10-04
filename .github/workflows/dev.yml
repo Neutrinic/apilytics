@@ -119,11 +119,13 @@ jobs:
           # uploaded. sbt-dynver puts the commit in it.
           VERSION=$(unzip -p "$JAR" META-INF/MANIFEST.MF | sed -n 's/^Implementation-Version: *//p' | tr -d '\r')
 
+          # The repository is Neutrinic/apilytics, but image names must be lowercase, which is
+          # how metadata-action pushes it. `,,` lowercases, so the line can be copied as is (#343).
           NOTES="Rolling development build. Not a release, and not on Maven Central.
 
           Commit: ${COMMIT}
           Version: ${VERSION}
-          Image: ${REGISTRY}/${IMAGE_NAME}:${TAG}
+          Image: ${REGISTRY}/${IMAGE_NAME,,}:${TAG}
           Built by: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           # Move the tag to this commit so the release's source link and its jar agree. A dev
