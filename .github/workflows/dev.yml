@@ -17,6 +17,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# One run at a time per branch, and never cancelled: a run cancelled mid-publish would leave
+# the jar and the image on different commits. GitHub keeps at most one more run waiting, the
+# newest, and each run builds the branch's head as it is when it starts, so the jar and image
+# always end on the latest commit, from the same build.
+concurrency:
+  group: dev-builds-${{ github.ref }}
+  cancel-in-progress: false
+
 # Read-only unless a job says otherwise.
 permissions:
   contents: read
@@ -29,18 +37,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # A newer push supersedes an in-flight build. Cancelling here is safe: a cancelled build
-    # means its publish jobs never start, so nothing half-published is left.
-    concurrency:
-      group: dev-build-${{ github.ref }}
-      cancel-in-progress: true
-
     outputs:
       tag: ${{ steps.name.outputs.tag }}
+      commit: ${{ steps.name.outputs.commit }}
+      commit_short: ${{ steps.name.outputs.commit_short }}
 
     steps:
       - uses: actions/checkout@v7
         with:
+          # The branch's head now, not the commit that started the run, which a newer push
+          # may have passed while this run waited.
+          ref: ${{ github.ref }}
           # sbt-dynver derives the version from tags, so it needs history.
           fetch-depth: 0
           # sbt runs plugin and dependency code, and this job never pushes, so don't leave the
@@ -68,7 +75,10 @@ jobs:
           else
             TAG="dev-$(printf '%s' "$GITHUB_REF_NAME" | sed 's/[^A-Za-z0-9._-]/-/g')"
           fi
+          COMMIT=$(git rev-parse HEAD)
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "commit_short=${COMMIT:0:7}" >> "$GITHUB_OUTPUT"
           mkdir dev-assets
           cp target/scala-2.13/apilytics.jar "dev-assets/apilytics_2.13-${TAG}.jar"
 
@@ -82,17 +92,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
 
-    # Never cancelled mid-flight: interrupting an upload would leave the pre-release holding a
-    # jar from another commit than its notes say. A newer run queues behind this one instead.
-    concurrency:
-      group: dev-publish-jar-${{ github.ref }}
-      cancel-in-progress: false
-
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.build.outputs.commit }}
 
       - uses: actions/download-artifact@v8
         with:
@@ -103,6 +109,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.build.outputs.tag }}
+          COMMIT: ${{ needs.build.outputs.commit }}
         run: |
           set -euo pipefail
           JAR="dev-assets/apilytics_2.13-${TAG}.jar"
@@ -114,7 +121,7 @@ jobs:
 
           NOTES="Rolling development build. Not a release, and not on Maven Central.
 
-          Commit: ${GITHUB_SHA}
+          Commit: ${COMMIT}
           Version: ${VERSION}
           Image: ${REGISTRY}/${IMAGE_NAME}:${TAG}
           Built by: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -122,7 +129,7 @@ jobs:
           # Move the tag to this commit so the release's source link and its jar agree. A dev
           # tag matches neither sbt-dynver's v* pattern nor any workflow's tag trigger, so it
           # disturbs neither versioning nor releasing.
-          git tag -f "$TAG" "$GITHUB_SHA"
+          git tag -f "$TAG" "$COMMIT"
           git push -f origin "refs/tags/$TAG"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -132,15 +139,11 @@ jobs:
           fi
 
           gh release upload "$TAG" "$JAR" --clobber
-          echo "Published $TAG at $GITHUB_SHA ($VERSION)"
+          echo "Published $TAG at $COMMIT ($VERSION)"
 
   publish-image:
     needs: build
     runs-on: ubuntu-latest
-
-    concurrency:
-      group: dev-publish-image-${{ github.ref }}
-      cancel-in-progress: false
 
     permissions:
       contents: read
@@ -148,6 +151,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          # This job runs no git commands; the registry login uses the token directly.
+          persist-credentials: false
 
       # The Dockerfile copies the jar from where sbt assembly writes it.
       - uses: actions/download-artifact@v8
@@ -174,7 +181,10 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=${{ needs.build.outputs.tag }}
-            type=sha,prefix=
+            type=raw,value=${{ needs.build.outputs.commit_short }}
+          # The built commit, which can be newer than the one that started the run.
+          labels: |
+            org.opencontainers.image.revision=${{ needs.build.outputs.commit }}
 
       - name: Build and push
         uses: docker/build-push-action@v7

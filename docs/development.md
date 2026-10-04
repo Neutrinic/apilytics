@@ -61,8 +61,8 @@ Releases are tagged `X.Y.Z`, `X.Y` and `latest`, so `latest` is always the newes
 
 ## Development builds
 
-Every push to main also publishes a build of that commit, for trying out unreleased changes
-without building anything locally:
+The latest commit on main is always published too, for trying out unreleased changes without
+building anything locally:
 
 - the jar, on the `dev` pre-release:
   `https://github.com/Neutrinic/apilytics/releases/download/dev/apilytics_2.13-dev.jar`,

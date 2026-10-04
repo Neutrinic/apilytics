@@ -24,6 +24,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # All tags, to tell whether this one is the newest release.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # `latest` moves only to the newest stable release. A manual run on an older tag, to
+      # rebuild its image, must not roll `latest` back for everyone.
+      - name: Is this the newest release?
+        id: newest
+        run: |
+          set -euo pipefail
+          NEWEST=$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          echo "newest=$([ "$GITHUB_REF" = "refs/tags/$NEWEST" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "newest release: $NEWEST; building: $GITHUB_REF"
 
       - uses: actions/setup-java@v6.0.1
         with:
@@ -48,10 +62,13 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # metadata-action adds `latest` to any semver tag by default; only the step above may.
+          flavor: |
+            latest=false
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ steps.newest.outputs.newest == 'true' }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
