@@ -57,6 +57,23 @@ sbt assembly
 docker build -t apilytics:latest -f docker/dist/Dockerfile .
 ```
 
+Releases are tagged `X.Y.Z`, `X.Y` and `latest`, so `latest` is always the newest release.
+
+## Development builds
+
+The latest commit on main is always published too, for trying out unreleased changes without
+building anything locally:
+
+- the jar, on the `dev` pre-release:
+  `https://github.com/Neutrinic/apilytics/releases/download/dev/apilytics_2.13-dev.jar`,
+  which works with `--jars` or on a Databricks volume
+- the image, as `ghcr.io/neutrinic/apilytics:dev`, and under the commit's short SHA
+
+The `dev` release notes say which commit they're from. Development builds are not releases:
+nothing goes to Maven Central, and they can change with every push. Running the Dev builds
+workflow by hand on a branch publishes `dev-<branch>` the same way, to try a change before it
+merges.
+
 ## This site
 
 The site is built with [Zensical](https://zensical.org/) from `docs/` and `zensical.toml`:

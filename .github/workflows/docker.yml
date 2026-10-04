@@ -1,8 +1,13 @@
 name: Docker
 
+# The release image: ghcr.io/neutrinic/apilytics:X.Y.Z, :X.Y and :latest, from a release tag.
+# Only this workflow moves `latest`, so `latest` is always the newest release. It used to follow
+# every push to main, which put unreleased code behind the README's quick start (#339). Builds
+# of main are tagged `dev` by dev.yml. A manual run must be started on a release tag; on a
+# branch it has no tag to push.
+
 on:
   push:
-    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -19,6 +24,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # All tags, to tell whether this one is the newest release.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # `latest` moves only to the newest stable release. A manual run on an older tag, to
+      # rebuild its image, must not roll `latest` back for everyone.
+      - name: Is this the newest release?
+        id: newest
+        run: |
+          set -euo pipefail
+          NEWEST=$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          echo "newest=$([ "$GITHUB_REF" = "refs/tags/$NEWEST" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "newest release: $NEWEST; building: $GITHUB_REF"
 
       - uses: actions/setup-java@v6.0.1
         with:
@@ -27,8 +46,9 @@ jobs:
 
       - uses: sbt/setup-sbt@v1
 
+      # Built against Spark 4.0.0, as the jar on Maven Central is.
       - name: Build JAR
-        run: sbt assembly
+        run: sbt -DsparkVersion=4.0.0 assembly
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -42,12 +62,13 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # metadata-action adds `latest` to any semver tag by default; only the step above may.
+          flavor: |
+            latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=
+            type=raw,value=latest,enable=${{ steps.newest.outputs.newest == 'true' }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
