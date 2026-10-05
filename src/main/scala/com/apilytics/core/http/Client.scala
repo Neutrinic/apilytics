@@ -8,6 +8,7 @@ import io.circe.Json
 import org.http4s.{Header, MediaType, Request, Uri}
 import org.http4s.circe._
 import org.http4s.client.{Client => Http4sClient}
+import org.http4s.client.middleware.GZip
 import org.http4s.ember.client.EmberClientBuilder
 import org.http4s.headers.Accept
 import org.http4s.Status
@@ -44,7 +45,26 @@ object Client {
       .withTimeout(httpConfig.timeout)
       .withRetryPolicy((_, _, _) => None)
       .build
-      .map(boundedAcquire(_, httpConfig.timeout))
+      .map(prepared(_, httpConfig.timeout, httpConfig.compression))
+
+  /** Every HTTP client apilytics uses, the token manager's included: compressed, and bounded.
+    *
+    * `GZip` sends `Accept-Encoding: gzip, deflate` and decompresses a response that comes back
+    * compressed, as a stream, so full-body JSON, NDJSON and SSE all read through it. Without it
+    * nothing was decompressed: a server may compress when a request names no encoding, as
+    * RFC 9110 allows and some gateways always do, and the read failed parsing gzip as JSON.
+    * And an API that compresses only on request sent plain JSON, about ten times the bytes
+    * (#347). `http.compression = false` leaves it out, for a server that mislabels its
+    * compression.
+    */
+  private[http] def prepared(
+      client: org.http4s.client.Client[IO],
+      timeout: FiniteDuration,
+      compression: Boolean
+  ): org.http4s.client.Client[IO] = {
+    val bounded = boundedAcquire(client, timeout)
+    if (compression) GZip()(bounded) else bounded
+  }
 
   /** Bounds acquiring each response — connecting, sending, reading headers — by `timeout`.
     *

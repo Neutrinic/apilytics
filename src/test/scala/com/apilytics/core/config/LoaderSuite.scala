@@ -1373,4 +1373,14 @@ class LoaderSuite extends FunSuite {
     ))
     assertEquals(Loader.checkParameterCollisions(sc), Nil)
   }
+
+  test("http.compression defaults to on and can be turned off (#347)") {
+    def load(http: String) = Loader.load(ConfigFactory.parseString(
+      s"""openapi = "https://example.com/openapi.json"
+         |auth { type = none }
+         |$http
+         |""".stripMargin)).http.compression
+    assertEquals(load(""), true)
+    assertEquals(load("http { compression = false }"), false)
+  }
 }

@@ -119,13 +119,14 @@ object OAuth2TokenManager {
       clientId: String,
       clientSecret: String,
       tokenUrl: String,
-      timeout: FiniteDuration = 30.seconds
+      timeout: FiniteDuration = 30.seconds,
+      compression: Boolean = true
   ): Resource[IO, OAuth2TokenManager] = {
     val uri = Uri.unsafeFromString(tokenUrl)
 
     for {
       // Bounded like the data client: ember's timeout does not cover connecting (#266).
-      client <- EmberClientBuilder.default[IO].withTimeout(timeout).build.map(Client.boundedAcquire(_, timeout))
+      client <- EmberClientBuilder.default[IO].withTimeout(timeout).build.map(Client.prepared(_, timeout, compression))
       tokenRef <- Resource.eval(Ref.of[IO, Option[CachedToken]](None))
       lock <- Resource.eval(Semaphore[IO](1))
     } yield new OAuth2TokenManager(clientId, clientSecret, uri, client, tokenRef, lock)

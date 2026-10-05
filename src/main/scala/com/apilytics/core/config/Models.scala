@@ -186,7 +186,11 @@ final case class HttpConfig(
       * - json (default): Full-body JSON
       * - ndjson: Newline-delimited JSON (one object per line)
       * - sse: Server-Sent Events */
-    responseFormat: ResponseFormat = ResponseFormat.Json
+    responseFormat: ResponseFormat = ResponseFormat.Json,
+    /** Ask for compressed responses (`Accept-Encoding: gzip, deflate`) and decompress them
+      * (#347). On by default; off only for a server that mislabels its compression, and then
+      * a response the server compresses anyway can't be read. */
+    compression: Boolean = true
 )
 
 /** Configuration for incremental/checkpoint reads.
