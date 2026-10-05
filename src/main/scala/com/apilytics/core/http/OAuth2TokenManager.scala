@@ -125,7 +125,7 @@ object OAuth2TokenManager {
 
     for {
       // Bounded like the data client: ember's timeout does not cover connecting (#266).
-      client <- EmberClientBuilder.default[IO].withTimeout(timeout).build.map(Client.boundedAcquire(_, timeout))
+      client <- EmberClientBuilder.default[IO].withTimeout(timeout).build.map(Client.prepared(_, timeout))
       tokenRef <- Resource.eval(Ref.of[IO, Option[CachedToken]](None))
       lock <- Resource.eval(Semaphore[IO](1))
     } yield new OAuth2TokenManager(clientId, clientSecret, uri, client, tokenRef, lock)
