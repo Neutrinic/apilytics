@@ -906,4 +906,33 @@ class ParserSuite extends FunSuite {
     val endpoints = Parser.parseContent(spec).endpoints.map(e => e.path -> e.responseSchema.properties.keySet).toMap
     assertEquals(endpoints, Map("/vendor" -> Set("v"), "/split" -> Set("h")))
   }
+
+  /** A spec whose /export answers with `contentType` and `schema` (JSON). */
+  private def ndjsonSpec(contentType: String, schema: String): ParsedSpec =
+    Parser.parseContent(
+      s"""{ "openapi": "3.0.0", "info": { "title": "t", "version": "1" }, "paths": { "/export": { "get": {
+         |  "responses": { "200": { "description": "ok", "content": { "$contentType": { "schema": $schema } } } } } } } }""".stripMargin
+    )
+
+  private val record = """{ "type": "object", "properties": { "id": { "type": "integer" }, "name": { "type": "string" } } }"""
+  private val recordSchema = SourceSchema.ObjectType(Map("id" -> SourceSchema.IntegerType(), "name" -> SourceSchema.StringType()))
+
+  test("an NDJSON response's record schema is kept for NDJSON sources (#345)") {
+    // Stored as a top-level array response is, `data` wrapping the record, which table
+    // resolution unwraps.
+    val wrapped = SourceSchema.ObjectType(Map("data" -> SourceSchema.ArrayType(recordSchema)))
+    for (ct <- List("application/x-ndjson", "application/jsonl", "application/x-ndjson; charset=utf-8")) {
+      val spec = ndjsonSpec(ct, record)
+      assertEquals(spec.ndjsonEndpoints.map(e => e.path -> e.responseSchema), List("/export" -> wrapped), ct)
+      assertEquals(spec.endpoints, Nil, s"$ct is not a JSON response")
+    }
+    // Some specs describe the stream as a whole: an array whose items are the records.
+    assertEquals(ndjsonSpec("application/x-ndjson", s"""{ "type": "array", "items": $record }""").ndjsonEndpoints.map(_.responseSchema), List(wrapped))
+  }
+
+  test("an NDJSON response without a record schema gives no columns (#345)") {
+    assertEquals(ndjsonSpec("application/x-ndjson", """{ "type": "string" }""").ndjsonEndpoints, Nil)
+    // json-seq starts each record with an RS character, which the NDJSON reader can't parse.
+    assertEquals(ndjsonSpec("application/json-seq", record).ndjsonEndpoints, Nil)
+  }
 }
