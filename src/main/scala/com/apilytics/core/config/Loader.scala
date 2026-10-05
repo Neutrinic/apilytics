@@ -283,7 +283,8 @@ object Loader {
         case other => throw new IllegalArgumentException(
           s"Unknown response format: $other. Valid formats: json, ndjson, sse"
         )
-      } else ResponseFormat.Json
+      } else ResponseFormat.Json,
+      compression = if (config.hasPath("compression")) config.getBoolean("compression") else true
     )
   }
 
@@ -737,7 +738,7 @@ object Loader {
     )),
     "http" -> Obj(Map(
       "max-retries" -> Value, "max-backoff" -> Value, "timeout" -> Value,
-      "rate-limit" -> Value, "response-format" -> Value,
+      "rate-limit" -> Value, "response-format" -> Value, "compression" -> Value,
       "response-cache" -> Obj(Map(
         "enabled" -> Value, "backend" -> Value, "ttl" -> Value, "max-entries" -> Value
       ))

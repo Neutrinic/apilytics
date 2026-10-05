@@ -45,7 +45,7 @@ object Client {
       .withTimeout(httpConfig.timeout)
       .withRetryPolicy((_, _, _) => None)
       .build
-      .map(prepared(_, httpConfig.timeout))
+      .map(prepared(_, httpConfig.timeout, httpConfig.compression))
 
   /** Every HTTP client apilytics uses, the token manager's included: compressed, and bounded.
     *
@@ -54,13 +54,17 @@ object Client {
     * nothing was decompressed: a server may compress when a request names no encoding, as
     * RFC 9110 allows and some gateways always do, and the read failed parsing gzip as JSON.
     * And an API that compresses only on request sent plain JSON, about ten times the bytes
-    * (#347).
+    * (#347). `http.compression = false` leaves it out, for a server that mislabels its
+    * compression.
     */
   private[http] def prepared(
       client: org.http4s.client.Client[IO],
-      timeout: FiniteDuration
-  ): org.http4s.client.Client[IO] =
-    GZip()(boundedAcquire(client, timeout))
+      timeout: FiniteDuration,
+      compression: Boolean
+  ): org.http4s.client.Client[IO] = {
+    val bounded = boundedAcquire(client, timeout)
+    if (compression) GZip()(bounded) else bounded
+  }
 
   /** Bounds acquiring each response — connecting, sending, reading headers — by `timeout`.
     *

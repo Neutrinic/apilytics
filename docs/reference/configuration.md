@@ -84,6 +84,7 @@ cursor or offset state to save.
 | `max-backoff` | `30 seconds` | The longest backoff between retries. A 429's `Retry-After` is honoured as given instead. |
 | `rate-limit` | none | Requests per second, shared between partitions. See [Rate limiting](../using/rate-limiting.md). |
 | `response-format` | `json` | `json`, `ndjson` (also `jsonl`) or `sse`. See [Response formats](../configuration/response-formats.md). |
+| `compression` | `true` | Ask for compressed responses (gzip or deflate) and decompress them. Turn off only for a server that mislabels its compression. |
 | `response-cache` | disabled | [Response cache](#response-cache). |
 
 ### `response-cache`

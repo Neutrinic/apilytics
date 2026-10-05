@@ -34,9 +34,11 @@ class ClientCompressionSuite extends FunSuite {
 
   private def uri(path: String) = Uri.unsafeFromString(s"http://localhost:${server.port()}$path")
 
-  private def client(format: ResponseFormat = ResponseFormat.Json) =
-    Client.resource(HttpConfig(maxRetries = 0, maxBackoff = 1.second, timeout = 5.seconds, responseFormat = format),
-                    AuthConfig(authType = AuthType.None))
+  private def client(format: ResponseFormat = ResponseFormat.Json, compression: Boolean = true) =
+    Client.resource(
+      HttpConfig(maxRetries = 0, maxBackoff = 1.second, timeout = 5.seconds, responseFormat = format, compression = compression),
+      AuthConfig(authType = AuthType.None)
+    )
 
   test("a response compressed without being asked is decompressed, not parsed as JSON") {
     // RFC 9110 lets a server compress when the request names no encoding. The client parsed
@@ -74,5 +76,13 @@ class ClientCompressionSuite extends FunSuite {
   test("an uncompressed response still reads as before") {
     server.stubFor(get(urlPathEqualTo("/x")).willReturn(okJson("""{"plain": true}""")))
     assertEquals(client().use(_.get(uri("/x"))).unsafeRunSync().json, Json.obj("plain" -> Json.True))
+  }
+
+  test("compression = false asks for no encoding and reads plain responses") {
+    server.stubFor(get(urlPathEqualTo("/x")).willReturn(okJson("""{"plain": true}""")))
+
+    val response = client(compression = false).use(_.get(uri("/x"))).unsafeRunSync()
+    assertEquals(response.json, Json.obj("plain" -> Json.True))
+    assertEquals(server.getAllServeEvents.get(0).getRequest.containsHeader("Accept-Encoding"), false)
   }
 }
