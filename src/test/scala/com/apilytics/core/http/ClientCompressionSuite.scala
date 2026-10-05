@@ -1,5 +1,6 @@
 package com.apilytics.core.http
 
+import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.apilytics.core.config.{AuthConfig, AuthType, HttpConfig, ResponseFormat}
 import com.github.tomakehurst.wiremock.WireMockServer
@@ -7,7 +8,10 @@ import com.github.tomakehurst.wiremock.client.WireMock._
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
 import io.circe.Json
 import munit.FunSuite
-import org.http4s.Uri
+import org.http4s.{Header, Request, Uri}
+import org.http4s.circe._
+import org.http4s.ember.client.EmberClientBuilder
+import org.typelevel.ci.CIString
 
 import scala.concurrent.duration._
 
@@ -40,15 +44,21 @@ class ClientCompressionSuite extends FunSuite {
       AuthConfig(authType = AuthType.None)
     )
 
-  test("a response compressed without being asked is decompressed, not parsed as JSON") {
-    // RFC 9110 lets a server compress when the request names no encoding. The client parsed
-    // the gzip bytes as JSON and failed with "Invalid JSON".
-    server.stubFor(get(urlPathEqualTo("/x")).willReturn(aResponse()
-      .withHeader("Content-Type", "application/json").withHeader("Content-Encoding", "gzip")
-      .withBody(gzip("""{"ok": true, "n": 3}"""))))
+  test("a gzip response is decompressed even when the request didn't accept gzip") {
+    // A server may compress regardless of what the request accepted. The client parsed the
+    // gzip bytes as JSON and failed with "Invalid JSON". `RestClient.get` always asks for gzip
+    // now, so this sends its own request through the same prepared client, saying identity.
+    server.stubFor(get(urlPathEqualTo("/x")).withHeader("Accept-Encoding", equalTo("identity"))
+      .willReturn(aResponse()
+        .withHeader("Content-Type", "application/json").withHeader("Content-Encoding", "gzip")
+        .withBody(gzip("""{"ok": true, "n": 3}"""))))
 
-    val response = client().use(_.get(uri("/x"))).unsafeRunSync()
-    assertEquals(response.json, Json.obj("ok" -> Json.True, "n" -> Json.fromInt(3)))
+    val request = Request[IO](uri = uri("/x")).putHeaders(Header.Raw(CIString("Accept-Encoding"), "identity"))
+    val json = EmberClientBuilder.default[IO].build
+      .map(Client.prepared(_, 5.seconds, compression = true))
+      .use(_.run(request).use(_.as[Json]))
+      .unsafeRunSync()
+    assertEquals(json, Json.obj("ok" -> Json.True, "n" -> Json.fromInt(3)))
   }
 
   test("requests ask for gzip, and a server that compresses on request is read") {
