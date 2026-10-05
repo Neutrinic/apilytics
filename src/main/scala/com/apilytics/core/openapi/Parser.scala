@@ -111,7 +111,20 @@ object Parser {
       }
     }
 
-    ParsedSpec(baseUrl = baseUrl, endpoints = endpoints, unreadable = unreadable, ndjsonEndpoints = ndjsonEndpoints)
+    // Every GET offering an NDJSON response, record schema or not, with all its content types.
+    // An NDJSON source reads such a path through that response only (#345).
+    val ndjsonAdvertised = gets.collect {
+      case (path, op) if okContent(op).exists(_.keySet.asScala.exists(isNdjsonMediaType)) =>
+        path -> okContent(op).map(_.keySet.asScala.toList.sorted).getOrElse(Nil)
+    }.toMap
+
+    ParsedSpec(
+      baseUrl = baseUrl,
+      endpoints = endpoints,
+      unreadable = unreadable,
+      ndjsonEndpoints = ndjsonEndpoints,
+      ndjsonAdvertised = ndjsonAdvertised
+    )
   }
 
   /** The record an NDJSON or JSON Lines response describes: its schema, if that's an object,
@@ -284,5 +297,9 @@ final case class ParsedSpec(
     /** GET endpoints whose NDJSON or JSON Lines response describes a record, stored as a
       * top-level array response is (`data` wrapping the record). Used only by NDJSON sources.
       */
-    ndjsonEndpoints: List[Endpoint] = Nil
+    ndjsonEndpoints: List[Endpoint] = Nil,
+    /** GET paths offering an NDJSON or JSON Lines response, whether or not it describes a
+      * record, with all the content types they offer.
+      */
+    ndjsonAdvertised: Map[String, List[String]] = Map.empty
 ) extends Serializable

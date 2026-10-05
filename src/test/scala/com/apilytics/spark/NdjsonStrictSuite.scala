@@ -44,6 +44,19 @@ class NdjsonStrictSuite extends FunSuite {
       |          content:
       |            application/x-ndjson:
       |              schema: { type: string }
+      |  /both:
+      |    get:
+      |      responses:
+      |        "200":
+      |          description: ok
+      |          content:
+      |            application/json:
+      |              schema:
+      |                type: object
+      |                properties:
+      |                  total: { type: integer }
+      |            application/x-ndjson:
+      |              schema: { type: string }
       |""".stripMargin
 
   private val body =
@@ -54,25 +67,29 @@ class NdjsonStrictSuite extends FunSuite {
   override def beforeEach(context: BeforeEach): Unit = {
     server = new WireMockServer(wireMockConfig().dynamicPort())
     server.start()
-    for (path <- List("/export", "/raw"))
+    for (path <- List("/export", "/raw", "/both"))
       server.stubFor(get(urlPathEqualTo(path)).willReturn(
         aResponse().withHeader("Content-Type", "application/x-ndjson").withBody(body)
       ))
     dir = Files.createTempDirectory("apilytics-ndjson-strict")
     Files.writeString(dir.resolve("exports.yaml"), spec)
-    def conf(format: String) =
+    def conf(format: String, tables: String) =
       s"""openapi = "exports.yaml"
          |base-url = "http://localhost:${server.port()}"
          |auth { type = none }
          |pagination { style = none }
          |http { response-format = $format, max-retries = 0, max-backoff = "0 seconds" }
-         |tables {
-         |  export { endpoint = "/export" }
-         |  raw    { endpoint = "/raw" }
-         |}
+         |$tables
          |""".stripMargin
-    Files.writeString(dir.resolve("ndjson.conf"), conf("ndjson"))
-    Files.writeString(dir.resolve("json.conf"), conf("json"))
+    val tables = """tables {
+                   |  export { endpoint = "/export" }
+                   |  raw    { endpoint = "/raw" }
+                   |  both   { endpoint = "/both" }
+                   |}""".stripMargin
+    Files.writeString(dir.resolve("ndjson.conf"), conf("ndjson", tables))
+    Files.writeString(dir.resolve("json.conf"), conf("json", tables))
+    // No `tables`: every table is discovered from the spec.
+    Files.writeString(dir.resolve("discovered.conf"), conf("ndjson", ""))
     spark = SparkSession.builder().master("local[1]").appName("NdjsonStrictSuite")
       .config("spark.ui.enabled", "false")
       .config("spark.sql.session.timeZone", "UTC")
@@ -80,6 +97,8 @@ class NdjsonStrictSuite extends FunSuite {
       .config("spark.sql.catalog.api.config", dir.resolve("ndjson.conf").toAbsolutePath.toString)
       .config("spark.sql.catalog.apijson", "com.apilytics.spark.RESTCatalog")
       .config("spark.sql.catalog.apijson.config", dir.resolve("json.conf").toAbsolutePath.toString)
+      .config("spark.sql.catalog.apidisc", "com.apilytics.spark.RESTCatalog")
+      .config("spark.sql.catalog.apidisc.config", dir.resolve("discovered.conf").toAbsolutePath.toString)
       .getOrCreate()
   }
 
@@ -115,5 +134,21 @@ class NdjsonStrictSuite extends FunSuite {
   test("a JSON source still refuses an NDJSON-only endpoint, whose body it can't read") {
     val msg = failure("apijson.default.export")
     assert(msg.contains("'export'") && msg.contains("none of them JSON"), msg)
+  }
+
+  test("a path offering NDJSON without a record isn't given its JSON response's columns") {
+    // /both's JSON response describes a different document ({"total": ...}). Borrowed for the
+    // NDJSON lines, its columns would all have been NULL.
+    val msg = failure("api.default.both")
+    assert(msg.contains("'both'") && msg.contains("no record schema"), msg)
+    // A JSON source reads /both's JSON response as before.
+    assertEquals(spark.table("apijson.default.both").columns.toList, List("total"))
+  }
+
+  test("an NDJSON source discovers endpoints known only by their NDJSON record") {
+    // No `tables` in the config: /export has no JSON response, only an NDJSON record.
+    val names = spark.sql("SHOW TABLES IN apidisc.default").collect().map(_.getString(1)).toSet
+    assert(names.contains("export"), names.toString)
+    assertEquals(spark.table("apidisc.default.export").columns.toList.sorted, List("at", "fare", "id"))
   }
 }

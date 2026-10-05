@@ -24,11 +24,15 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
     */
   private val readsNdjson = config.http.responseFormat == ResponseFormat.NDJSON
 
-  /** Endpoints a configured path can resolve to. For an NDJSON source, an endpoint whose NDJSON
-    * response describes its records comes first: those records are what the reader parses.
+  /** Endpoints a table can resolve to. For an NDJSON source, a path that offers an NDJSON
+    * response is read through it, so its columns come from the record that response
+    * describes, or the table has none. Its JSON response, if it also has one, describes a
+    * different document: borrowing that schema put the lines' fields under the wrong columns,
+    * silently NULL. Paths with no NDJSON response keep their JSON schema.
     */
   private def candidates: List[Endpoint] =
-    if (readsNdjson) spec.ndjsonEndpoints ++ spec.endpoints else spec.endpoints
+    if (readsNdjson) spec.ndjsonEndpoints ++ spec.endpoints.filterNot(e => spec.ndjsonAdvertised.contains(e.path))
+    else spec.endpoints
 
   private def exactEndpoint(path: String): Option[Endpoint] = candidates.find(_.path == path)
 
@@ -42,7 +46,7 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
     val configured = config.tables.keys.toSeq
     // Only auto-discover endpoints without path parameters (e.g. /pokemon but not
     // /pokemon/{id}) — parameterised paths need parent-child config to supply values.
-    val discovered = spec.endpoints
+    val discovered = candidates
       .filterNot(_.path.contains("{"))
       .flatMap(ep => ep.operationId.orElse(ep.path.split("/").filterNot(_.isEmpty).lastOption))
     (configured ++ discovered).distinct
@@ -91,11 +95,13 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
   def unmatchedReason(name: String): Option[String] =
     config.tables.get(name).flatMap { tc =>
       // A concrete path in the spec wins over a template, as OpenAPI matches them: a CSV
-      // `/reports/latest` mustn't take its columns from a JSON `/reports/{id}`.
-      val exactUnreadable = spec.unreadable.get(tc.endpoint)
+      // `/reports/latest` mustn't take its columns from a JSON `/reports/{id}`. For an NDJSON
+      // source, so does a concrete path offering NDJSON, record schema or not.
+      val unreadable = spec.unreadable ++ (if (readsNdjson) spec.ndjsonAdvertised else Map.empty)
+      val exactUnreadable = unreadable.get(tc.endpoint)
       val byPath = exactEndpoint(tc.endpoint)
         .orElse(if (exactUnreadable.isDefined) None else templateEndpoint(tc.endpoint))
-      val offered = exactUnreadable.orElse(spec.unreadable.collectFirst {
+      val offered = exactUnreadable.orElse(unreadable.collectFirst {
         case (path, types) if pathMatches(tc.endpoint, path) => types
       })
       // A table whose own path the spec describes without usable JSON fails even if another
@@ -146,7 +152,7 @@ final class RestSourceCatalog(config: SourceConfig) extends SourceCatalog {
         exactEndpoint(tc.endpoint).orElse(templateEndpoint(tc.endpoint))
       }
       .orElse {
-        spec.endpoints.find { ep =>
+        candidates.find { ep =>
           ep.operationId.contains(name) ||
           ep.path.split("/").filterNot(s => s.startsWith("{") || s.isEmpty).lastOption
             .exists(_.equalsIgnoreCase(name))
