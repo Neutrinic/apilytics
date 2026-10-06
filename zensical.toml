@@ -22,6 +22,7 @@ nav = [
     "using/joins.md",
     "using/partitioning.md",
     "using/rate-limiting.md",
+    "using/performance.md",
   ] },
   { "Deploying" = [
     "deploying/index.md",
