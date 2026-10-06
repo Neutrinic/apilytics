@@ -36,7 +36,7 @@ docker run -it --rm ghcr.io/neutrinic/apilytics:latest "SELECT name FROM api.def
 Or add it to your own Spark:
 
 ```bash
-spark-shell --packages io.github.neutrinic:apilytics_2.13:1.0.0 \
+spark-shell --packages io.github.neutrinic:apilytics_2.13:1.0.1 \
   --conf spark.sql.catalog.api=com.apilytics.spark.RESTCatalog \
   --conf spark.sql.catalog.api.config=/path/to/config.conf
 ```

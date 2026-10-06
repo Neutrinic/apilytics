@@ -1,1 +1,1 @@
-These pages describe **APIlytics 1.0.0**.
+These pages describe **APIlytics 1.0.1**.

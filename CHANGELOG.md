@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-10-06
+
+### Added
+
+- **Development builds of main.** The latest commit on main is published as a jar on a `dev`
+  pre-release on GitHub and as the image `ghcr.io/neutrinic/apilytics:dev`, for trying
+  unreleased changes. They aren't releases and nothing goes to Maven Central (#339).
+- **A Performance page** in the documentation: what limits a scan, how many partitions and
+  cores keep up with a given link, and how to tell whether a scan is waiting on the API or
+  limited by CPU. It's based on measurements from
+  [apilytics-bench](https://github.com/Neutrinic/apilytics-bench), the new repository of
+  benchmarks and the synthetic API they read (#353).
+
+### Fixed
+
+- **An object that allowed extra fields lost its columns.** An OpenAPI object with declared
+  `properties` and `additionalProperties` (`true`, or a schema for the extra values) was read
+  as a free-form value, so its declared fields became one JSON string column. On the row
+  object itself the table collapsed to the response wrapper, and `SELECT *` returned the right
+  number of rows with every value NULL. Declared fields are now typed columns whatever
+  `additionalProperties` says, and undeclared fields are skipped. An object with no declared
+  properties, such as a map, is still one JSON column. Cached spec parses from earlier
+  versions are discarded (#341).
+- **NDJSON tables couldn't use strict mode.** Columns were only taken from JSON media types,
+  so with `response-format = "ndjson"` a table was refused in strict mode even when the spec
+  described its records under `application/x-ndjson` or JSON Lines. A source reading NDJSON
+  now takes its columns from that record schema. When the spec gives no record there, the
+  table is still refused, saying so. Cached spec parses from earlier versions are
+  discarded (#345).
+- **A compressed API response failed the read.** Requests named no encoding, which under
+  RFC 9110 lets a server compress anyway, and some gateways always do; the client then
+  parsed the gzip bytes as JSON and failed with "Invalid JSON". Responses are now requested
+  with `Accept-Encoding: gzip, deflate` and decompressed as they stream, for JSON, NDJSON, SSE
+  and OAuth2 token requests. APIs that compress on request now send about a tenth of the
+  bytes, which speeds up reads limited by the network. `http { compression = false }` turns
+  it off, for a server that mislabels its compression (#347).
+- **The jar no longer bundles Mozilla Rhino, which is MPL-2.0.** It came in with swagger-parser's
+  Swagger 1.x converter, which apilytics never supported. License policy scanners flagged the
+  jar as non-compliant because of it. The converter is gone, and the jar is about 5 MB smaller.
+  Swagger 2.0 and OpenAPI 3.0/3.1 specs read as before (#350).
+
+### Changed
+
+- **The image's `latest` tag now means the newest release.** Every push to main used to retag
+  `latest`, so the quick start could pull unreleased code. Only the newest release tag moves it
+  now (#339).
+- **The jar is about 4 MB smaller.** It no longer bundles circe-generic, which apilytics never
+  used, or shapeless, which only circe-generic needed (#352).
+
 ## [1.0.0] - 2026-10-03
 
 First stable release. The version marks architectural stability rather than a burst of
