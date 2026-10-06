@@ -1,0 +1,8 @@
+1	2gb	iperf3	8	1	0.96 Gbps
+1	2gb	iperf3	8	8	0.96 Gbps
+1	10gb	iperf3	8	1	0.96 Gbps
+1	10gb	iperf3	8	8	0.96 Gbps
+10	2gb	iperf3	8	1	9.32 Gbps
+10	2gb	iperf3	8	8	9.54 Gbps
+10	10gb	iperf3	8	1	9.37 Gbps
+10	10gb	iperf3	8	8	9.46 Gbps
