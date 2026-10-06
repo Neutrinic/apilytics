@@ -74,6 +74,16 @@ nothing goes to Maven Central, and they can change with every push. Running the 
 workflow by hand on a branch publishes `dev-<branch>` the same way, to try a change before it
 merges.
 
+## Benchmarks
+
+[apilytics-bench](https://github.com/Neutrinic/apilytics-bench) holds a synthetic paginated API
+whose answers are known: fixtures of 100 MB to 10 GB, with clean and deliberately messy
+variants, and profiles for latency, rate limits, server errors and TCP resets. It runs on any
+Debian or Ubuntu host. Its GCP scripts measure apilytics against DuckDB and a plain JVM client
+at capped link speeds, and run against the `dev` jar by default, so a change on main can be
+measured before it's released. The [Performance](using/performance.md) page summarises the
+results.
+
 ## This site
 
 The site is built with [Zensical](https://zensical.org/) from `docs/` and `zensical.toml`:

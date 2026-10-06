@@ -48,7 +48,10 @@ The config file names the OpenAPI spec, the authentication and the endpoints to 
 
 **[neutrinic.github.io/apilytics](https://neutrinic.github.io/apilytics/)** covers
 installation, configuration, streaming, Declarative Pipelines, JDBC and BI tools,
-partitioning, rate limits and troubleshooting.
+partitioning, rate limits, performance and troubleshooting.
+
+Benchmarks, and the synthetic API they read, are in
+[apilytics-bench](https://github.com/Neutrinic/apilytics-bench).
 
 To build or contribute, see [Development](https://neutrinic.github.io/apilytics/latest/development/)
 and [CONTRIBUTING.md](CONTRIBUTING.md). [GOVERNANCE.md](GOVERNANCE.md) says who maintains the
