@@ -82,7 +82,7 @@ val onSparkClasspath = Seq(
   */
 val shadedPackages = Seq(
   // Typelevel stack: the HTTP client, streaming, JSON and their foundations
-  "cats", "algebra", "fs2", "scodec", "shapeless", "io.circe", "org.http4s", "org.typelevel",
+  "cats", "algebra", "fs2", "scodec", "io.circe", "org.http4s", "org.typelevel",
   "org.log4s", "com.comcast", "com.twitter.hpack",
   // OpenAPI parsing and what it brings
   "io.swagger", "com.fasterxml.jackson.dataformat", "org.yaml",
@@ -163,7 +163,6 @@ lazy val root = (project in file("."))
       "org.http4s"       %% "http4s-ember-client" % "0.23.38" excludeAll (onSparkClasspath: _*),
       "org.http4s"       %% "http4s-circe"        % "0.23.38" excludeAll (onSparkClasspath: _*),
       "io.circe"         %% "circe-core"          % "0.14.16",
-      "io.circe"         %% "circe-generic"       % "0.14.16",
       "io.circe"         %% "circe-parser"        % "0.14.16",
       "io.circe"         %% "circe-pointer"       % "0.14.16",
 
