@@ -152,6 +152,13 @@ class ParserSuite extends FunSuite {
     }
   }
 
+  test("the Swagger 1.x converter isn't on the classpath: only 2.0 and OpenAPI 3.x are read (#350)") {
+    // It was excluded because it bundled Rhino, which is MPL-2.0. The 2.0 parser loaded it
+    // only as an optional extension.
+    intercept[ClassNotFoundException](Class.forName("io.swagger.parser.SwaggerCompatConverter"))
+    intercept[ClassNotFoundException](Class.forName("org.mozilla.javascript.Context"))
+  }
+
   test("additionalProperties: true produces VariantType") {
     val spec =
       """{

@@ -45,10 +45,9 @@ val sparkMajorMinor = sparkVersion.split('.').take(2).mkString(".")
   * never sees. With them excluded, compile and test use Spark's own copies.
   *
   * The test is `spark-sql`'s resolved dependency tree, not what a distribution happens to
-  * contain. Apache's distribution also carries jackson-dataformat-yaml, snakeyaml,
-  * httpclient and joda-time, through optional modules (Kubernetes, Hive); vendor runtimes
-  * leave them out — Dataproc Serverless 3.0 has no jackson-dataformat-yaml — so those ship
-  * with us (#259).
+  * contain. Apache's distribution also carries jackson-dataformat-yaml and snakeyaml,
+  * through optional modules (Kubernetes, Hive); vendor runtimes leave them out — Dataproc
+  * Serverless 3.0 has no jackson-dataformat-yaml — so those ship with us (#259).
   *
   * Also not excluded: jakarta.activation / validation / xml.bind 2.x, whose artifact names
   * match Spark's but whose packages do not (`javax.*` versus Spark's `jakarta.*`); and
@@ -86,9 +85,8 @@ val shadedPackages = Seq(
   "cats", "algebra", "fs2", "scodec", "shapeless", "io.circe", "org.http4s", "org.typelevel",
   "org.log4s", "com.comcast", "com.twitter.hpack",
   // OpenAPI parsing and what it brings
-  "io.swagger", "com.github.fge", "com.google.i18n", "org.mozilla", "joptsimple",
-  "com.fasterxml.jackson.dataformat", "org.yaml", "org.apache.http", "org.apache.commons.logging",
-  "org.joda", "javax.activation", "javax.validation", "javax.xml.bind",
+  "io.swagger", "com.fasterxml.jackson.dataformat", "org.yaml",
+  "javax.activation", "javax.validation", "javax.xml.bind",
   // Config
   "com.typesafe.config",
 )
@@ -171,8 +169,14 @@ lazy val root = (project in file("."))
 
       // OpenAPI. Its chain also drags in libraries every Spark distribution already
       // ships, which are excluded below: see `onSparkClasspath`.
+      // swagger-compat-spec-parser converts Swagger 1.x, which apilytics doesn't support. The
+      // 2.0 parser only loads it as an optional extension, and it bundled Rhino, which is
+      // MPL-2.0 (#350).
       "io.swagger.parser.v3" % "swagger-parser"   % "2.1.48"
-        excludeAll ((onSparkClasspath :+ ExclusionRule("com.fasterxml.jackson.dataformat")): _*),
+        excludeAll ((onSparkClasspath ++ Seq(
+          ExclusionRule("com.fasterxml.jackson.dataformat"),
+          ExclusionRule("io.swagger", "swagger-compat-spec-parser"),
+        )): _*),
 
       // YAML specs need jackson-dataformat-yaml, which `spark-sql` does not bring (#259).
       // Declared directly rather than taken from swagger-parser (2.22) so it matches the
@@ -286,6 +290,11 @@ lazy val root = (project in file("."))
           .filter(n => n.endsWith(".class") && !n.startsWith("com/apilytics/") && n != "module-info.class")
           .toList
         finally zip.close()
+      // Rhino is MPL-2.0 and came in only through the Swagger 1.x converter (#350). If it
+      // comes back, find what brings it rather than relocating it.
+      if (escaped.exists(_.startsWith("org/mozilla/"))) sys.error(
+        "The jar bundles Mozilla Rhino (MPL-2.0). Exclude whatever brings it: see #350."
+      )
       if (escaped.nonEmpty) sys.error(
         s"${escaped.size} bundled classes are not relocated, e.g. ${escaped.take(5).mkString(", ")}. " +
           "Add their package to shadedPackages in build.sbt."
