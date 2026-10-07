@@ -484,6 +484,8 @@
       
         
       
+        
+      
     
     
     
@@ -705,6 +707,33 @@
     
   
   Rate limiting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance
 
     
   </span>
@@ -1503,14 +1532,14 @@
 <h1 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h1>
 <p>APIlytics is published to Maven Central as <code>io.github.neutrinic:apilytics_2.13</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># spark-submit</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>spark-submit<span class="w"> </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.0<span class="w"> </span>your-app.jar
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>spark-submit<span class="w"> </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.1<span class="w"> </span>your-app.jar
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># spark-shell or pyspark</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>spark-shell<span class="w"> </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.0
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>spark-shell<span class="w"> </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.1
 </code></pre></div>
 <p>For an application built with sbt:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1">// build.sbt</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">"io.github.neutrinic"</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">"apilytics"</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">"1.0.0"</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">"io.github.neutrinic"</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">"apilytics"</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">"1.0.1"</span>
 </code></pre></div>
 <p>Spark itself is a provided dependency and is not pulled in.</p>
 <h2 id="register-a-catalog">Register a catalog<a class="headerlink" href="#register-a-catalog" title="Permanent link">&para;</a></h2>
@@ -1521,7 +1550,7 @@
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">spark</span><span class="p">.</span><span class="n">sql</span><span class="p">(</span><span class="s">"SELECT * FROM api.default.issues LIMIT 5"</span><span class="p">).</span><span class="n">show</span><span class="p">()</span>
 </code></pre></div>
 <p>Or on the command line, which works for <code>spark-sql</code>, <code>pyspark</code> and <code>spark-submit</code> too:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>spark-shell<span class="w"> </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.0<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>spark-shell<span class="w"> </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.1<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--conf<span class="w"> </span>spark.sql.catalog.api<span class="o">=</span>com.apilytics.spark.RESTCatalog<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--conf<span class="w"> </span>spark.sql.catalog.api.config<span class="o">=</span>/path/to/config.conf
 </code></pre></div>

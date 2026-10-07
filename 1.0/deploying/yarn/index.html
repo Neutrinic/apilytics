@@ -413,6 +413,8 @@
       
         
       
+        
+      
     
     
     
@@ -634,6 +636,33 @@
     
   
   Rate limiting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance
 
     
   </span>
@@ -1426,7 +1455,7 @@ a YARN container on a different node each time. Both the catalog and <code>forma
 Partitioning was exact, and streaming was exact across a stop and restart with its
 checkpoint on HDFS.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>spark-submit<span class="w"> </span>--master<span class="w"> </span>yarn<span class="w"> </span>--deploy-mode<span class="w"> </span>cluster<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.0<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.1<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span>--files<span class="w"> </span>api.conf,api-spec.yaml<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span>--conf<span class="w"> </span>spark.sql.catalog.api<span class="o">=</span>com.apilytics.spark.RESTCatalog<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span>--conf<span class="w"> </span>spark.sql.catalog.api.config<span class="o">=</span>api.conf<span class="w"> </span><span class="se">\</span>

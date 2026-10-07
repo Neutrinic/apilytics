@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://neutrinic.github.io/apilytics/1.0/using/jdbc/">
+        <link rel="canonical" href="https://neutrinic.github.io/apilytics/1.0/using/performance/">
       
       
-        <link rel="prev" href="../pipelines/">
+        <link rel="prev" href="../rate-limiting/">
       
       
-        <link rel="next" href="../joins/">
+        <link rel="next" href="../../deploying/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>JDBC and BI tools - APIlytics</title>
+        <title>Performance - APIlytics</title>
       
     
     
@@ -83,7 +83,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#jdbc-and-bi-tools" class="md-skip">
+        <a href="#performance" class="md-skip">
           Skip to content
         </a>
       
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              JDBC and BI tools
+              Performance
             
           </span>
         </div>
@@ -546,36 +546,10 @@
                   
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  JDBC and BI tools
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../jdbc/" class="md-nav__link">
         
   
   
@@ -590,60 +564,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#with-docker" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        With Docker
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#connection-details" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Connection details
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#on-your-own-spark" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        On your own Spark
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -734,10 +654,36 @@
                   
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../performance/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -752,6 +698,71 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-limits-a-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What limits a read
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sizing" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Sizing
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#is-a-scan-waiting-or-computing" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Is a scan waiting or computing?
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#measured-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Measured results
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1441,10 +1452,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#with-docker" class="md-nav__link">
+  <a href="#what-limits-a-read" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        With Docker
+        What limits a read
       </span>
     </span>
   </a>
@@ -1452,10 +1463,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#connection-details" class="md-nav__link">
+  <a href="#sizing" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Connection details
+        Sizing
       </span>
     </span>
   </a>
@@ -1463,10 +1474,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#on-your-own-spark" class="md-nav__link">
+  <a href="#is-a-scan-waiting-or-computing" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        On your own Spark
+        Is a scan waiting or computing?
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#measured-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Measured results
       </span>
     </span>
   </a>
@@ -1563,36 +1585,96 @@
   
 
 
-<h1 id="jdbc-and-bi-tools">JDBC and BI tools<a class="headerlink" href="#jdbc-and-bi-tools" title="Permanent link">&para;</a></h1>
-<p>BI tools such as DBeaver, Tableau and Power BI connect over JDBC through Spark's Thrift
-server, with the APIlytics catalogs registered in the server's Spark config.</p>
-<h2 id="with-docker">With Docker<a class="headerlink" href="#with-docker" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>docker<span class="w"> </span>run<span class="w"> </span>-p<span class="w"> </span><span class="m">127</span>.0.0.1:10000:10000<span class="w"> </span>--rm<span class="w"> </span>ghcr.io/neutrinic/apilytics:latest<span class="w"> </span>thrift
-</code></pre></div>
-<p>The server takes any username and no password, so the port is published on loopback only.
-Without the <code>127.0.0.1:</code>, Docker publishes it on every network interface, and anyone who
-can reach the machine can query the APIs with your credentials.</p>
-<p>The <code>pokeapi</code> and <code>github</code> catalogs are configured:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">pokeapi</span><span class="p">.</span><span class="k">default</span><span class="p">.</span><span class="n">pokemon</span><span class="w"> </span><span class="k">LIMIT</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span>
-</code></pre></div>
-<h2 id="connection-details">Connection details<a class="headerlink" href="#connection-details" title="Permanent link">&para;</a></h2>
+<h1 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h1>
+<p>How fast a scan runs depends mostly on the API. The numbers on this page come from
+<a href="https://github.com/Neutrinic/apilytics-bench">apilytics-bench</a>. It serves a synthetic
+paginated API whose answers are known, and reads it on Google Compute Engine at capped link
+speeds. Its results also compare apilytics with DuckDB and a plain JVM client.</p>
+<h2 id="what-limits-a-read">What limits a read<a class="headerlink" href="#what-limits-a-read" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>The API.</strong> Each page costs a round trip, and most APIs add latency, rate limits or small
+   pages. Against such an API, a scan spends most of its time waiting. More
+   <a href="../partitioning/">partitions</a> put more requests in flight, within the
+   <a href="../rate-limiting/">rate limit</a>.</li>
+<li><strong>One partition reads one page at a time.</strong> It fetches a page, converts it, then fetches
+   the next, so network and CPU take turns. Against a fast API, one partition read 60–90 MB/s
+   of JSON, depending on the CPU, whatever the link speed.</li>
+<li><strong>CPU.</strong> With enough partitions to keep the link busy, the limit becomes converting JSON
+   into Arrow batches. The benchmark measured 20–45 CPU-seconds per GB of JSON, depending on
+   the CPU and on how many columns the query reads.</li>
+</ol>
+<h2 id="sizing">Sizing<a class="headerlink" href="#sizing" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Link</th>
+<th>What kept up with it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 Gbps</td>
+<td>8 partitions on one 8-vCPU machine</td>
+</tr>
+<tr>
+<td>10 Gbps</td>
+<td>8 workers with 8 vCPUs each: 64 vCPUs</td>
+</tr>
+<tr>
+<td>25 Gbps</td>
+<td>not reached: 64 vCPUs read about 13 Gbps</td>
+</tr>
+</tbody>
+</table>
 <ul>
-<li><strong>Driver</strong>: Apache Hive JDBC</li>
-<li><strong>URL</strong>: <code>jdbc:hive2://localhost:10000</code></li>
-<li><strong>Username</strong>: any, e.g. <code>spark</code></li>
-<li><strong>Password</strong>: empty</li>
+<li><strong>Use a partition per core</strong> you want busy. Offset partitioning splits any offset-paginated
+  endpoint; see <a href="../partitioning/">Partitioning</a>.</li>
+<li><strong>Workers beat one large machine.</strong> In the benchmark, two 8-vCPU workers read faster than one
+  16-vCPU machine in local mode: 19.5 s against 27.7 s for 10 GB.</li>
+<li><strong>Select only the columns you need.</strong> apilytics converts only the columns a query reads.
+  Reading every column of the benchmark's dataset took 1.6 times the CPU of reading three.</li>
 </ul>
-<p>In DBeaver: <strong>New Connection → Apache Hive</strong>, host <code>localhost</code>, port <code>10000</code>, then
-<strong>Test Connection</strong>.</p>
-<h2 id="on-your-own-spark">On your own Spark<a class="headerlink" href="#on-your-own-spark" title="Permanent link">&para;</a></h2>
-<p>Start the Thrift server with the jar and a catalog per API:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">$SPARK_HOME</span>/sbin/start-thriftserver.sh<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.1<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--conf<span class="w"> </span>spark.sql.catalog.api<span class="o">=</span>com.apilytics.spark.RESTCatalog<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--conf<span class="w"> </span>spark.sql.catalog.api.config<span class="o">=</span>/path/to/config.conf
-</code></pre></div>
-<p>Spark Connect works the same way: register the catalog in the Connect server's Spark
-config, and clients query <code>api.default.&lt;table&gt;</code> as usual.</p>
+<h2 id="is-a-scan-waiting-or-computing">Is a scan waiting or computing?<a class="headerlink" href="#is-a-scan-waiting-or-computing" title="Permanent link">&para;</a></h2>
+<p>Compare the scan stage's executor CPU time with its executor run time. Spark's monitoring REST
+API reports both for each stage, as <code>executorCpuTime</code> (in nanoseconds) and <code>executorRunTime</code>
+(in milliseconds), at <code>/api/v1/applications/&lt;app-id&gt;/stages</code>.</p>
+<ul>
+<li><strong>CPU time is a small share of run time:</strong> the scan is waiting on the API. Add partitions,
+  within the API's rate limit, or ask for larger pages with <code>max-page-size</code>.</li>
+<li><strong>CPU time is close to run time:</strong> the scan is limited by CPU. Add executors or cores, and
+  read fewer columns.</li>
+</ul>
+<h2 id="measured-results">Measured results<a class="headerlink" href="#measured-results" title="Permanent link">&para;</a></h2>
+<p>Reading 10 GB of JSON at a 25 Gbps cap, with <code>n2-standard-8</code> workers on Cascade Lake CPUs:</p>
+<table>
+<thead>
+<tr>
+<th>Workers</th>
+<th>vCPUs</th>
+<th>Scan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2</td>
+<td>16</td>
+<td>19.6 s</td>
+</tr>
+<tr>
+<td>4</td>
+<td>32</td>
+<td>10.5 s</td>
+</tr>
+<tr>
+<td>8</td>
+<td>64</td>
+<td>6.0 s</td>
+</tr>
+</tbody>
+</table>
+<p>Every run's row count and sum matched the dataset's manifest. The setup, the scripts and every
+measured run are in <a href="https://github.com/Neutrinic/apilytics-bench">apilytics-bench</a>, so a run
+can be repeated on other hardware.</p>
 
 
 
@@ -1632,7 +1714,7 @@ config, and clients query <code>api.default.&lt;table&gt;</code> as usual.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../pipelines/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Declarative Pipelines">
+          <a href="../rate-limiting/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Rate limiting">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -1642,20 +1724,20 @@ config, and clients query <code>api.default.&lt;table&gt;</code> as usual.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Declarative Pipelines
+                Rate limiting
               </div>
             </div>
           </a>
         
         
           
-          <a href="../joins/" class="md-footer__link md-footer__link--next" aria-label="Next: Parent-child joins">
+          <a href="../../deploying/" class="md-footer__link md-footer__link--next" aria-label="Next: Deploying">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Parent-child joins
+                Deploying
               </div>
             </div>
             <div class="md-footer__button md-icon">

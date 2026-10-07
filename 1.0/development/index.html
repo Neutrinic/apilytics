@@ -411,6 +411,8 @@
       
         
       
+        
+      
     
     
     
@@ -632,6 +634,33 @@
     
   
   Rate limiting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../using/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance
 
     
   </span>
@@ -1360,6 +1389,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#development-builds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Development builds
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Benchmarks
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#this-site" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1474,6 +1525,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#development-builds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Development builds
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Benchmarks
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#this-site" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1569,6 +1642,28 @@ after <code>sbt assembly</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>sbt<span class="w"> </span>assembly
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>apilytics:latest<span class="w"> </span>-f<span class="w"> </span>docker/dist/Dockerfile<span class="w"> </span>.
 </code></pre></div>
+<p>Releases are tagged <code>X.Y.Z</code>, <code>X.Y</code> and <code>latest</code>, so <code>latest</code> is always the newest release.</p>
+<h2 id="development-builds">Development builds<a class="headerlink" href="#development-builds" title="Permanent link">&para;</a></h2>
+<p>The latest commit on main is always published too, for trying out unreleased changes without
+building anything locally:</p>
+<ul>
+<li>the jar, on the <code>dev</code> pre-release:
+  <code>https://github.com/Neutrinic/apilytics/releases/download/dev/apilytics_2.13-dev.jar</code>,
+  which works with <code>--jars</code> or on a Databricks volume</li>
+<li>the image, as <code>ghcr.io/neutrinic/apilytics:dev</code>, and under the commit's short SHA</li>
+</ul>
+<p>The <code>dev</code> release notes say which commit they're from. Development builds are not releases:
+nothing goes to Maven Central, and they can change with every push. Running the Dev builds
+workflow by hand on a branch publishes <code>dev-&lt;branch&gt;</code> the same way, to try a change before it
+merges.</p>
+<h2 id="benchmarks">Benchmarks<a class="headerlink" href="#benchmarks" title="Permanent link">&para;</a></h2>
+<p><a href="https://github.com/Neutrinic/apilytics-bench">apilytics-bench</a> holds a synthetic paginated API
+whose answers are known: fixtures of 100 MB to 10 GB, with clean and deliberately messy
+variants, and profiles for latency, rate limits, server errors and TCP resets. It runs on any
+Debian or Ubuntu host. Its GCP scripts measure apilytics against DuckDB and a plain JVM client
+at capped link speeds, and run against the <code>dev</code> jar by default, so a change on main can be
+measured before it's released. The <a href="../using/performance/">Performance</a> page summarises the
+results.</p>
 <h2 id="this-site">This site<a class="headerlink" href="#this-site" title="Permanent link">&para;</a></h2>
 <p>The site is built with <a href="https://zensical.org/">Zensical</a> from <code>docs/</code> and <code>zensical.toml</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="nv">zensical</span><span class="o">==</span><span class="m">0</span>.0.67

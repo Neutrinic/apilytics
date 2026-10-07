@@ -413,6 +413,8 @@
       
         
       
+        
+      
     
     
     
@@ -634,6 +636,33 @@
     
   
   Rate limiting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance
 
     
   </span>
@@ -1523,7 +1552,7 @@ and <code>format()</code> were run. Executors ran on all three nodes, and stream
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>--conf<span class="w"> </span>spark.kubernetes.container.image<span class="o">=</span>your-spark-image<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span>--conf<span class="w"> </span>spark.kubernetes.namespace<span class="o">=</span>spark-jobs<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span>--conf<span class="w"> </span>spark.kubernetes.authenticate.driver.serviceAccountName<span class="o">=</span>spark<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.0<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.1<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span>--conf<span class="w"> </span>spark.jars.ivy<span class="o">=</span>/tmp/ivy<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span>--conf<span class="w"> </span>spark.kubernetes.driver.node.selector.kubernetes.io/hostname<span class="o">=</span>node-with-config<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span>--conf<span class="w"> </span>spark.kubernetes.driver.volumes.hostPath.apilytics.mount.path<span class="o">=</span>/etc/apilytics<span class="w"> </span><span class="se">\</span>
@@ -1573,7 +1602,7 @@ local to the machine you submit from. Kubernetes refuses local files unless
 <a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="nt">mainApplicationFile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local:///opt/jobs/your-job.py</span>
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="nt">sparkVersion</span><span class="p">:</span><span class="w"> </span><span class="s">"4.2.0"</span>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">  </span><span class="nt">deps</span><span class="p">:</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">    </span><span class="nt">packages</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"io.github.neutrinic:apilytics_2.13:1.0.0"</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">    </span><span class="nt">packages</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"io.github.neutrinic:apilytics_2.13:1.0.1"</span><span class="p p-Indicator">]</span>
 <a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">  </span><span class="nt">sparkConf</span><span class="p">:</span>
 <a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">    </span><span class="nt">spark.jars.ivy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/tmp/ivy</span>
 <a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">    </span><span class="nt">spark.sql.catalog.api</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">com.apilytics.spark.RESTCatalog</span>

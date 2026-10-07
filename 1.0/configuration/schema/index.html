@@ -413,6 +413,8 @@
       
         
       
+        
+      
     
     
     
@@ -634,6 +636,33 @@
     
   
   Rate limiting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance
 
     
   </span>
@@ -1593,7 +1622,8 @@ can read if you need it.</p>
 <code>+json</code> type such as <code>application/hal+json</code>, or <code>*/*</code>, in that order of preference. A table
 whose endpoint has no such response fails when it's queried, naming the content types the
 spec does offer: in strict mode it would have no columns. Variant mode needs no schema, so
-there the table still loads.</p>
+there the table still loads. A source reading NDJSON takes its columns from the record
+under the NDJSON response instead; see <a href="../response-formats/">Response formats</a>.</p>
 <p>Every column is nullable, including fields the spec marks <code>required</code>. A required field
 can still be null in the data: inside an optional parent object that's missing, when it's
 also declared <code>nullable: true</code>, or when the API breaks its own spec. A non-nullable column
@@ -1639,11 +1669,17 @@ would let Spark drop <code>IS NULL</code> filters on it, and with them those row
 <td>an array, or an object deeper than <code>flatten-depth</code></td>
 <td><code>string</code>, holding the JSON</td>
 </tr>
+<tr>
+<td>an object with no declared <code>properties</code>, such as a map given only by <code>additionalProperties</code></td>
+<td><code>string</code>, holding the JSON</td>
+</tr>
 </tbody>
 </table>
 <p>An <code>integer</code> without a format has no size limit in OpenAPI, and IDs and epoch milliseconds
 routinely pass the 32-bit range, so only an explicit <code>int32</code> is an <code>int</code>. A <code>bigint</code> holds
 any value up to 2^63 − 1.</p>
+<p>Columns come from the fields a spec declares. A field the API sends but the spec doesn't
+declare is skipped, including when the spec allows extra fields with <code>additionalProperties</code>.</p>
 <h3 id="values-that-dont-match-their-column">Values that don't match their column<a class="headerlink" href="#values-that-dont-match-their-column" title="Permanent link">&para;</a></h3>
 <p>APIs don't always send what their spec says. A value with exactly one reading in its
 column's type is converted:</p>

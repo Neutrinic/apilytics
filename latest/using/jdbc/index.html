@@ -415,6 +415,8 @@
       
         
       
+        
+      
     
     
     
@@ -716,6 +718,33 @@
     
   
   Rate limiting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance
 
     
   </span>
@@ -1502,6 +1531,8 @@
       
         
       
+        
+      
     
     
     
@@ -1556,7 +1587,7 @@ can reach the machine can query the APIs with your credentials.</p>
 <h2 id="on-your-own-spark">On your own Spark<a class="headerlink" href="#on-your-own-spark" title="Permanent link">&para;</a></h2>
 <p>Start the Thrift server with the jar and a catalog per API:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">$SPARK_HOME</span>/sbin/start-thriftserver.sh<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.0<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--packages<span class="w"> </span>io.github.neutrinic:apilytics_2.13:1.0.1<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--conf<span class="w"> </span>spark.sql.catalog.api<span class="o">=</span>com.apilytics.spark.RESTCatalog<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--conf<span class="w"> </span>spark.sql.catalog.api.config<span class="o">=</span>/path/to/config.conf
 </code></pre></div>

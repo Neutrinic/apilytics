@@ -413,6 +413,8 @@
       
         
       
+        
+      
     
     
     
@@ -634,6 +636,33 @@
     
   
   Rate limiting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../using/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance
 
     
   </span>
@@ -1454,6 +1483,11 @@ responses, set <code>http.response-format</code>:</p>
 </ul>
 <p>These formats bypass pagination, because they represent one continuous stream. Use
 <code>LIMIT</code> in SQL to cap the number of records read.</p>
+<p>With <code>ndjson</code>, strict mode takes its columns from the record the spec describes under the
+endpoint's NDJSON response (<code>application/x-ndjson</code>, <code>application/jsonl</code> and similar): an
+object, or an array whose items are the records. If the spec gives no record there, for
+example just <code>type: string</code>, use variant mode instead. SSE streams are read in variant mode:
+specs describe their events too differently to take columns from.</p>
 <p>Working examples:
 <a href="https://github.com/Neutrinic/apilytics/blob/main/examples/lichess/lichess-ndjson.conf"><code>examples/lichess/lichess-ndjson.conf</code></a>
 and
