@@ -10,7 +10,7 @@ spec:
   mainApplicationFile: local:///opt/jobs/your-job.py
   sparkVersion: "4.2.0"
   deps:
-    packages: ["io.github.neutrinic:apilytics_2.13:1.0.0"]
+    packages: ["io.github.neutrinic:apilytics_2.13:1.0.1"]
   sparkConf:
     spark.jars.ivy: /tmp/ivy
     spark.sql.catalog.api: com.apilytics.spark.RESTCatalog
