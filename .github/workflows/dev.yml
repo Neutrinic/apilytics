@@ -54,7 +54,7 @@ jobs:
           # token on disk where that code could read it.
           persist-credentials: false
 
-      - uses: actions/setup-java@v6.0.1
+      - uses: actions/setup-java@v6.2.0
         with:
           distribution: temurin
           java-version: 17
